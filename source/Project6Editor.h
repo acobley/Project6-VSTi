@@ -117,7 +117,16 @@ public:
 	static constexpr int kDisplayBottom = kDisplayTop + kDisplayHeight;
 
 	static constexpr int kSlotHeadingTop = kDisplayBottom + 16;
-	static constexpr int kSlotGridTop    = kSlotHeadingTop + kHeadingHeight + 3;
+
+	/** A launch box above each column, the column's own width, with a gap
+	    before the pads so it reads as heading a column rather than as
+	    being the first cell of one. */
+	static constexpr int kColumnButtonTop    = kSlotHeadingTop + kHeadingHeight + 3;
+	static constexpr int kColumnButtonHeight = 18;
+	static constexpr int kColumnButtonGap    = 5;
+
+	static constexpr int kSlotGridTop =
+		kColumnButtonTop + kColumnButtonHeight + kColumnButtonGap;
 
 	static constexpr int kEditorHeight = kSlotGridTop + kSlotGridHeight + kMargin;
 
@@ -133,6 +142,11 @@ public:
 	static_assert (kSlotGridTop + (kSlotRows - 1) * (kSlotHeight + kSlotGap) + kSlotHeight
 	                   == kEditorHeight - kMargin,
 	               "the slot grid does not meet the bottom margin");
+
+	// A launch box has to sit exactly over the column it launches, or the
+	// panel is lying about which one it is.
+	static_assert (kColumnButtonTop + kColumnButtonHeight < kSlotGridTop,
+	               "the column buttons overlap the pads");
 
 	/** How often the panel asks the controller where the DSP is. 30 ms is
 	    about 33 fps - fast enough that a smoothed move is a movement
@@ -151,6 +165,21 @@ private:
 
 	/** One cell of the slot grid, from kSlotWidth and friends. */
 	VSTGUI::CRect slotCell (int column, int row) const;
+
+	/** The launch box above one column, exactly as wide as it. */
+	VSTGUI::CRect columnCell (int column) const;
+
+	/** A column's launch box was pressed: arm every loaded slot in it, or
+	    stop them all if they are all already armed.
+
+	    It writes the SLOTS' OWN TRIGGERS and nothing else, so a column
+	    press and eight separate clicks are the same thing to the
+	    processor - and the bar-line rules apply to both without knowing
+	    the button exists. */
+	void columnClicked (int column);
+
+	/** Recompute what each column button shows from the slots below it. */
+	void refreshColumns ();
 
 	/** A file was dropped on a slot. Writes through the CONTROLLER, which
 	    tells the processor and calls refreshSlots on every open editor -
@@ -193,6 +222,7 @@ private:
 	std::map<Steinberg::Vst::ParamID, VSTGUI::CControl*> mControls;
 	SpyDisplay* mDisplay = nullptr;
 	SpySampleSlot* mSlots[kSlotCount] = { nullptr };
+	SpyColumnButton* mColumns[kSlotColumns] = { nullptr };
 
 	VSTGUI::SharedPointer<VSTGUI::CVSTGUITimer> mTimer;
 };

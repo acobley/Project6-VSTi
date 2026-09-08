@@ -153,7 +153,37 @@ int main ()
 	}
 
 	//--------------------------------------------------------------------
-	section ("4. The bank");
+	section ("4. What a column button does");
+	//--------------------------------------------------------------------
+	{
+		// The plain cases.
+		check (columnClickArms (8, 0), "an idle column is armed by a click");
+		check (! columnClickArms (8, 8), "a fully armed one is stopped");
+
+		// THE JUDGEMENT. Three of eight playing: the button's job is to
+		// PLAY the column, so it arms the other five. Stopping is what
+		// the second press is for. This is here so that changing it is a
+		// decision someone makes on purpose rather than a line someone
+		// tidies.
+		check (columnClickArms (8, 3),
+		       "a half-armed column is FILLED, not emptied, by the first press");
+		check (columnClickArms (8, 7), "even at seven of eight");
+		check (! columnClickArms (8, 3) == false,
+		       "NEGATIVE CONTROL: which is the opposite of 'any playing means stop'");
+
+		// Columns are rarely full: only the slots with files in them
+		// count, and the caller passes that count.
+		check (columnClickArms (3, 0), "a column with three loaded slots arms them");
+		check (! columnClickArms (3, 3), "and stops them when all three are armed");
+		check (columnClickArms (3, 2), "two of the three is still a fill");
+
+		// An empty column. The caller is expected to check first, but the
+		// answer must not be "arm the nothing that is there".
+		check (! columnClickArms (0, 0), "a column with nothing loaded arms nothing");
+	}
+
+	//--------------------------------------------------------------------
+	section ("5. The bank");
 	//--------------------------------------------------------------------
 	{
 		SlotBank bank;

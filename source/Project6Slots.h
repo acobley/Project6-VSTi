@@ -36,6 +36,25 @@ constexpr int kSlotCount   = kSlotColumns * kSlotRows;
     top-left one and slot 63 the bottom-right. */
 constexpr int slotIndex (int column, int row) { return row * kSlotColumns + column; }
 
+/** What a click on a column's launch button should do, given how many of
+    that column's slots can play and how many of those are already armed:
+    true to arm them all, false to stop them all.
+
+    THE MIXED COLUMN IS THE DECISION HERE, and it is written down as a
+    function so that changing it is deliberate. Three of eight playing,
+    and you hit the column: this arms the other five rather than stopping
+    the three, because the button's job is to PLAY the column - stopping
+    is what the second press is for. The other reading, "any playing means
+    stop", makes the first press on a half-full column do the opposite of
+    what the button is called.
+
+    A column with nothing loaded in it (`playable == 0`) arms nothing;
+    the caller checks that before asking. */
+constexpr bool columnClickArms (int playable, int armed)
+{
+	return armed < playable;
+}
+
 constexpr bool isSlotIndex (int index) { return index >= 0 && index < kSlotCount; }
 
 /** True for a path this plug-in will take.

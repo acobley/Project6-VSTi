@@ -1,5 +1,10 @@
 //------------------------------------------------------------------------
-// Project6 - the sample slot view
+// Project6 - the grid's own controls
+//
+// Two of them: SpySampleSlot, one cell of the 8 x 8 bank, and
+// SpyColumnButton, the box above each column that launches all of it.
+// They are together because they are two views of the same grid and
+// neither means anything without the other.
 //
 // One cell of the 8 x 8 grid. Drag a .wav onto it from the Finder and it
 // takes the file; click it and the file loops from the next bar line;
@@ -89,6 +94,14 @@ public:
 	void setSounding (bool sounding);
 	bool sounding () const { return mSounding; }
 
+	/** What the user has asked for - this control's own parameter. */
+	bool armed () const { return getValueNormalized () >= 0.5f; }
+
+	/** Armed and not yet sounding, or sounding and no longer armed:
+	    either way, waiting for a bar line. Public because the column
+	    button above this slot summarises it. */
+	bool pending () const { return armed () != mSounding; }
+
 	/** Called with (index, path) when a file the plug-in will take is
 	    dropped here. */
 	void setHandler (std::function<void (int, const std::string&)> handler);
@@ -143,12 +156,6 @@ private:
 	    play. */
 	void refreshTooltip ();
 
-	/** What the user has asked for - this control's own parameter. */
-	bool armed () const { return getValueNormalized () >= 0.5f; }
-
-	/** Armed and not yet sounding, or sounding and no longer armed:
-	    either way, waiting for a bar line. */
-	bool pending () const { return armed () != mSounding; }
 
 	int mIndex = 0;
 	std::string mPath;
@@ -156,6 +163,56 @@ private:
 	bool mSounding = false;
 	std::function<void (int, const std::string&)> mHandler;
 	bool mDragOver = false;
+};
+
+//------------------------------------------------------------------------
+/** The box above a column: one press launches every loaded slot in it.
+
+    It writes the slots' own trigger parameters and does nothing else, so
+    the bar-line rules apply to a column press exactly as they apply to a
+    click on one pad - eight pads come in together on the next bar line,
+    which is the only way eight loops can start in time with each other.
+
+    IT CARRIES NO PARAMETER OF ITS OWN, and that is the design rather than
+    an omission. A column "state" would be a second opinion about the same
+    eight triggers, and the moment somebody clicked one pad out of a
+    launched column the two would disagree with nothing to say which was
+    right. The precedent is VocalFilter's SpyPresetButton, which writes
+    nine parameters and holds none: a host sees the writes and never sees
+    the button.
+
+    So it is a CView, not a CControl, and what it SHOWS is a summary the
+    editor hands it - how many of its column can play, how many are
+    sounding, and whether any of them is waiting for a bar line. */
+class SpyColumnButton : public VSTGUI::CView
+{
+public:
+	SpyColumnButton (const VSTGUI::CRect& size, int column);
+
+	int column () const { return mColumn; }
+
+	void setHandler (std::function<void (int)> handler);
+
+	/** The state of the column below, recomputed by the editor whenever
+	    anything in it moves. */
+	void setState (int playable, int sounding, bool pending);
+
+	void draw (VSTGUI::CDrawContext* context) override;
+
+	/** Fires on mouse DOWN, like the pads - and for the same reason the
+	    pads can: nothing happens until the next bar line, so the wait IS
+	    the undo. A press you did not mean can be pressed again before it
+	    takes effect. */
+	void onMouseDownEvent (VSTGUI::MouseDownEvent& event) override;
+
+	CLASS_METHODS (SpyColumnButton, VSTGUI::CView)
+
+private:
+	int mColumn = 0;
+	int mPlayable = 0;
+	int mSounding = 0;
+	bool mPending = false;
+	std::function<void (int)> mHandler;
 };
 
 //------------------------------------------------------------------------

@@ -54,6 +54,14 @@ CRect Project6Editor::slotCell (int column, int row) const
 }
 
 //------------------------------------------------------------------------
+CRect Project6Editor::columnCell (int column) const
+{
+	const CCoord x = kMargin + column * (kSlotWidth + kSlotGap);
+	return CRect (x, kColumnButtonTop,
+	              x + kSlotWidth, kColumnButtonTop + kColumnButtonHeight);
+}
+
+//------------------------------------------------------------------------
 void Project6Editor::setParameter (ParamID tag, double plain)
 {
 	if (mController == nullptr)
@@ -177,9 +185,20 @@ bool PLUGIN_API Project6Editor::open (void* parent, const PlatformType& platform
 	// left dangling by a later refactor - and it is the index, not the
 	// view, that the controller and the state stream speak in.
 	//--------------------------------------------------------------------
-	addHeading ("Samples  -  drag .wav files onto the slots, click to loop",
+	addHeading ("Samples  -  drag .wav files onto the slots; a click launches on the next bar",
 	            CRect (kMargin, kSlotHeadingTop, kEditorWidth - kMargin,
 	                   kSlotHeadingTop + kHeadingHeight));
+
+	// The column launch boxes, above the pads they launch. Added FIRST so
+	// they sit under the slots in z-order, which matters not at all here
+	// and would the moment anything overlapped.
+	for (int column = 0; column < kSlotColumns; ++column)
+	{
+		auto* button = new SpyColumnButton (columnCell (column), column);
+		button->setHandler ([this] (int at) { columnClicked (at); });
+		mColumns[column] = button;
+		frame->addView (button);
+	}
 
 	for (int row = 0; row < kSlotRows; ++row)
 	{
@@ -260,6 +279,81 @@ void Project6Editor::slotDropped (int index, const std::string& path)
 }
 
 //------------------------------------------------------------------------
+void Project6Editor::columnClicked (int column)
+{
+	if (mController == nullptr || column < 0 || column >= kSlotColumns)
+		return;
+
+	// Only the slots that can actually play count. A column of eight with
+	// two files in it is a column of two, and pressing it should not
+	// pretend otherwise.
+	int playable = 0;
+	int armed = 0;
+	for (int row = 0; row < kSlotRows; ++row)
+	{
+		const int index = slotIndex (column, row);
+		if (mSlots[index] == nullptr || !mSlots[index]->playable ())
+			continue;
+
+		++playable;
+		if (mController->getParamNormalized (slotPlayParam (index)) >= 0.5)
+			++armed;
+	}
+
+	if (playable == 0)
+		return;
+
+	// The rule lives in Project6Slots.h, with a test, because the
+	// half-armed case is a judgement rather than an obvious answer.
+	const bool arm = columnClickArms (playable, armed);
+
+	for (int row = 0; row < kSlotRows; ++row)
+	{
+		const int index = slotIndex (column, row);
+		if (mSlots[index] == nullptr || !mSlots[index]->playable ())
+			continue;
+
+		// ONLY THE ONES THAT CHANGE. Writing a trigger that is already
+		// where it should be would put a point in a host's automation
+		// lane that says nothing, eight times per press.
+		const bool already = mController->getParamNormalized (slotPlayParam (index)) >= 0.5;
+		if (already == arm)
+			continue;
+
+		setParameter (slotPlayParam (index), arm ? 1.0 : 0.0);
+	}
+}
+
+//------------------------------------------------------------------------
+void Project6Editor::refreshColumns ()
+{
+	for (int column = 0; column < kSlotColumns; ++column)
+	{
+		if (mColumns[column] == nullptr)
+			continue;
+
+		int playable = 0;
+		int sounding = 0;
+		bool pending = false;
+
+		for (int row = 0; row < kSlotRows; ++row)
+		{
+			const SpySampleSlot* slot = mSlots[slotIndex (column, row)];
+			if (slot == nullptr || !slot->playable ())
+				continue;
+
+			++playable;
+			if (slot->sounding ())
+				++sounding;
+			if (slot->pending ())
+				pending = true;
+		}
+
+		mColumns[column]->setState (playable, sounding, pending);
+	}
+}
+
+//------------------------------------------------------------------------
 void Project6Editor::refreshSlots ()
 {
 	if (frame == nullptr || mController == nullptr)
@@ -288,6 +382,10 @@ void Project6Editor::refreshSlots ()
 				mController->hasLiveValues () ? liveSlotParam (index)
 				                              : slotPlayParam (index)) >= 0.5);
 	}
+
+	// The column boxes summarise the slots, so they follow every change
+	// to one - a file arriving, a status coming back, a pad starting.
+	refreshColumns ();
 }
 
 //------------------------------------------------------------------------
@@ -316,6 +414,8 @@ void PLUGIN_API Project6Editor::close ()
 	mDisplay = nullptr;
 	for (auto*& slot : mSlots)
 		slot = nullptr;
+	for (auto*& column : mColumns)
+		column = nullptr;
 
 	if (frame)
 	{
@@ -367,7 +467,10 @@ void Project6Editor::updateControl (ParamID tag, ParamValue normalized)
 	{
 		const int slot = slotOfLiveParam (tag);
 		if (isSlotIndex (slot) && mSlots[slot])
+		{
 			mSlots[slot]->setSounding (normalized >= 0.5);
+			refreshColumns ();
+		}
 		return;
 	}
 
@@ -394,6 +497,11 @@ void Project6Editor::updateControl (ParamID tag, ParamValue normalized)
 		if (isSlotIndex (slot) && mSlots[slot])
 			mSlots[slot]->setSounding (normalized >= 0.5);
 	}
+
+	// A trigger moving changes whether its column is waiting for a bar
+	// line, whether or not anything is sounding yet.
+	if (isSlotPlayParam (tag))
+		refreshColumns ();
 
 	// The display reads parameters rather than controls, so it has to be
 	// told too - the timer would get there within 30 ms, but a control

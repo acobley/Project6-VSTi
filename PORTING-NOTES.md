@@ -161,11 +161,12 @@ python3 tools/check-editor.py
 
 `-DRELEASE=1` is required or `fdebug.h` refuses to compile.
 
-Results, at the transport commit: **all five suites all-pass**, all thirteen
-translation units produced object files with no errors, all 50 undefined
-`Project6::` symbols resolved within the set, and `check-editor` reported ok.
-The panel's dimensions are checked by `static_assert` rather than by eye —
-735 × 481, with the grid meeting both margins exactly.
+Results, at the column-launch commit: **all five suites all-pass**, all
+thirteen translation units produced object files with no errors, all 53
+undefined `Project6::` symbols resolved within the set, and `check-editor`
+reported ok. The panel's dimensions are checked by `static_assert` rather than
+by eye — 735 × 504, with the grid meeting both margins exactly and the launch
+boxes clear of the pads.
 
 Re-run all six before every commit. Adding a source file also means re-running
 `./setup-xcode.sh --no-open` before the next Xcode build, or the project
@@ -590,6 +591,46 @@ What the panel does with it:
 If a host never forwards published values, the panel falls back to showing
 what was **asked for** — the right pad lit early rather than the wrong one for
 ever. That is VocalFilter's rule for the same problem, and the same fallback.
+
+### Launching a whole column
+
+A box above each column arms every loaded slot in it — or stops them all if
+they are all already armed. It goes through the same door everything else
+does: it **writes the slots' own trigger parameters and nothing else**, so a
+column press and eight separate clicks are indistinguishable to the processor,
+and the bar-line rules apply to it without knowing it exists. Eight pads
+arriving together on the next bar line is the only way eight loops can start
+in time with each other.
+
+**It carries no parameter of its own**, and that is the design rather than an
+omission. A column "state" would be a second opinion about the same eight
+triggers, and the moment somebody clicked one pad out of a launched column the
+two would disagree with nothing to say which was right. The precedent is
+VocalFilter's `SpyPresetButton`: writes nine parameters, holds none, and a
+host sees the writes and never sees the button. So it is a `CView`, not a
+`CControl`, and what it *shows* is a summary the editor hands it.
+
+The half-armed case is the only real decision, and it lives in
+`Project6Slots.h` as `columnClickArms()` with a test beside it:
+
+> Three of eight playing, and you press the column: it arms the other five
+> rather than stopping the three, because the button's job is to **play** the
+> column — stopping is what the second press is for. The other reading, "any
+> playing means stop", makes the first press on a half-full column do the
+> opposite of what the button is called.
+
+It is a function rather than an `if` inside the handler precisely so that
+changing it is something someone decides rather than something someone tidies.
+
+Two smaller things:
+
+* only slots that can actually play are counted, and only the triggers that
+  actually **change** are written — eight automation points per press saying
+  nothing is worse than none;
+* the box fills in proportion to how much of its column is sounding (three of
+  eight playing is three eighths lit), and takes the same amber edge as a pad
+  while anything under it is waiting for the bar. A lamp could only have said
+  "some".
 
 ## 11. The SDK
 

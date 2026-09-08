@@ -9,9 +9,14 @@ and it stops on the bar after that. Nothing sounds while the transport is
 stopped, and a pad left armed comes back in on the next bar when it rolls
 again.
 
+**A box above each column launches the whole column** — every loaded pad in
+it, together on the next bar line, which is the only way eight loops can start
+in time with each other. Press it again to stop them.
+
 An armed slot glows amber while it waits and red while it plays, so the wait
-is visible rather than mysterious. The display beside the pads is one bar
-wide, ruled into beats, with a playhead showing how long that wait has left.
+is visible rather than mysterious. A column box fills in proportion to how
+much of its column is sounding. The display beside the pads is one bar wide,
+ruled into beats, with a playhead showing how long that wait has left.
 
 Every pad is also a host parameter, so a DAW can automate, record and undo it.
 Underneath, it is still the shell a bigger instrument goes inside — buses,
@@ -127,7 +132,7 @@ python3 tools/check-editor.py
 | `source/Project6Controller.{h,cpp}` | `EditControllerEx1` — the host's parameter list, the panel's slot bank |
 | `source/Project6Controls.{h,cpp}` | the control set, lifted from VocalFilter/SpyBand |
 | `source/Project6Display.{h,cpp}` | the panel display — an empty canvas with a working grid |
-| `source/Project6SlotView.{h,cpp}` | one slot: the drop target and how it draws a filename |
+| `source/Project6SlotView.{h,cpp}` | the grid's own controls: a slot, and the launch box above each column |
 | `source/Project6Editor.{h,cpp}` | the panel |
 | `source/Project6Entry.cpp` | the factory |
 | `tests/` | `DspTests.cpp`, `SlotTests.cpp`, `WavTests.cpp` and `TransportTests.cpp`, SDK-free; `ParamsTests.cpp`, headers only |

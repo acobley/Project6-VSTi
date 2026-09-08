@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <string>
 
 using namespace VSTGUI;
 
@@ -387,6 +388,118 @@ void SpySampleSlot::draw (CDrawContext* context)
 	CRect band (r);
 	band.inset (kTextInset, 2.);
 	drawName (context, band);
+
+	setDirty (false);
+}
+
+//------------------------------------------------------------------------
+// SpyColumnButton
+//------------------------------------------------------------------------
+
+SpyColumnButton::SpyColumnButton (const CRect& size, int column)
+: CView (size)
+, mColumn (column)
+{
+	setMouseEnabled (true);
+
+	// "Play column 3", so the number on the face does not have to also
+	// explain itself.
+	const std::string tip = "Play column " + std::to_string (column + 1);
+	setTooltipText (tip.c_str ());
+}
+
+//------------------------------------------------------------------------
+void SpyColumnButton::setHandler (std::function<void (int)> handler)
+{
+	mHandler = std::move (handler);
+}
+
+//------------------------------------------------------------------------
+void SpyColumnButton::setState (int playable, int sounding, bool pending)
+{
+	if (playable == mPlayable && sounding == mSounding && pending == mPending)
+		return;
+
+	mPlayable = playable;
+	mSounding = sounding;
+	mPending  = pending;
+	invalid ();
+}
+
+//------------------------------------------------------------------------
+void SpyColumnButton::onMouseDownEvent (MouseDownEvent& event)
+{
+	if (! event.buttonState.isLeft ())
+		return;
+
+	// Consumed either way, so a press on an empty column does not fall
+	// through to the frame and do something else instead.
+	event.consumed = true;
+
+	// NOTHING LOADED IN THIS COLUMN. Lighting it would promise eight
+	// loops that do not exist.
+	if (mPlayable <= 0)
+		return;
+
+	if (mHandler)
+		mHandler (mColumn);
+}
+
+//------------------------------------------------------------------------
+void SpyColumnButton::draw (CDrawContext* context)
+{
+	const CRect r = getViewSize ();
+
+	const bool live = (mPlayable > 0 && mSounding > 0);
+
+	// The ground, and then a FILL PROPORTIONAL to how much of the column
+	// is actually sounding - the DXi's own bar idiom. Three of eight
+	// playing is three eighths lit, which says at a glance what a lamp
+	// could only say as "some".
+	context->setFillColor (mPlayable > 0 ? kWellFillFull : kWellFill);
+	context->drawRect (r, kDrawFilled);
+
+	if (live)
+	{
+		CRect fill (r);
+		fill.inset (1., 1.);
+		fill.right = fill.left + fill.getWidth ()
+		                             * (static_cast<double> (mSounding)
+		                                / static_cast<double> (mPlayable));
+		if (fill.getWidth () > 0.)
+		{
+			context->setFillColor (kWellFillLive);
+			context->drawRect (fill, kDrawFilled);
+		}
+	}
+
+	// RAISED, not recessed: this one is a button rather than a well, so
+	// the two edge colours go the way round the sliders use.
+	drawWell (context, r, kWellHigh, kWellShadow);
+
+	// The same edge rule as a slot: amber while anything in the column is
+	// waiting for a bar line, red once it is all running.
+	if (mPending || (mPlayable > 0 && mSounding == mPlayable))
+	{
+		CRect highlight (r);
+		highlight.inset (1., 1.);
+		context->setLineWidth (1.);
+		context->setFrameColor (mPending ? kPendingBorder : kLiveBorder);
+		context->drawRect (highlight, kDrawStroked);
+	}
+
+	// The column's number, matching the second half of a slot's name -
+	// "Slot C6" is row C, column 6, and this is the 6.
+	context->setFont (panelFont ());
+	context->setFontColor (mPlayable > 0 ? kSlotText : kSlotTextBad);
+
+	const CCoord height = panelFont ()->getSize () + 2.;
+	const CRect line (r.left,
+	                  r.top + (r.getHeight () - height) * 0.5,
+	                  r.right,
+	                  r.top + (r.getHeight () - height) * 0.5 + height);
+
+	context->drawString (std::to_string (mColumn + 1).c_str (), line, kCenterText, true);
 
 	setDirty (false);
 }
