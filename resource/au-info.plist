@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+	Info.plist template for the Audio Unit (AUv2) wrapper.
+
+	The wrapper itself is Steinberg's, from public.sdk/source/vst/auwrapper; it
+	loads the VST3 that CMake symlinks into the .component's Resources folder
+	and needs no per-plug-in C++ at all. Everything specific to YOUR plug-in is
+	in this file, so this is the only place the AU needs editing.
+
+	EDIT: every <string> below marked CHANGE ME.
+
+	The three four-character codes are the plug-in's identity to macOS. Once
+	you have shipped a build, changing any of them makes every existing session
+	lose the plug-in - treat them exactly like the class UIDs in your IDs
+	header.
+
+	  type          aufx = audio effect,  aumu = instrument,  aumf = effect
+	                with MIDI in. Most DXi ports are aufx even when the DXi
+	                registered itself as a synth - see the porting guide.
+	  subtype       four characters identifying this plug-in
+	  manufacturer  four characters identifying you. Apple reserves
+	                all-lowercase codes for itself, so keep a capital.
+
+	Validate the result with:  auval -v aumu Prj6 AECo
+-->
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>English</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundlePackageType</key>
+	<string>BNDL</string>
+	<key>CFBundleSignature</key>
+	<string>????</string>
+	<key>CFBundleVersion</key>
+	<string>1.0.0</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0.0</string>
+
+	<key>AudioComponents</key>
+	<array>
+		<dict>
+			<key>factoryFunction</key>
+			<string>AUWrapperFactory</string>
+			<!-- CHANGE ME -->
+			<key>description</key>
+			<string>Project6 - VST3 / AUv2 instrument</string>
+			<!-- CHANGE ME -->
+			<key>manufacturer</key>
+			<string>AECo</string>
+			<!-- CHANGE ME -->
+			<key>name</key>
+			<string>A. E. Cobley: Project6</string>
+			<!-- CHANGE ME -->
+			<key>subtype</key>
+			<string>Prj6</string>
+			<!-- CHANGE ME if this is an instrument (aumu) rather than an effect -->
+			<key>type</key>
+			<string>aumu</string>
+			<!-- 0x00010000 == 1.0.0 -->
+			<key>version</key>
+			<integer>65536</integer>
+		</dict>
+	</array>
+
+	<!-- Read by the wrapper with sscanf("%x"), so this one is a hex string. -->
+	<key>AudioUnit Version</key>
+	<string>00010000</string>
+
+	<!-- MUST match what your processor's setBusArrangements accepts. If you
+	     widen the bus support there, widen it here too or hosts will not
+	     offer the new layouts. auval is strict about this. -->
+	<key>AudioUnit SupportedNumChannels</key>
+	<array>
+		<dict>
+			<key>Inputs</key>
+			<string>0</string>
+			<key>Outputs</key>
+			<string>2</string>
+		</dict>
+	</array>
+</dict>
+</plist>
