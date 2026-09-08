@@ -50,6 +50,23 @@ constexpr double kTrimMinDb     = -60.0;
 constexpr double kTrimMaxDb     =   0.0;
 constexpr double kTrimDefaultDb =   0.0;
 
+//------------------------------------------------------------------------
+// A slot's own level
+//
+// -40 to +12 dB, the range VocalFilter gives a formant's level, and for
+// the same reason: this is a COMPONENT level inside a mix, not the master.
+// A component may need lifting - a quiet sample in a slot with no way to
+// bring it up is a slot you cannot use - and the stage that must not
+// boost is the output trim above, which tops out at unity and is where
+// clipping is answered.
+//
+// The bottom of the travel is SILENCE, not -40 dB of leakage: a bar
+// pulled all the way down is off, exactly as the trim's is.
+//------------------------------------------------------------------------
+constexpr double kSlotLevelMinDb     = -40.0;
+constexpr double kSlotLevelMaxDb     =  12.0;
+constexpr double kSlotLevelDefaultDb =   0.0;
+
 /** Interleaved stereo throughout, as every one of these ports has been. */
 constexpr int kChannelCount = 2;
 
@@ -121,6 +138,20 @@ public:
 	/** What a slot currently points at. Mostly for the tests. */
 	const SampleBuffer* slotSample (int index) const;
 
+	/** A slot's own level, in decibels.
+
+	    Called from the audio thread once per block, like the trigger.
+	    SMOOTHED, not stepped: a level moved by a mouse drag or an
+	    automation lane changes every block, and a block-rate step on a
+	    gain is a click on every buffer boundary. It SNAPS when a voice
+	    starts, though - a pad set to -20 dB should come in at -20 dB, not
+	    ramp there from wherever the smoother happened to be. */
+	void setSlotLevelDb (int index, double decibels);
+
+	/** Where a slot's level smoother actually is, as a linear gain. For
+	    the tests. */
+	double slotLevelGain (int index) const;
+
 	/** Start or stop a slot's loop.
 
 	    Called from the audio thread, once per block, with the slot's
@@ -175,6 +206,13 @@ private:
 		bool   stopping = false;   ///< fading out, will stop when gain hits 0
 		double position = 0.0;     ///< in SOURCE frames, fractional
 		double gain     = 0.0;     ///< the declick envelope, 0..1
+
+		/** The slot's own level. Two numbers because it is smoothed: the
+		    target is what the parameter says, the gain is where the
+		    smoother has got to. -1 means "not started", which is what
+		    makes a voice snap to its level rather than ramp up to it. */
+		double levelTarget = 1.0;
+		double levelGain   = -1.0;
 	};
 
 	/** Mix every sounding voice into `out`, which is expected to be

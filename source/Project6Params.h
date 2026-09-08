@@ -84,7 +84,25 @@ enum Param : Steinberg::Vst::ParamID
 	kLiveSlotBase,       ///< 64 of them: is this slot actually sounding?
 	kLiveSlotEnd = kLiveSlotBase + kSlotCount,
 
-	kNumParams = kLiveSlotEnd
+	//--------------------------------------------------------------------
+	// A LEVEL PER SLOT. Ordinary automatable parameters, and unlike the
+	// triggers they are SETTINGS: what a pad is set to is part of the
+	// patch, and a project must reopen with the balance it was saved
+	// with.
+	//
+	// They are appended HERE, after the published block, because ids are
+	// never moved - not because this is where a setting belongs. The
+	// consequence is that the saved parameters are no longer one
+	// contiguous run from zero, so they cannot ride the
+	// `id < kNumStoredParams` rule and get a block of their own in the
+	// state stream instead. VocalFilter's kVoice ended up on the far side
+	// of its published values for exactly this reason and is saved
+	// explicitly for exactly this reason; see Project6SlotState.h.
+	//--------------------------------------------------------------------
+	kSlotLevelBase = kLiveSlotEnd,
+	kSlotLevelEnd  = kSlotLevelBase + kSlotCount,
+
+	kNumParams = kSlotLevelEnd
 };
 
 /** What kLiveTransport carries. */
@@ -134,6 +152,27 @@ constexpr bool isLiveParam (Steinberg::Vst::ParamID id)
 	return id >= kLiveBase && id < kLiveEnd;
 }
 
+//------------------------------------------------------------------------
+// The level block
+//------------------------------------------------------------------------
+
+/** One slot's level. The only place this arithmetic lives. */
+constexpr Steinberg::Vst::ParamID slotLevelParam (int slot)
+{
+	return static_cast<Steinberg::Vst::ParamID> (kSlotLevelBase + slot);
+}
+
+/** BOUNDED BY ITS OWN BLOCK, like every other block here. */
+constexpr bool isSlotLevelParam (Steinberg::Vst::ParamID id)
+{
+	return id >= kSlotLevelBase && id < kSlotLevelEnd;
+}
+
+constexpr int slotOfLevelParam (Steinberg::Vst::ParamID id)
+{
+	return static_cast<int> (id - kSlotLevelBase);
+}
+
 /** Is this slot actually making a sound? */
 constexpr Steinberg::Vst::ParamID liveSlotParam (int slot)
 {
@@ -156,13 +195,23 @@ constexpr int slotOfPlayParam (Steinberg::Vst::ParamID id)
 	return static_cast<int> (id - kSlotPlayBase);
 }
 
-/** The settings, which is what the state stream carries.
+/** How far the CONTIGUOUS saved run reaches - the parameters the state
+    stream carries as a plain run of doubles from id 0.
 
-    THE TRIGGERS ARE DELIBERATELY OUTSIDE IT. A project that reopened with
-    six pads already looping would be a project nobody could open quietly,
-    and "what was playing when you saved" is not a setting - it is a
-    moment. Automation still restores them, because automation lives in
-    the host. */
+    It is not "everything that is saved". The slot levels are saved too
+    and sit past the published block, so they travel as a block of their
+    own; see Project6SlotState.h. What this boundary really means is
+    "where the run from zero stops", and the two things it stops before
+    are there for opposite reasons:
+
+      * THE TRIGGERS ARE NOT SAVED AT ALL. A project that reopened with
+        six pads already looping would be a project nobody could open
+        quietly, and "what was playing when you saved" is a moment, not a
+        setting. Automation still restores them, because automation lives
+        in the host.
+
+      * THE PUBLISHED VALUES ARE NOT SAVED EITHER, being a view of the
+        DSP rather than a setting. */
 constexpr Steinberg::Vst::ParamID kNumStoredParams = kSlotPlayBase;
 
 /** How many parameters the table below describes one by one. The triggers
@@ -239,6 +288,9 @@ const ParamDef& liveTransportDef ();
 const ParamDef& liveBarPhaseDef ();
 const ParamDef& liveBeatsPerBarDef ();
 const ParamDef& liveSlotDef ();
+
+/** The definition every slot level shares. */
+const ParamDef& slotLevelDef ();
 
 /** The widest bar the panel will draw a grid for. Beyond it the grid is
     noise rather than information, and a host reporting something sillier

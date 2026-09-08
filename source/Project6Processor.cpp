@@ -550,9 +550,19 @@ tresult PLUGIN_API Project6Processor::process (ProcessData& data)
 	//
 	// A click sets a trigger parameter, and that is all it does. The bar
 	// line is what turns armed into launched - see applyBarLine.
+	//
+	// The LEVELS go straight through, though. A level is not something to
+	// wait a bar for - it is a balance, and holding one back until the
+	// next bar would make the panel feel broken under the hand. The DSP
+	// smooths it, so passing it every block costs nothing.
 	//--------------------------------------------------------------------
 	for (int slot = 0; slot < kSlotCount; ++slot)
+	{
 		mArmed[slot] = mParams[slotPlayParam (slot)] >= 0.5;
+
+		mDsp.setSlotLevelDb (
+			slot, slotLevelDef ().toInternal (mParams[slotLevelParam (slot)]));
+	}
 
 	const TransportInfo transport = readTransport (data);
 
@@ -715,6 +725,7 @@ tresult PLUGIN_API Project6Processor::getState (IBStream* state)
 	// stops early must stop at a block boundary and not in the middle of
 	// something it was half way through understanding.
 	writeSlots (streamer, mSlots);
+	writeSlotLevels (streamer, &mParams[kSlotLevelBase]);
 
 	return kResultOk;
 }
@@ -769,6 +780,7 @@ tresult PLUGIN_API Project6Processor::setState (IBStream* state)
 	// case and is not an error. The CONTROLLER reads the identical block,
 	// through the identical function.
 	readSlots (streamer, mSlots);
+	readSlotLevels (streamer, &mParams[kSlotLevelBase]);
 
 	// The paths are back; now read the files. setState is not the audio
 	// thread, so this is where sixty-four disk reads belong - and a slot

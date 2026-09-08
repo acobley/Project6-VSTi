@@ -8,6 +8,7 @@
 
 #include "Project6Params.h"
 
+#include <cassert>
 #include <string>
 #include <vector>
 
@@ -34,6 +35,20 @@ const ParamDef& slotPlayDef ()
 	// noise the moment it is inserted.
 	static const ParamDef def =
 		{ kSlotPlayBase, "Slot Play", "", ParamType::Bool, 0.0, 1.0, 0.0, 0.0, 1.0, 1, false };
+	return def;
+}
+
+//------------------------------------------------------------------------
+const ParamDef& slotLevelDef ()
+{
+	// -40 to +12 dB, from Project6Dsp.h, so the DSP's idea of a level and
+	// the host's cannot drift apart. LINEAR IN DECIBELS, which is what
+	// makes the validator's round trip through getParamStringByValue /
+	// getParamValueByString exact without a toString override.
+	static const ParamDef def =
+		{ kSlotLevelBase, "Slot Level", "dB", ParamType::Float,
+		  kSlotLevelMinDb, kSlotLevelMaxDb, kSlotLevelDefaultDb,
+		  kSlotLevelMinDb, kSlotLevelMaxDb, 0, true };
 	return def;
 }
 
@@ -102,8 +117,15 @@ const std::vector<std::string>& slotNames (const char* suffix)
 {
 	static std::vector<std::string> play;
 	static std::vector<std::string> sounding;
+	static std::vector<std::string> level;
 
-	std::vector<std::string>& names = (suffix[0] == 'P') ? play : sounding;
+	// Keyed on the first letter, which is unique across the three
+	// suffixes this is ever called with. A fourth would need a real key -
+	// hence the assertion, which fires the moment one is added.
+	std::vector<std::string>& names = (suffix[0] == 'P') ? play
+	                                : (suffix[0] == 'S') ? sounding
+	                                                     : level;
+	assert (suffix[0] == 'P' || suffix[0] == 'S' || suffix[0] == 'L');
 	if (names.empty ())
 	{
 		names.reserve (kSlotCount);
@@ -121,9 +143,10 @@ const std::vector<std::string>& slotNames (const char* suffix)
 // this is cheap to find.
 //------------------------------------------------------------------------
 static_assert (kNumTableParams == 1, "one described parameter: the output trim");
-static_assert (kNumParams == kNumTableParams + kSlotCount + 3 + kSlotCount,
+static_assert (kNumParams == kNumTableParams + kSlotCount + 3 + kSlotCount + kSlotCount,
                "the trim, 64 triggers, the transport, the bar phase, the beats per "
-               "bar and 64 published slot states is every parameter there is");
+               "bar, 64 published slot states and 64 slot levels is every parameter "
+               "there is");
 // THE APPEND THE BOUND WAS WRITTEN FOR. The published block now sits
 // after the triggers, so isSlotPlayParam's upper bound is load-bearing
 // rather than merely careful.
@@ -131,7 +154,14 @@ static_assert (kSlotPlayEnd < kNumParams,
                "something follows the trigger block, so isSlotPlayParam must be "
                "bounded by kSlotPlayEnd and never by kNumParams");
 static_assert (kLiveBase == kSlotPlayEnd, "the published block starts where the triggers end");
-static_assert (kLiveEnd == kNumParams, "and currently runs to the end");
+static_assert (kLiveEnd < kNumParams,
+               "the level block follows the published one, so isLiveParam must be "
+               "bounded by kLiveEnd and never by kNumParams");
+static_assert (kSlotLevelBase == kLiveEnd, "the levels start where the published block ends");
+static_assert (kSlotLevelEnd == kNumParams, "and currently run to the end");
+static_assert (! isLiveParam (slotLevelParam (0)), "a level is not a published value");
+static_assert (! isSlotPlayParam (slotLevelParam (0)), "nor a trigger");
+static_assert (slotOfLevelParam (slotLevelParam (7)) == 7, "the two directions agree");
 static_assert (! isSlotPlayParam (kLiveTransport), "a published id is not a trigger");
 static_assert (! isLiveParam (slotPlayParam (kSlotCount - 1)), "and a trigger is not published");
 static_assert (isLiveParam (kLiveTransport) && isLiveParam (kLiveSlotEnd - 1),
@@ -164,6 +194,8 @@ const ParamDef& paramDef (Steinberg::Vst::ParamID id)
 		return liveBeatsPerBarDef ();
 	if (isLiveSlotParam (id))
 		return liveSlotDef ();
+	if (isSlotLevelParam (id))
+		return slotLevelDef ();
 
 	return kParams[kOutputTrim];
 }
@@ -181,6 +213,9 @@ const char* paramTitle (Steinberg::Vst::ParamID id)
 
 	if (isLiveSlotParam (id))
 		return slotNames ("Sounding")[static_cast<std::size_t> (slotOfLiveParam (id))].c_str ();
+
+	if (isSlotLevelParam (id))
+		return slotNames ("Level")[static_cast<std::size_t> (slotOfLevelParam (id))].c_str ();
 
 	if (id == kLiveTransport)
 		return liveTransportDef ().title;

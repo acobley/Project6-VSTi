@@ -161,12 +161,12 @@ python3 tools/check-editor.py
 
 `-DRELEASE=1` is required or `fdebug.h` refuses to compile.
 
-Results, at the column-launch commit: **all five suites all-pass**, all
-thirteen translation units produced object files with no errors, all 53
-undefined `Project6::` symbols resolved within the set, and `check-editor`
-reported ok. The panel's dimensions are checked by `static_assert` rather than
-by eye — 735 × 504, with the grid meeting both margins exactly and the launch
-boxes clear of the pads.
+Results, at the slot-level commit: **all five suites all-pass**, all thirteen
+translation units produced object files with no errors, all 59 undefined
+`Project6::` symbols resolved within the set, and `check-editor` reported ok.
+The panel's dimensions are checked by `static_assert` rather than by eye —
+735 × 592, with the grid meeting both margins exactly and the launch boxes
+clear of the pads.
 
 Re-run all six before every commit. Adding a source file also means re-running
 `./setup-xcode.sh --no-open` before the next Xcode build, or the project
@@ -591,6 +591,66 @@ What the panel does with it:
 If a host never forwards published values, the panel falls back to showing
 what was **asked for** — the right pad lit early rather than the wrong one for
 ever. That is VocalFilter's rule for the same problem, and the same fallback.
+
+### A level per slot
+
+A bar under each pad, `-40` to `+12` dB, default unity — the range VocalFilter
+gives a formant's level and for the same reason: this is a **component** level
+inside a mix. A component may need lifting; the stage that must not boost is
+the output trim, which still tops out at unity and is where clipping is
+answered. The bottom of the travel is **silence**, not −40 dB of leakage, via
+the same `dbToLinear` the trim uses.
+
+In the DSP it is a second gain per voice, ahead of the mix and behind the
+declick envelope, and it is **snapped when a voice starts and smoothed
+thereafter**. Both halves matter: a pad set to −20 dB must come in at −20 dB
+rather than ramping there over the first ten milliseconds, and a bar dragged
+while the pad is running must not step at every block boundary. At the default
+0 dB the multiply is by exactly 1.0, so a pad at full envelope is still
+bit-identical to its file — `DspTests` §6 checks that, which is what stops the
+level stage quietly costing a bit of precision on every pad that never uses it.
+
+A level of zero **silences a pad without stopping it**: the user did not
+un-arm it, so it stays lit and keeps its place in the loop.
+
+#### Why they are saved in a block of their own
+
+The levels are the first thing here that is **both a parameter and a
+setting**. The triggers are parameters that are deliberately not saved; the
+published values are not saved either. A level is neither — a project must
+reopen with the balance it was saved with.
+
+But ids are never moved, so they are appended at 132…195, nowhere near the
+contiguous run from id 0 that `kNumStoredParams` bounds. So they travel as
+their **own block** in the state stream — `writeSlotLevels` / `readSlotLevels`
+in `Project6SlotState.cpp`, one pair called by both sides, exactly as the slot
+paths already are. Stream version 3.
+
+VocalFilter hit this same shape when `kVoice` was appended past its published
+values and had to be saved explicitly. `kNumStoredParams` therefore does not
+mean "everything that is saved" — it means "where the run from zero stops",
+and its comment now says so.
+
+#### The bar itself
+
+`SpySlotLevel` is a SlideSpin's bar with everything else taken off: no label,
+no value text, no lamp — nine pixels of the DXi's own `Draw3dRect` and fill,
+and the same drag law, **relative and one unit of a hundred per pixel**.
+Absolute positioning on a bar this size would make every setting a coarse one,
+and it is what the original did not do either. Shift is fine adjustment; the
+wheel steps.
+
+Nine pixels has nowhere to print a number, so **while the bar is dragged the
+pad above it shows the level in decibels** in place of its filename, and puts
+the filename back on mouse-up. That is the same trick VocalFilter's SpySlider
+plays with its own value text: use space that is already there rather than
+adding a readout to sixty-four cells. The readout appears on mouse-DOWN, not
+on the first pixel of movement — a bar pressed and not yet moved should still
+say what it is set to.
+
+The grid's row pitch is now a **cell** — pad plus bar — so a bar belongs
+visually to the pad above it rather than floating between two. The panel is
+735 × 592.
 
 ### Launching a whole column
 

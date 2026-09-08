@@ -317,7 +317,9 @@ int main ()
 	//--------------------------------------------------------------------
 	{
 		check (kLiveBase == kSlotPlayEnd, "it starts where the triggers end, with no hole");
-		check (kLiveEnd == kNumParams,    "and currently runs to the end");
+		check (kLiveEnd < kNumParams,
+		       "and something is appended after IT too - so isLiveParam's bound "
+		       "matters for the same reason isSlotPlayParam's does");
 		check (kLiveSlotEnd - kLiveSlotBase == kSlotCount, "one published state per slot");
 
 		// The enum trap this block was written into: an enumerator after
@@ -364,6 +366,70 @@ int main ()
 		check (std::string (paramTitle (kLiveTransport)) == "Transport", "the transport");
 		check (std::string (paramTitle (kLiveBeatsPerBar)) == "Beats Per Bar",
 		       "and the bar length have names too");
+	}
+
+	//--------------------------------------------------------------------
+	section ("9. The level block, and what makes it different");
+	//--------------------------------------------------------------------
+	{
+		check (kSlotLevelBase == kLiveEnd, "it starts where the published block ends");
+		check (kSlotLevelEnd - kSlotLevelBase == kSlotCount, "one level per slot");
+		check (kSlotLevelEnd == kNumParams, "and currently runs to the end");
+
+		bool roundTrips = true, classified = true, notOthers = true;
+		for (int slot = 0; slot < kSlotCount; ++slot)
+		{
+			const ParamID id = slotLevelParam (slot);
+			roundTrips &= (slotOfLevelParam (id) == slot);
+			classified &= isSlotLevelParam (id);
+			// Every one of these ids is past both earlier blocks, so a
+			// predicate bounded by kNumParams would swallow all 64.
+			notOthers  &= ! isSlotPlayParam (id) && ! isLiveParam (id);
+		}
+		check (roundTrips, "slot -> level id -> slot round-trips for all 64");
+		check (classified, "and all 64 are classified as levels");
+		check (notOthers,
+		       "NEGATIVE CONTROL: and none of them as a trigger or a published value");
+
+		check (! isSlotLevelParam (kOutputTrim),   "the trim is not a slot level");
+		check (! isSlotLevelParam (kLiveTransport), "nor is the transport");
+		check (! isSlotLevelParam (kNumParams),     "nor one past the end");
+
+		// A COMPONENT LEVEL, so it may lift. The stage that must not is
+		// the output trim, which is a different parameter with a
+		// different range - and the two must not drift into each other.
+		const ParamDef& level = slotLevelDef ();
+		check (level.plainMin == kSlotLevelMinDb, "its range is the DSP's");
+		check (level.plainMax == kSlotLevelMaxDb, "at both ends");
+		check (level.plainDefault == kSlotLevelDefaultDb, "and so is its default");
+		check (level.plainMax > 0.0, "a slot level can boost");
+		check (kParams[kOutputTrim].plainMax == 0.0, "and the output trim cannot");
+		check (close (dbToLinear (level.plainDefault, kSlotLevelMinDb), 1.0, 0.0),
+		       "the default is exactly unity, so a pad plays its file as recorded");
+		check (level.smoothed, "and it is marked smoothed - it is, in the DSP");
+
+		// THE THING THAT MAKES THIS BLOCK DIFFERENT from the triggers: a
+		// level IS a setting and must survive a save. It cannot ride the
+		// contiguous run from id 0 - it is nowhere near it - so it is
+		// written as a block of its own. This check is the reminder.
+		check (kSlotLevelBase > kNumStoredParams,
+		       "the levels are outside the contiguous saved run...");
+		check (kSlotLevelBase > kBypass || kBypass > kNumParams,
+		       "...and kBypass is still past everything, as the convention requires");
+
+		// Names, distinct from the other two blocks' names for the same
+		// slot - sixty-four parameters called "Slot Level" would be a
+		// host menu nobody could use.
+		check (std::string (paramTitle (slotLevelParam (0)))  == "Slot A1 Level",
+		       "a level is named for its cell");
+		check (std::string (paramTitle (slotLevelParam (63))) == "Slot H8 Level",
+		       "at both ends");
+		check (std::string (paramTitle (slotLevelParam (0)))
+		           != std::string (paramTitle (slotPlayParam (0))),
+		       "and is not the same name as its trigger");
+		check (std::string (paramTitle (slotLevelParam (0)))
+		           != std::string (paramTitle (liveSlotParam (0))),
+		       "nor as its published state");
 	}
 
 	//--------------------------------------------------------------------

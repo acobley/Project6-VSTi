@@ -49,8 +49,16 @@ CRect Project6Editor::cell (int column, int row) const
 CRect Project6Editor::slotCell (int column, int row) const
 {
 	const CCoord x = kMargin + column * (kSlotWidth + kSlotGap);
-	const CCoord y = kSlotGridTop + row * (kSlotHeight + kSlotGap);
+	const CCoord y = kSlotGridTop + row * (kCellHeight + kSlotGap);
 	return CRect (x, y, x + kSlotWidth, y + kSlotHeight);
+}
+
+//------------------------------------------------------------------------
+CRect Project6Editor::levelCell (int column, int row) const
+{
+	const CRect pad = slotCell (column, row);
+	return CRect (pad.left, pad.bottom + kLevelGap,
+	              pad.right, pad.bottom + kLevelGap + kLevelHeight);
 }
 
 //------------------------------------------------------------------------
@@ -224,6 +232,20 @@ bool PLUGIN_API Project6Editor::open (void* parent, const PlatformType& platform
 
 			mSlots[index] = slot;
 			frame->addView (slot);
+
+			// The level bar under it, tagged with its own parameter, so a
+			// host can automate a slot's level exactly as it can automate
+			// the trigger above it.
+			auto* level = new SpySlotLevel (
+				levelCell (column, row), this,
+				static_cast<int32_t> (slotLevelParam (index)), index);
+
+			mControls[slotLevelParam (index)] = level;
+			if (mController)
+				showValue (level, mController->getParamNormalized (slotLevelParam (index)));
+
+			mLevels[index] = level;
+			frame->addView (level);
 		}
 	}
 
@@ -389,6 +411,33 @@ void Project6Editor::refreshSlots ()
 }
 
 //------------------------------------------------------------------------
+void Project6Editor::showLevelOverlay (ParamID tag, double normalized)
+{
+	const int slot = slotOfLevelParam (tag);
+	if (!isSlotIndex (slot) || mSlots[slot] == nullptr)
+		return;
+
+	// The parameter's own plain value, formatted from the same table the
+	// host formats from - so the pad and the host cannot disagree about
+	// what the bar is set to.
+	char buffer[32];
+	std::snprintf (buffer, sizeof (buffer), "%.1f dB",
+	               slotLevelDef ().toPlain (normalized));
+
+	mSlots[slot]->setOverlay (buffer);
+}
+
+//------------------------------------------------------------------------
+void Project6Editor::clearLevelOverlay (ParamID tag)
+{
+	const int slot = slotOfLevelParam (tag);
+	if (!isSlotIndex (slot) || mSlots[slot] == nullptr)
+		return;
+
+	mSlots[slot]->setOverlay (std::string ());
+}
+
+//------------------------------------------------------------------------
 void Project6Editor::showValue (CControl* control, double normalized)
 {
 	if (control == nullptr)
@@ -414,6 +463,8 @@ void PLUGIN_API Project6Editor::close ()
 	mDisplay = nullptr;
 	for (auto*& slot : mSlots)
 		slot = nullptr;
+	for (auto*& level : mLevels)
+		level = nullptr;
 	for (auto*& column : mColumns)
 		column = nullptr;
 
@@ -435,20 +486,40 @@ void Project6Editor::valueChanged (CControl* control)
 
 	mController->setParamNormalized (tag, value);
 	mController->performEdit (tag, value);
+
+	// While a level bar is moving, the pad above it reads out the value.
+	if (isSlotLevelParam (tag))
+		showLevelOverlay (tag, value);
 }
 
 //------------------------------------------------------------------------
 void Project6Editor::controlBeginEdit (CControl* control)
 {
-	if (mController && control)
-		mController->beginEdit (static_cast<ParamID> (control->getTag ()));
+	if (mController == nullptr || control == nullptr)
+		return;
+
+	const ParamID tag = static_cast<ParamID> (control->getTag ());
+	mController->beginEdit (tag);
+
+	// The readout appears when the gesture starts, not on the first
+	// pixel of movement: a bar pressed and not yet moved should still
+	// say what it is set to.
+	if (isSlotLevelParam (tag))
+		showLevelOverlay (tag, control->getValueNormalized ());
 }
 
 //------------------------------------------------------------------------
 void Project6Editor::controlEndEdit (CControl* control)
 {
-	if (mController && control)
-		mController->endEdit (static_cast<ParamID> (control->getTag ()));
+	if (mController == nullptr || control == nullptr)
+		return;
+
+	const ParamID tag = static_cast<ParamID> (control->getTag ());
+	mController->endEdit (tag);
+
+	// And the filename comes back.
+	if (isSlotLevelParam (tag))
+		clearLevelOverlay (tag);
 }
 
 //------------------------------------------------------------------------

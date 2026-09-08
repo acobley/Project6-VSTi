@@ -4,6 +4,7 @@
 
 #include "Project6SlotState.h"
 
+#include <algorithm>
 #include <string>
 
 using namespace Steinberg;
@@ -73,6 +74,57 @@ bool readSlots (IBStreamer& streamer, SlotBank& slots)
 		// or everything after the block is misread - and the extras are
 		// dropped. setPath refuses the out-of-range index by itself.
 		slots.setPath (static_cast<int> (i), path);
+	}
+
+	return true;
+}
+
+//------------------------------------------------------------------------
+bool writeSlotLevels (IBStreamer& streamer, const double* normalized)
+{
+	if (normalized == nullptr)
+		return false;
+
+	if (!streamer.writeInt32 (static_cast<int32> (kSlotCount)))
+		return false;
+
+	for (int slot = 0; slot < kSlotCount; ++slot)
+		if (!streamer.writeDouble (normalized[slot]))
+			return false;
+
+	return true;
+}
+
+//------------------------------------------------------------------------
+bool readSlotLevels (IBStreamer& streamer, double* normalized)
+{
+	if (normalized == nullptr)
+		return false;
+
+	// DEFAULTED FIRST, unconditionally - see readSlots. A project saved
+	// before the levels existed loads at unity rather than inheriting the
+	// balance of whatever was open before it.
+	const double fallback = slotLevelDef ().defaultNormalized ();
+	for (int slot = 0; slot < kSlotCount; ++slot)
+		normalized[slot] = fallback;
+
+	int32 count = 0;
+	if (!streamer.readInt32 (count))
+		return false;                       // a version 1 or 2 stream
+
+	if (count < 0 || count > kSlotCount * 16)
+		return false;                       // nonsense: stop rather than loop on it
+
+	for (int32 i = 0; i < count; ++i)
+	{
+		double value = 0.0;
+		if (!streamer.readDouble (value))
+			return false;
+
+		// A stream from a build with MORE slots is read to the end - the
+		// bytes have to be consumed either way - and the extras dropped.
+		if (i < kSlotCount)
+			normalized[i] = std::min (1.0, std::max (0.0, value));
 	}
 
 	return true;

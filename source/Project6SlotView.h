@@ -1,10 +1,10 @@
 //------------------------------------------------------------------------
 // Project6 - the grid's own controls
 //
-// Two of them: SpySampleSlot, one cell of the 8 x 8 bank, and
-// SpyColumnButton, the box above each column that launches all of it.
-// They are together because they are two views of the same grid and
-// neither means anything without the other.
+// Three of them: SpySampleSlot, one cell of the 8 x 8 bank; SpySlotLevel,
+// the level bar under it; and SpyColumnButton, the box above each column
+// that launches all of it. They are together because they are views of
+// the same grid and none means anything without the others.
 //
 // One cell of the 8 x 8 grid. Drag a .wav onto it from the Finder and it
 // takes the file; click it and the file loops from the next bar line;
@@ -74,6 +74,16 @@ public:
 	    Called by the editor, never by this view itself. */
 	void setPath (const std::string& path);
 	const std::string& path () const { return mPath; }
+
+	/** Show this INSTEAD of the filename, until it is set back to empty.
+
+	    It exists for the level bar underneath, which is nine pixels tall
+	    and has nowhere to print a number. While the bar is being dragged
+	    the pad above it reads out the level in decibels and then goes
+	    back to being a filename - the same trick VocalFilter's SpySlider
+	    plays with its own value text, using space that is already there
+	    rather than adding a readout to sixty-four cells. */
+	void setOverlay (const std::string& text);
 
 	/** How that file actually read, as the processor reported it. A slot
 	    that will not play has to be able to SAY so - a slot that takes
@@ -159,10 +169,48 @@ private:
 
 	int mIndex = 0;
 	std::string mPath;
+	std::string mOverlay;
 	SampleStatus mStatus = SampleStatus::Empty;
 	bool mSounding = false;
 	std::function<void (int, const std::string&)> mHandler;
 	bool mDragOver = false;
+};
+
+//------------------------------------------------------------------------
+/** The level bar under one pad.
+
+    A SlideSpin's bar with everything else taken off: no label, no value
+    text, no lamp - nine pixels of the DXi's own Draw3dRect and fill, and
+    the same drag law, which is RELATIVE and one unit of a hundred per
+    pixel. Absolute positioning on a bar this size would make every
+    setting a coarse one, and it is what the original did not do either.
+
+    It is a proper CControl with its own parameter tag, so a host can
+    automate a slot's level exactly as it can automate its trigger. While
+    it is dragged it asks the pad above to show the value, because there
+    is no room for a number here. */
+class SpySlotLevel : public VSTGUI::CControl
+{
+public:
+	SpySlotLevel (const VSTGUI::CRect& size, VSTGUI::IControlListener* listener,
+	              int32_t tag, int index);
+
+	int index () const { return mIndex; }
+
+	void draw (VSTGUI::CDrawContext* context) override;
+
+	void onMouseDownEvent (VSTGUI::MouseDownEvent& event) override;
+	void onMouseMoveEvent (VSTGUI::MouseMoveEvent& event) override;
+	void onMouseUpEvent (VSTGUI::MouseUpEvent& event) override;
+	void onMouseCancelEvent (VSTGUI::MouseCancelEvent& event) override;
+	void onMouseWheelEvent (VSTGUI::MouseWheelEvent& event) override;
+
+	CLASS_METHODS (SpySlotLevel, VSTGUI::CControl)
+
+private:
+	int mIndex = 0;
+	bool mDragging = false;
+	VSTGUI::CPoint mLastPoint;
 };
 
 //------------------------------------------------------------------------

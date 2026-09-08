@@ -13,6 +13,11 @@ again.
 it, together on the next bar line, which is the only way eight loops can start
 in time with each other. Press it again to stop them.
 
+**A level bar under each pad** sets that slot's own volume, −40 to +12 dB.
+Drag it the way the VocalFilter sliders drag — relative, not jump-to-pointer —
+and the pad above shows the value in decibels while you do. Levels are saved
+with the project and automatable like everything else.
+
 An armed slot glows amber while it waits and red while it plays, so the wait
 is visible rather than mysterious. A column box fills in proportion to how
 much of its column is sounding. The display beside the pads is one bar wide,
@@ -132,7 +137,7 @@ python3 tools/check-editor.py
 | `source/Project6Controller.{h,cpp}` | `EditControllerEx1` — the host's parameter list, the panel's slot bank |
 | `source/Project6Controls.{h,cpp}` | the control set, lifted from VocalFilter/SpyBand |
 | `source/Project6Display.{h,cpp}` | the panel display — an empty canvas with a working grid |
-| `source/Project6SlotView.{h,cpp}` | the grid's own controls: a slot, and the launch box above each column |
+| `source/Project6SlotView.{h,cpp}` | the grid's own controls: a pad, its level bar, and the launch box above each column |
 | `source/Project6Editor.{h,cpp}` | the panel |
 | `source/Project6Entry.cpp` | the factory |
 | `tests/` | `DspTests.cpp`, `SlotTests.cpp`, `WavTests.cpp` and `TransportTests.cpp`, SDK-free; `ParamsTests.cpp`, headers only |

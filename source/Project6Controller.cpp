@@ -183,6 +183,16 @@ tresult PLUGIN_API Project6Controller::setComponentState (IBStream* state)
 	// slots existed loads with all sixty-four empty.
 	readSlots (streamer, mSlots);
 
+	// THE SAME SECOND BLOCK, through the same function. The levels are
+	// parameters but not part of the contiguous run at the top of the
+	// stream, so they arrive here rather than in the loop above.
+	{
+		double levels[kSlotCount] = {};
+		readSlotLevels (streamer, levels);
+		for (int slot = 0; slot < kSlotCount; ++slot)
+			setParamNormalized (slotLevelParam (slot), levels[slot]);
+	}
+
 	// The processor is reading the files right now and will report each
 	// one; until it does, a restored slot is assumed good for the same
 	// reason a dropped one is.

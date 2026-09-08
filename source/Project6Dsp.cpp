@@ -66,6 +66,7 @@ void Project6Dsp::reset ()
 		voice.stopping = false;
 		voice.position = 0.0;
 		voice.gain     = 0.0;
+		voice.levelGain = -1.0;      // snap on the next start
 	}
 }
 
@@ -92,6 +93,29 @@ const SampleBuffer* Project6Dsp::slotSample (int index) const
 }
 
 //------------------------------------------------------------------------
+void Project6Dsp::setSlotLevelDb (int index, double decibels)
+{
+	if (!isSlotIndex (index))
+		return;
+
+	// THE SHARED CONVERSION, so a bar at the bottom of its travel is off
+	// here for the same reason the panel draws it as off.
+	mVoices[index].levelTarget = dbToLinear (
+		std::min (kSlotLevelMaxDb, std::max (kSlotLevelMinDb, decibels)),
+		kSlotLevelMinDb);
+}
+
+//------------------------------------------------------------------------
+double Project6Dsp::slotLevelGain (int index) const
+{
+	if (!isSlotIndex (index))
+		return 0.0;
+
+	const Voice& voice = mVoices[index];
+	return (voice.levelGain < 0.0) ? voice.levelTarget : voice.levelGain;
+}
+
+//------------------------------------------------------------------------
 void Project6Dsp::setSlotPlaying (int index, bool playing)
 {
 	if (!isSlotIndex (index))
@@ -109,6 +133,12 @@ void Project6Dsp::setSlotPlaying (int index, bool playing)
 			voice.stopping = false;
 			voice.position = 0.0;
 			voice.gain     = 0.0;
+
+			// SNAP the level. A pad set to -20 dB comes in at -20 dB; a
+			// smoother left to ramp there from the last value would make
+			// the first ten milliseconds of every launch the wrong
+			// loudness.
+			voice.levelGain = -1.0;
 		}
 		else
 		{
@@ -193,6 +223,15 @@ void Project6Dsp::renderVoices (float* out, int numSamples)
 		{
 			// The envelope first, so a voice that reaches zero this
 			// sample contributes nothing further.
+			// The slot's own level, smoothed with the same one-pole the
+			// output trim uses. Snapped on the first sample of a voice -
+			// see setSlotPlaying - and ramped from then on, so a bar
+			// dragged while a pad is running does not zipper.
+			if (voice.levelGain < 0.0)
+				voice.levelGain = voice.levelTarget;
+			else
+				voice.levelGain += (voice.levelTarget - voice.levelGain) * mCoeff;
+
 			if (voice.stopping)
 			{
 				voice.gain -= mDeclickStep;
@@ -225,10 +264,16 @@ void Project6Dsp::renderVoices (float* out, int numSamples)
 			const double left  = source[a]     + (source[b]     - source[a])     * fraction;
 			const double right = source[a + 1] + (source[b + 1] - source[a + 1]) * fraction;
 
+			// The declick envelope and the slot's level, in that order
+			// and both before the mix. At the default level of 0 dB the
+			// multiply is by exactly 1.0, so a pad at full envelope is
+			// still bit-identical to its file - which DspTests checks.
+			const double voiceGain = voice.gain * voice.levelGain;
+
 			out[static_cast<size_t> (i) * kChannelCount]
-				+= static_cast<float> (left * voice.gain);
+				+= static_cast<float> (left * voiceGain);
 			out[static_cast<size_t> (i) * kChannelCount + 1]
-				+= static_cast<float> (right * voice.gain);
+				+= static_cast<float> (right * voiceGain);
 
 			voice.position += step;
 			if (voice.position >= frames)

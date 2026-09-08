@@ -570,6 +570,131 @@ int main ()
 		}
 
 		//----------------------------------------------------------------
+		// A slot's own level
+		//----------------------------------------------------------------
+		{
+			Project6Dsp dsp;
+			dsp.setSampleRate (1000.0);
+			dsp.setOutputTrimDb (kTrimMaxDb);
+			dsp.setSlotSample (20, &loop);
+
+			// THE DEFAULT IS UNITY, and exactly so - the multiply has to
+			// be by 1.0 or a pad at its default level stops being
+			// bit-identical to its file.
+			check (close (dbToLinear (kSlotLevelDefaultDb, kSlotLevelMinDb), 1.0, 0.0),
+			       "a slot's default level is exactly unity gain");
+
+			dsp.setSlotLevelDb (20, kSlotLevelDefaultDb);
+			dsp.setSlotPlaying (20, true);
+
+			std::vector<float> out (16 * kChannelCount, 0.f);
+			dsp.render (out.data (), 16);
+			check (out[static_cast<size_t> (8) * 2] == kLeft[0],
+			       "so the file comes through the level stage unchanged");
+
+			// The bottom of the travel is OFF, not -40 dB of leakage.
+			check (dbToLinear (kSlotLevelMinDb, kSlotLevelMinDb) == 0.0,
+			       "the bottom of a slot's travel is exactly zero");
+
+			// A COMPONENT LEVEL, so it may lift as well as cut. The stage
+			// that must not boost is the output trim.
+			check (kSlotLevelMaxDb > 0.0, "a slot's level can boost");
+			check (kTrimMaxDb == 0.0, "and the output trim still cannot");
+		}
+
+		{
+			// SNAPPED ON START. A pad set quiet must come in quiet, not
+			// ramp down to it over the first ten milliseconds.
+			Project6Dsp dsp;
+			dsp.setSampleRate (1000.0);
+			dsp.setOutputTrimDb (kTrimMaxDb);
+			dsp.setSlotSample (21, &loop);
+			dsp.setSlotLevelDb (21, -20.0);           // one tenth
+			dsp.setSlotPlaying (21, true);
+
+			std::vector<float> out (16 * kChannelCount, 0.f);
+			dsp.render (out.data (), 16);
+
+			// Sample 4 is the first at full declick envelope.
+			check (close (out[static_cast<size_t> (4) * 2], kLeft[0] * 0.1, 1e-6),
+			       "a voice starts AT its level rather than ramping to it");
+
+			// NEGATIVE CONTROL: which is not the same as playing at unity
+			// and getting quieter afterwards.
+			check (! close (out[static_cast<size_t> (4) * 2], kLeft[0], 1e-6),
+			       "NEGATIVE CONTROL: and not at full level for the first samples");
+		}
+
+		{
+			// SMOOTHED WHILE RUNNING. A bar dragged during playback moves
+			// every block, and a block-rate step on a gain is a click on
+			// every buffer boundary.
+			//
+			// AT 44.1 k, not the 1000 Hz the rest of this section uses:
+			// the smoother is defined in seconds, so the "no more than a
+			// per cent a sample" bound only means anything at a real rate.
+			// At 1000 Hz the same ten milliseconds is ten samples, and
+			// moving a tenth of the way per sample is correct there.
+			const SampleBuffer real = makeLoop (44100.0);
+
+			Project6Dsp dsp;
+			dsp.setSampleRate (44100.0);
+			dsp.setOutputTrimDb (kTrimMaxDb);
+			dsp.setSlotSample (22, &real);
+			dsp.setSlotLevelDb (22, kSlotLevelDefaultDb);
+			dsp.setSlotPlaying (22, true);
+
+			std::vector<float> settle (4096 * kChannelCount, 0.f);
+			dsp.render (settle.data (), 4096);
+			check (close (dsp.slotLevelGain (22), 1.0, 1e-9), "settled at unity");
+
+			// Ask for silence, hard, and watch it walk there one sample at
+			// a time.
+			dsp.setSlotLevelDb (22, kSlotLevelMinDb);
+
+			double biggestStep = 0.0;
+			double previous = dsp.slotLevelGain (22);
+			std::vector<float> one (1 * kChannelCount, 0.f);
+			// 5000 samples is 113 ms - eleven time constants, so a
+			// smoother that is genuinely arriving has arrived.
+			for (int i = 0; i < 5000; ++i)
+			{
+				dsp.render (one.data (), 1);
+				const double now = dsp.slotLevelGain (22);
+				biggestStep = std::max (biggestStep, std::fabs (now - previous));
+				previous = now;
+			}
+
+			std::printf ("     largest single-sample level step: %.5f (%.3f %%)\n",
+			             biggestStep, biggestStep * 100.0);
+			check (biggestStep <= 0.01,
+			       "the level never moves more than 1 % in one sample");
+			check (biggestStep > 0.0, "NEGATIVE CONTROL: and it does move");
+			check (previous < 1e-3, "and it does arrive");
+
+			// The voice is still SOUNDING - a level of zero is not a stop,
+			// and the pad stays lit because the user did not un-arm it.
+			check (dsp.slotSounding (22),
+			       "a level of zero silences a pad without stopping it");
+		}
+
+		{
+			// Out-of-range indices, and a level outside its own travel.
+			Project6Dsp dsp;
+			dsp.setSampleRate (1000.0);
+			dsp.setSlotLevelDb (-1, 0.0);
+			dsp.setSlotLevelDb (kSlotCount, 0.0);
+			check (dsp.slotLevelGain (kSlotCount) == 0.0, "a bad slot index has no level");
+
+			dsp.setSlotLevelDb (0, 1000.0);
+			check (close (dsp.slotLevelGain (0),
+			              dbToLinear (kSlotLevelMaxDb, kSlotLevelMinDb), 1e-9),
+			       "a level above the travel is clamped to the top of it");
+			dsp.setSlotLevelDb (0, -1000.0);
+			check (dsp.slotLevelGain (0) == 0.0, "and one below it is silence");
+		}
+
+		//----------------------------------------------------------------
 		// The trim is still the last stage
 		//----------------------------------------------------------------
 		{

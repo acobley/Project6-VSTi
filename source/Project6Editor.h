@@ -89,10 +89,21 @@ public:
 	static constexpr int kSlotHeight = 30;
 	static constexpr int kSlotGap    = 5;
 
+	/** The level bar under each pad. Nine pixels: enough to see and to
+	    hit, and too few for a number - which is why the pad above it
+	    shows the value while the bar is being dragged. */
+	static constexpr int kLevelHeight = 9;
+	static constexpr int kLevelGap    = 2;
+
+	/** A CELL is a pad and its level bar. The grid's row pitch is this
+	    plus the gap between cells, so the bar belongs visually to the pad
+	    above it rather than floating between two. */
+	static constexpr int kCellHeight = kSlotHeight + kLevelGap + kLevelHeight;
+
 	static constexpr int kSlotGridWidth =
 		kSlotColumns * kSlotWidth + (kSlotColumns - 1) * kSlotGap;
 	static constexpr int kSlotGridHeight =
-		kSlotRows * kSlotHeight + (kSlotRows - 1) * kSlotGap;
+		kSlotRows * kCellHeight + (kSlotRows - 1) * kSlotGap;
 
 	static constexpr int kTitleTop    = 4;
 	static constexpr int kTitleHeight = 15;
@@ -139,7 +150,7 @@ public:
 	static_assert (kMargin + (kSlotColumns - 1) * (kSlotWidth + kSlotGap) + kSlotWidth
 	                   == kEditorWidth - kMargin,
 	               "the slot grid does not meet the right margin");
-	static_assert (kSlotGridTop + (kSlotRows - 1) * (kSlotHeight + kSlotGap) + kSlotHeight
+	static_assert (kSlotGridTop + (kSlotRows - 1) * (kCellHeight + kSlotGap) + kCellHeight
 	                   == kEditorHeight - kMargin,
 	               "the slot grid does not meet the bottom margin");
 
@@ -168,6 +179,16 @@ private:
 
 	/** The launch box above one column, exactly as wide as it. */
 	VSTGUI::CRect columnCell (int column) const;
+
+	/** The level bar under one pad, the same width and directly below. */
+	VSTGUI::CRect levelCell (int column, int row) const;
+
+	/** Put a slot's level, in decibels, on the pad above its bar - and
+	    take it off again. There is no room for a number on a nine-pixel
+	    bar, and adding a readout to sixty-four cells would cost more
+	    space than it gave. */
+	void showLevelOverlay (Steinberg::Vst::ParamID tag, double normalized);
+	void clearLevelOverlay (Steinberg::Vst::ParamID tag);
 
 	/** A column's launch box was pressed: arm every loaded slot in it, or
 	    stop them all if they are all already armed.
@@ -222,6 +243,7 @@ private:
 	std::map<Steinberg::Vst::ParamID, VSTGUI::CControl*> mControls;
 	SpyDisplay* mDisplay = nullptr;
 	SpySampleSlot* mSlots[kSlotCount] = { nullptr };
+	SpySlotLevel* mLevels[kSlotCount] = { nullptr };
 	SpyColumnButton* mColumns[kSlotColumns] = { nullptr };
 
 	VSTGUI::SharedPointer<VSTGUI::CVSTGUITimer> mTimer;

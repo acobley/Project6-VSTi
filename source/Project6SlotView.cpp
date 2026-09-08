@@ -7,6 +7,7 @@
 #include "Project6Controls.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <string>
 
@@ -110,6 +111,16 @@ void SpySampleSlot::setPath (const std::string& path)
 
 	mPath = path;
 	refreshTooltip ();
+	invalid ();
+}
+
+//------------------------------------------------------------------------
+void SpySampleSlot::setOverlay (const std::string& text)
+{
+	if (text == mOverlay)
+		return;
+
+	mOverlay = text;
 	invalid ();
 }
 
@@ -289,6 +300,22 @@ bool SpySampleSlot::onDrop (DragEventData data)
 //------------------------------------------------------------------------
 void SpySampleSlot::drawName (CDrawContext* context, const CRect& band)
 {
+	// THE OVERLAY WINS. While the level bar below is being dragged this
+	// is the level in decibels, and it is what the reader wants to see -
+	// the filename has not changed and will still be there afterwards.
+	if (!mOverlay.empty ())
+	{
+		context->setFont (panelFont ());
+		const CCoord height = panelFont ()->getSize () + 2.;
+		const CRect line (band.left,
+		                  band.top + (band.getHeight () - height) * 0.5,
+		                  band.right,
+		                  band.top + (band.getHeight () - height) * 0.5 + height);
+		context->setFontColor (kSlotText);
+		context->drawString (mOverlay.c_str (), line, kCenterText, true);
+		return;
+	}
+
 	if (mPath.empty ())
 		return;
 
@@ -390,6 +417,127 @@ void SpySampleSlot::draw (CDrawContext* context)
 	drawName (context, band);
 
 	setDirty (false);
+}
+
+//------------------------------------------------------------------------
+// SpySlotLevel
+//------------------------------------------------------------------------
+
+namespace {
+
+/** The DXi's own slider law: one unit of a 0..100 range per pixel of
+    horizontal movement, in either direction. */
+constexpr float kUnitsPerPixel = 0.01f;
+
+} // namespace
+
+//------------------------------------------------------------------------
+SpySlotLevel::SpySlotLevel (const CRect& size, IControlListener* listener,
+                            int32_t tag, int index)
+: CControl (size, listener, tag)
+, mIndex (index)
+{
+	setMouseEnabled (true);
+	setMin (0.f);
+	setMax (1.f);
+}
+
+//------------------------------------------------------------------------
+void SpySlotLevel::draw (CDrawContext* context)
+{
+	const CRect r = getViewSize ();
+
+	// The ground, then the fill to the current value, then the raised
+	// edge - the order SpySlider draws its bar in, and the same colours.
+	context->setFillColor (Colours::kLampOff);
+	context->drawRect (r, kDrawFilled);
+
+	CRect fill (r);
+	fill.inset (1., 1.);
+	fill.right = fill.left
+	             + fill.getWidth () * std::clamp (
+	                   static_cast<double> (getValueNormalized ()), 0.0, 1.0);
+	if (fill.getWidth () > 0. && fill.getHeight () > 0.)
+	{
+		context->setFillColor (Colours::kBarFill);
+		context->drawRect (fill, kDrawFilled);
+	}
+
+	drawWell (context, r, Colours::kBarLight, Colours::kBarHigh);
+
+	setDirty (false);
+}
+
+//------------------------------------------------------------------------
+void SpySlotLevel::onMouseDownEvent (MouseDownEvent& event)
+{
+	if (! event.buttonState.isLeft ())
+		return;
+
+	// NO ABSOLUTE POSITIONING, as in SpySlider: the value moves by
+	// increments from wherever it was. On a bar this size, jumping to
+	// the pointer would make every setting a coarse one.
+	mDragging = true;
+	mLastPoint = event.mousePosition;
+	beginEdit ();
+	event.consumed = true;
+}
+
+//------------------------------------------------------------------------
+void SpySlotLevel::onMouseMoveEvent (MouseMoveEvent& event)
+{
+	if (! mDragging)
+		return;
+
+	const CCoord dx = event.mousePosition.x - mLastPoint.x;
+	if (std::fabs (dx) < 1.)
+		return;
+
+	mLastPoint = event.mousePosition;
+
+	const float scale = event.modifiers.has (ModifierKey::Shift) ? 0.1f : 1.f;
+	setValueNormalized (std::clamp (
+		getValueNormalized () + static_cast<float> (dx) * kUnitsPerPixel * scale,
+		0.f, 1.f));
+	valueChanged ();
+	invalid ();
+	event.consumed = true;
+}
+
+//------------------------------------------------------------------------
+void SpySlotLevel::onMouseUpEvent (MouseUpEvent& event)
+{
+	if (! mDragging)
+		return;
+
+	mDragging = false;
+	endEdit ();
+	event.consumed = true;
+}
+
+//------------------------------------------------------------------------
+void SpySlotLevel::onMouseCancelEvent (MouseCancelEvent& event)
+{
+	// A cancelled drag still has to end its edit, or the host is left
+	// holding a gesture open for ever.
+	if (! mDragging)
+		return;
+
+	mDragging = false;
+	endEdit ();
+}
+
+//------------------------------------------------------------------------
+void SpySlotLevel::onMouseWheelEvent (MouseWheelEvent& event)
+{
+	const float step = event.modifiers.has (ModifierKey::Shift) ? 0.002f : 0.01f;
+	beginEdit ();
+	setValueNormalized (std::clamp (
+		getValueNormalized () + static_cast<float> (event.deltaY) * step, 0.f, 1.f));
+	valueChanged ();
+	endEdit ();
+	invalid ();
+	event.consumed = true;
 }
 
 //------------------------------------------------------------------------
