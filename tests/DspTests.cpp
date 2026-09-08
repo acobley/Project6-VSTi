@@ -839,6 +839,82 @@ int main ()
 		}
 
 		//----------------------------------------------------------------
+		// The progress the panel draws
+		//----------------------------------------------------------------
+		{
+			Project6Dsp dsp;
+			dsp.setSampleRate (1000.0);
+			dsp.setOutputTrimDb (kTrimMaxDb);
+			dsp.setSlotSample (9, &loop);
+
+			check (dsp.slotProgress (9) == 0.f, "an idle slot is at zero");
+
+			dsp.setSlotPlaying (9, true);
+			check (dsp.slotProgress (9) == 0.f, "and so is one that has not rendered yet");
+
+			// The loop is four frames at the session rate, so after two
+			// frames the playhead is half way through it.
+			std::vector<float> out (2 * kChannelCount, 0.f);
+			dsp.render (out.data (), 2);
+			check (close (dsp.slotProgress (9), 0.5, 1e-6),
+			       "two frames into a four-frame file is half way");
+
+			dsp.render (out.data (), 1);
+			check (close (dsp.slotProgress (9), 0.75, 1e-6), "three frames is three quarters");
+
+			// IT WRAPS WITH THE LOOP, because it is the playhead and the
+			// playhead wraps. A bar that ran off the end would be a bar
+			// measuring something other than what is heard.
+			dsp.render (out.data (), 1);
+			check (close (dsp.slotProgress (9), 0.0, 1e-6),
+			       "and the fourth wraps back to the start");
+
+			bool inRange = true;
+			for (int i = 0; i < 40; ++i)
+			{
+				dsp.render (out.data (), 1);
+				const float p = dsp.slotProgress (9);
+				inRange &= (p >= 0.f && p < 1.f);
+			}
+			check (inRange, "and it stays inside 0..1 for ever");
+
+			// STOPPING CLEARS IT, so a bar never lingers on a pad that
+			// has gone quiet - which would be the panel claiming
+			// something the audio is not doing.
+			dsp.setSlotPlaying (9, false);
+			std::vector<float> tail (64 * kChannelCount, 0.f);
+			dsp.render (tail.data (), 64);
+			check (! dsp.slotSounding (9), "the voice has stopped");
+			check (dsp.slotProgress (9) == 0.f, "and its progress is back to zero");
+
+			// NEGATIVE CONTROL: it is not simply always zero.
+			dsp.setSlotPlaying (9, true);
+			dsp.render (out.data (), 2);
+			check (dsp.slotProgress (9) > 0.f,
+			       "NEGATIVE CONTROL: and it is not stuck at zero");
+
+			// A sample taken away underneath a running voice clears it too.
+			dsp.setSlotSample (9, nullptr);
+			dsp.render (out.data (), 2);
+			check (dsp.slotProgress (9) == 0.f,
+			       "a slot emptied while playing clears its progress");
+
+			check (dsp.slotProgress (-1) == 0.f, "a bad slot index has no progress");
+			check (dsp.slotProgress (kSlotCount) == 0.f, "at either end");
+
+			// reset() is setActive(false): everything stops dead, and no
+			// bar should survive it.
+			Project6Dsp other;
+			other.setSampleRate (1000.0);
+			other.setSlotSample (11, &loop);
+			other.setSlotPlaying (11, true);
+			other.render (out.data (), 2);
+			check (other.slotProgress (11) > 0.f, "a running pad has progress");
+			other.reset ();
+			check (other.slotProgress (11) == 0.f, "and reset clears it");
+		}
+
+		//----------------------------------------------------------------
 		// The row direct outs, tapped BEFORE the row fader
 		//----------------------------------------------------------------
 		{

@@ -164,8 +164,8 @@ python3 tools/render-routing.py
 
 `-DRELEASE=1` is required or `fdebug.h` refuses to compile.
 
-Results, at the direct-out commit: **all five suites all-pass**, all thirteen
-translation units produced object files with no errors, all 67 undefined
+Results, at the playhead commit: **all five suites all-pass**, all thirteen
+translation units produced object files with no errors, all 72 undefined
 `Project6::` symbols resolved within the set, `check-editor` reported ok, and
 `render-routing` regenerated the diagram from the headers.
 The panel's dimensions are checked by `static_assert` rather than by eye —
@@ -591,6 +591,47 @@ something you can do without re-clicking eight pads.
 `setupProcessing` and `setActive(true)` both clear `mLaunched`, because both
 reset the DSP and every voice with it. Miss that and `applyBarLine()` sees
 "already launched" and never starts anything again.
+
+### Showing the playhead
+
+A bar along the bottom of each playing pad, filled to where its file has got
+to. It exists because "which pads are running" and "where they are in their
+loops" are different questions and the lit well only answered the first.
+
+**Three mechanisms were available and the third is the right one**, which is
+worth writing down because the first two are the ones already in use here:
+
+| | |
+|---|---|
+| A message pushed from `process()` | **Impossible.** The host's connection proxy discards it — the rule at the top of `Project6IDs.h`. |
+| Publishing through `data.outputParameterChanges` | Possible, and wrong. Sixty-four *continuously changing* values would put thousands of points a second into a host's queue to move bars that redraw thirty times a second. The bar phase is already quantised to 1/128 for exactly this reason, and that is one parameter. |
+| **A request and a reply, both on the UI thread** | What it does. The controller asks on the editor's timer, the processor answers with all sixty-four in one binary blob. |
+
+That last is ForTran's scope idiom, and the general rule it embodies is: **a
+value that only the panel wants, only while it is open, and only at the rate
+it can draw, is a value to ask for rather than to publish.** Nothing is paid
+for it when the panel is shut, because the timer is the only thing that asks.
+
+Across the thread boundary each voice keeps a `std::atomic<float> progress`,
+written **once a block** by the audio thread — relaxed, because a bar drawn
+from a value one block old is right to within eleven milliseconds and nothing
+else depends on it. A store per *sample* would be sixty-four atomic writes a
+frame to move a bar a pixel every few hundred.
+
+Three details worth keeping:
+
+* it is **zeroed when a voice starts and when it stops**, so a bar never
+  lingers on a pad that has gone quiet — the panel claiming something the
+  audio is not doing is the failure this project keeps coming back to;
+* it is drawn from **`sounding`, not from the trigger**, so an armed pad
+  waiting for its grid line shows no bar. The two must never contradict each
+  other;
+* `setProgress` **quantises to the pixel the bar will actually be drawn at**
+  and skips the redraw otherwise. Sixty-four pads at thirty frames a second is
+  1920 potential redraws a second, most of which would change nothing. The
+  comparison is against the last *drawn* value and the skipped difference
+  accumulates, so a ten-minute sample still advances — a threshold that reset
+  each tick would freeze the bar on anything long.
 
 ### Showing the wait
 

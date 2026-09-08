@@ -344,6 +344,32 @@ void Project6Processor::sendSampleRateToController ()
 //------------------------------------------------------------------------
 tresult PLUGIN_API Project6Processor::notify (IMessage* message)
 {
+	if (message && FIDStringsEqual (message->getMessageID (),
+	                                kProject6ProgressRequestMessage))
+	{
+		// notify() is [UI-thread], so replying with a message is
+		// legitimate here - it would not be from process().
+		//
+		// The values themselves were written by the AUDIO thread, one
+		// relaxed atomic store per voice per block. Nothing is locked and
+		// nothing waits: a bar drawn from a value one block old is right
+		// to within eleven milliseconds.
+		float progress[kSlotCount];
+		for (int slot = 0; slot < kSlotCount; ++slot)
+			progress[slot] = mDsp.slotProgress (slot);
+
+		if (auto* reply = allocateMessage ())
+		{
+			FReleaser releaser (reply);
+			reply->setMessageID (kProject6ProgressDataMessage);
+			reply->getAttributes ()->setBinary (
+				kProject6ProgressAttribute, progress,
+				static_cast<uint32> (sizeof (progress)));
+			sendMessage (reply);
+		}
+		return kResultOk;
+	}
+
 	if (message && FIDStringsEqual (message->getMessageID (), kProject6SlotMessage))
 	{
 		int64 index = -1;

@@ -34,9 +34,10 @@ headers, so it cannot quietly disagree with the code.
 Levels are saved with the project and automatable like everything else.
 
 An armed slot glows amber while it waits and red while it plays, so the wait
-is visible rather than mysterious. A column box fills in proportion to how
-much of its column is sounding. The display beside the pads is one bar wide,
-ruled into beats, with a playhead showing how long that wait has left.
+is visible rather than mysterious, and **a bar along the bottom of a playing
+pad shows how far through its file it is**. A column box fills in proportion
+to how much of its column is sounding. The display beside the pads is one bar
+wide, ruled into beats, with a playhead showing how long that wait has left.
 
 Every pad is also a host parameter, so a DAW can automate, record and undo it.
 Underneath, it is still the shell a bigger instrument goes inside — buses,

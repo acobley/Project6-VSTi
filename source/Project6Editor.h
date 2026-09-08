@@ -200,6 +200,9 @@ public:
 	    only the ones that actually moved. */
 	void refreshSlots ();
 
+	/** The playhead of every pad has arrived from the processor. */
+	void refreshProgress ();
+
 private:
 	VSTGUI::CRect cell (int column, int row) const;
 
@@ -251,7 +254,10 @@ private:
 	    editor's control follows. */
 	void setParameter (Steinberg::Vst::ParamID tag, double plainValue);
 
-	/** The timer's work: hand the display what the DSP is doing. */
+	/** The timer's work: refresh the display and ask for the playheads. */
+	void onTimer ();
+
+	/** The display's own refresh: hand it what the DSP is doing. */
 	void refreshDisplay ();
 
 	/** One parameter's value in its own plain unit. */

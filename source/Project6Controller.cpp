@@ -13,6 +13,7 @@
 #include "public.sdk/source/vst/vstparameters.h"
 
 #include <algorithm>
+#include <cstring>
 
 using namespace Steinberg;
 using namespace Steinberg::Vst;
@@ -231,6 +232,30 @@ SampleStatus Project6Controller::slotStatus (int index) const
 }
 
 //------------------------------------------------------------------------
+float Project6Controller::slotProgress (int index) const
+{
+	if (!isSlotIndex (index))
+		return 0.f;
+
+	return mSlotProgress[index];
+}
+
+//------------------------------------------------------------------------
+void Project6Controller::requestProgress ()
+{
+	// The UI thread asking the UI thread. If the host has not connected
+	// the two components there is no reply and the bars simply do not
+	// move - the same limitation every message here has, and the least
+	// costly place for it to land.
+	if (auto* message = allocateMessage ())
+	{
+		FReleaser releaser (message);
+		message->setMessageID (kProject6ProgressRequestMessage);
+		sendMessage (message);
+	}
+}
+
+//------------------------------------------------------------------------
 void Project6Controller::setSlotPath (int index, const std::string& path)
 {
 	// REFUSED, not clamped, by SlotBank itself. A drop that somehow
@@ -285,6 +310,26 @@ tresult PLUGIN_API Project6Controller::notify (IMessage* message)
 {
 	if (message == nullptr)
 		return kInvalidArgument;
+
+	if (FIDStringsEqual (message->getMessageID (), kProject6ProgressDataMessage))
+	{
+		const void* data = nullptr;
+		uint32 size = 0;
+		if (message->getAttributes ()->getBinary (kProject6ProgressAttribute, data, size)
+		        == kResultOk
+		    && data != nullptr && size == sizeof (mSlotProgress))
+		{
+			// The size check is the whole validation: a build with a
+			// different slot count would send a different number of
+			// floats, and reading it as if it were ours would be reading
+			// somebody else's memory.
+			std::memcpy (mSlotProgress, data, sizeof (mSlotProgress));
+
+			for (auto* editor : mEditors)
+				editor->refreshProgress ();
+		}
+		return kResultOk;
+	}
 
 	if (FIDStringsEqual (message->getMessageID (), kProject6SlotStatusMessage))
 	{

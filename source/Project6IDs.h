@@ -83,5 +83,26 @@ static const char* const kProject6SlotPathAttribute  = "Path";
 static const char* const kProject6SlotStatusMessage    = "Project6SlotStatus";
 static const char* const kProject6SlotStatusAttribute  = "Status";
 
+/** The playhead of every slot, for the progress bars on the pads.
+
+    A REQUEST AND A REPLY, both on the UI thread: the controller asks on
+    the editor's timer and the processor answers with all sixty-four at
+    once. That is ForTran's scope idiom, and it is used here for the same
+    two reasons.
+
+    The first is the rule at the top of this file - a message sent from
+    process() is silently discarded, so the processor cannot simply push
+    this. The second is that the OTHER mechanism, publishing through
+    data.outputParameterChanges, is wrong for this particular value:
+    sixty-four continuously changing parameters would put thousands of
+    points a second into a host's queue to move bars that redraw at
+    thirty frames. A value that only the panel wants, only while it is
+    open, and only at the rate it can draw, is a value to ASK for.
+
+    The reply is one binary blob of kSlotCount floats, 0 to 1 each. */
+static const char* const kProject6ProgressRequestMessage = "Project6ProgressRequest";
+static const char* const kProject6ProgressDataMessage    = "Project6ProgressData";
+static const char* const kProject6ProgressAttribute      = "Progress";
+
 //------------------------------------------------------------------------
 } // namespace Project6

@@ -106,6 +106,10 @@ public:
 	void setSounding (bool sounding);
 	bool sounding () const { return mSounding; }
 
+	/** How far through its file the pad is, 0 to 1 - drawn as a bar along
+	    the bottom of the well while it plays. */
+	void setProgress (float progress);
+
 	/** What the user has asked for - this control's own parameter. */
 	bool armed () const { return getValueNormalized () >= 0.5f; }
 
@@ -174,6 +178,7 @@ private:
 	std::string mOverlay;
 	SampleStatus mStatus = SampleStatus::Empty;
 	bool mSounding = false;
+	float mProgress = 0.f;
 	std::function<void (int, const std::string&)> mHandler;
 	bool mDragOver = false;
 };

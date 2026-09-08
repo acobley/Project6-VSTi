@@ -224,6 +224,15 @@ public:
 	/** Where a slot's playhead is, in source frames. For the tests. */
 	double slotPosition (int index) const;
 
+	/** How far through its file a slot is, 0 to 1, for the panel to draw.
+
+	    WRITTEN BY THE AUDIO THREAD, once a block, and read by the UI
+	    thread - so it is an atomic, and a relaxed one: a progress bar
+	    reading a value one block old is a bar that is right to within
+	    eleven milliseconds, and nothing else depends on it. Zero when the
+	    slot is not sounding, so a bar never lingers on a stopped pad. */
+	float slotProgress (int index) const;
+
 	/** Render `numSamples` frames of interleaved stereo into `out`.
 
 	    `out` must hold numSamples * kChannelCount floats. A null buffer or
@@ -281,6 +290,13 @@ private:
 		    makes a voice snap to its level rather than ramp up to it. */
 		double levelTarget = 1.0;
 		double levelGain   = -1.0;
+
+		/** `position` as a fraction of the file, for the panel. The ONLY
+		    field besides `sample` that crosses threads, and the only
+		    reason it is not just read off `position` directly: a double
+		    is not atomic, and a bar drawn from a half-written playhead
+		    would jump about. */
+		std::atomic<float> progress { 0.f };
 	};
 
 	/** Mix every sounding voice into `out`, which is expected to be

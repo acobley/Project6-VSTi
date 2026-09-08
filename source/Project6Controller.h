@@ -77,6 +77,15 @@ public:
 	    no file in it. */
 	SampleStatus slotStatus (int index) const;
 
+	/** How far through its file a slot is, 0 to 1 - what the pad draws as
+	    a progress bar. Zero for a slot that is not sounding. */
+	float slotProgress (int index) const;
+
+	/** Ask the processor for all sixty-four. Called from the editor's
+	    timer, and only while an editor is open: nothing else wants these
+	    and nobody should pay for them when the panel is shut. */
+	void requestProgress ();
+
 	/** A file was dropped on a slot, or a slot was emptied. Records it,
 	    tells the processor, and refreshes every open editor.
 
@@ -96,6 +105,7 @@ private:
 	double mSampleRate = 44100.0;
 	SlotBank mSlots;
 	SampleStatus mSlotStatus[kSlotCount] = {};
+	float mSlotProgress[kSlotCount] = {};
 	bool mHaveLiveValues = false;
 };
 

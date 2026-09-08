@@ -74,6 +74,7 @@ void Project6Dsp::reset ()
 		voice.position = 0.0;
 		voice.gain     = 0.0;
 		voice.levelGain = -1.0;      // snap on the next start
+		voice.progress.store (0.f, std::memory_order_relaxed);
 	}
 
 	for (RowBus& bus : mRows)
@@ -172,6 +173,7 @@ void Project6Dsp::setSlotPlaying (int index, bool playing)
 			voice.stopping = false;
 			voice.position = 0.0;
 			voice.gain     = 0.0;
+			voice.progress.store (0.f, std::memory_order_relaxed);
 
 			// SNAP the level. A pad set to -20 dB comes in at -20 dB; a
 			// smoother left to ramp there from the last value would make
@@ -210,6 +212,15 @@ int Project6Dsp::soundingVoiceCount () const
 		if (voice.sounding)
 			++count;
 	return count;
+}
+
+//------------------------------------------------------------------------
+float Project6Dsp::slotProgress (int index) const
+{
+	if (!isSlotIndex (index))
+		return 0.f;
+
+	return mVoices[index].progress.load (std::memory_order_relaxed);
 }
 
 //------------------------------------------------------------------------
@@ -367,6 +378,7 @@ void Project6Dsp::renderVoice (Voice& voice, float* dest, int numSamples)
 		voice.sounding = false;
 		voice.stopping = false;
 		voice.gain     = 0.0;
+		voice.progress.store (0.f, std::memory_order_relaxed);
 		return;
 	}
 
@@ -405,6 +417,7 @@ void Project6Dsp::renderVoice (Voice& voice, float* dest, int numSamples)
 				voice.gain     = 0.0;
 				voice.sounding = false;
 				voice.stopping = false;
+				voice.progress.store (0.f, std::memory_order_relaxed);
 				break;
 			}
 		}
@@ -448,6 +461,20 @@ void Project6Dsp::renderVoice (Voice& voice, float* dest, int numSamples)
 			// single output sample.
 			voice.position = std::fmod (voice.position, static_cast<double> (frames));
 		}
+	}
+
+	// WHERE THE PLAYHEAD ENDED UP, for the panel to draw - once a block
+	// and not once a sample, because nothing reads it faster than the
+	// editor's timer and a store per sample would be sixty-four atomic
+	// writes per frame to move a bar a pixel every few hundred.
+	//
+	// Guarded on still sounding: a voice that stopped during this call
+	// has already zeroed it, and must not have it put back.
+	if (voice.sounding)
+	{
+		voice.progress.store (
+			static_cast<float> (voice.position / static_cast<double> (frames)),
+			std::memory_order_relaxed);
 	}
 }
 

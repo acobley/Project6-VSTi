@@ -60,6 +60,16 @@ const CColor kDropAccept   ( 50, 255,  50, 255);
 /** Inset from the well's edge to the text. */
 constexpr CCoord kTextInset = 4.;
 
+/** The playhead bar along the bottom of a playing pad. Three pixels: it
+    has to be seen from across a room of sixty-four cells and must not
+    become a second control. */
+constexpr CCoord kProgressHeight = 3.;
+
+/** Bright, and the same warm red as the live border it sits inside, so
+    the bar reads as part of the pad being lit rather than as a fifth
+    thing on the panel. */
+const CColor kProgressBar (255, 140, 110, 255);
+
 //------------------------------------------------------------------------
 /** A recessed rectangle: dark along the top and left, light along the
     bottom and right. The inverse of the raised bar the sliders draw.
@@ -143,6 +153,25 @@ void SpySampleSlot::setSounding (bool sounding)
 		return;
 
 	mSounding = sounding;
+	invalid ();
+}
+
+//------------------------------------------------------------------------
+void SpySampleSlot::setProgress (float progress)
+{
+	const float clamped = std::min (1.f, std::max (0.f, progress));
+
+	// QUANTISED TO THE PIXEL it will actually be drawn at. This arrives
+	// thirty times a second for sixty-four pads; redrawing one because a
+	// value moved a thousandth, when the bar cannot move less than a
+	// pixel, is sixty-four redraws a second to change nothing.
+	const CCoord width = std::max (1., getViewSize ().getWidth () - 2.);
+	const float step = static_cast<float> (1.0 / width);
+
+	if (std::fabs (clamped - mProgress) < step && clamped != 0.f && mProgress != 0.f)
+		return;
+
+	mProgress = clamped;
 	invalid ();
 }
 
@@ -416,6 +445,33 @@ void SpySampleSlot::draw (CDrawContext* context)
 	CRect band (r);
 	band.inset (kTextInset, 2.);
 	drawName (context, band);
+
+	// THE PLAYHEAD, along the bottom of the well, and only while the pad
+	// is actually sounding. Drawn from `sounding` and not from the
+	// trigger, so it can never contradict the lit well above it - an
+	// armed pad waiting for its bar line shows no bar, because nothing is
+	// playing yet.
+	if (sounding)
+	{
+		CRect track (r);
+		track.inset (1., 1.);
+		track.top = track.bottom - kProgressHeight;
+
+		if (track.getWidth () > 0. && track.getHeight () > 0.)
+		{
+			// The unplayed remainder is left as the well, so the bar is
+			// one mark rather than two - and a pad at the very start of
+			// its file shows a sliver rather than nothing, which is the
+			// difference between "just started" and "not running".
+			CRect played (track);
+			played.right = played.left
+			               + std::max (1., played.getWidth ()
+			                                   * static_cast<double> (mProgress));
+
+			context->setFillColor (kProgressBar);
+			context->drawRect (played, kDrawFilled);
+		}
+	}
 
 	setDirty (false);
 }

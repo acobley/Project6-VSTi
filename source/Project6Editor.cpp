@@ -313,11 +313,38 @@ bool PLUGIN_API Project6Editor::open (void* parent, const PlatformType& platform
 	// panel being touched - a host automating the trim, or a smoother
 	// still travelling - so it is PULLED on a timer rather than pushed by
 	// a control.
-	mTimer = makeOwned<CVSTGUITimer> ([this] (CVSTGUITimer*) { refreshDisplay (); },
+	mTimer = makeOwned<CVSTGUITimer> ([this] (CVSTGUITimer*) { onTimer (); },
 	                                  kTimerMs, true);
 
 	frame->open (parent, platformType);
 	return true;
+}
+
+//------------------------------------------------------------------------
+void Project6Editor::onTimer ()
+{
+	refreshDisplay ();
+
+	// The playheads. ASKED FOR, not pushed: the processor cannot send
+	// from process(), and sixty-four continuously changing published
+	// parameters would flood a host's queue to move bars that redraw
+	// thirty times a second. See Project6IDs.h.
+	//
+	// Only while an editor is open, because this is the only thing that
+	// asks - a shut panel costs nothing.
+	if (mController)
+		mController->requestProgress ();
+}
+
+//------------------------------------------------------------------------
+void Project6Editor::refreshProgress ()
+{
+	if (frame == nullptr || mController == nullptr)
+		return;
+
+	for (int index = 0; index < kSlotCount; ++index)
+		if (mSlots[index])
+			mSlots[index]->setProgress (mController->slotProgress (index));
 }
 
 //------------------------------------------------------------------------
