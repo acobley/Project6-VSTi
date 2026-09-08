@@ -50,6 +50,14 @@ public:
 	    processor says otherwise. */
 	double dspSampleRate () const { return mSampleRate; }
 
+	/** True once the processor's published values have actually arrived.
+
+	    Until then - and for ever, in a host that does not forward
+	    data.outputParameterChanges - the panel shows what was ASKED for
+	    instead of what is happening, which is the right pad lit early
+	    rather than the wrong one for ever. */
+	bool hasLiveValues () const { return mHaveLiveValues; }
+
 	//--------------------------------------------------------------------
 	// The sample slots
 	//
@@ -88,6 +96,7 @@ private:
 	double mSampleRate = 44100.0;
 	SlotBank mSlots;
 	SampleStatus mSlotStatus[kSlotCount] = {};
+	bool mHaveLiveValues = false;
 };
 
 //------------------------------------------------------------------------

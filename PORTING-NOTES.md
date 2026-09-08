@@ -5,9 +5,10 @@ because it records the decisions that are **permanent from the first shipped
 build**, and the traps that were handled deliberately rather than discovered.
 It is the file that outlives the session that made the project.
 
-What the plug-in currently is: an 8 × 8 bank of looping sample pads. Drag a
-`.wav` onto a slot, click it to loop, click again to stop. §8 is the grid and
-§9 the playback.
+What the plug-in currently is: an 8 × 8 bank of looping sample pads, launched
+on the bar. Drag a `.wav` onto a slot, click it to arm it, and it starts when
+the transport next crosses a bar line. §8 is the grid, §9 the playback and
+§10 the transport.
 
 Scaffolded from `~/DXi-DEv/vst3-port-template` on 8 September 2026, following
 the `blank-vst3-plugin` skill; the slot grid and the playback were added the
@@ -125,7 +126,7 @@ What was run, and passed:
 ```sh
 cd ~/DXi-DEv/Project6-VSTi
 
-# 1. All four test suites, from a clean build.
+# 1. All five test suites, from a clean build.
 c++ -std=c++17 -O2 -Wall -Isource tests/DspTests.cpp \
     source/Project6Dsp.cpp source/Project6Sample.cpp \
     -o /tmp/dsptests && /tmp/dsptests
@@ -135,6 +136,9 @@ c++ -std=c++17 -O2 -Wall -Isource \
 
 c++ -std=c++17 -O2 -Wall -Isource \
     tests/WavTests.cpp source/Project6Sample.cpp -o /tmp/wavtests && /tmp/wavtests
+
+c++ -std=c++17 -O2 -Wall -Isource tests/TransportTests.cpp \
+    source/Project6Transport.cpp -o /tmp/transporttests && /tmp/transporttests
 
 SDK=~/DXi-DEv/VocalFilter-VSTi/external/vst3sdk        # any existing checkout
 c++ -std=c++17 -O2 -Wall -Isource -I$SDK \
@@ -157,22 +161,29 @@ python3 tools/check-editor.py
 
 `-DRELEASE=1` is required or `fdebug.h` refuses to compile.
 
-Results, at the playback commit: **all four suites all-pass**, all twelve
-translation units produced object files with no errors, all 43 undefined
+Results, at the transport commit: **all five suites all-pass**, all thirteen
+translation units produced object files with no errors, all 50 undefined
 `Project6::` symbols resolved within the set, and `check-editor` reported ok.
 The panel's dimensions are checked by `static_assert` rather than by eye —
 735 × 481, with the grid meeting both margins exactly.
 
-Re-run all five before every commit. Adding a source file also means
-re-running `./setup-xcode.sh --no-open` before the next Xcode build, or the
-project compiles the old file list.
+Re-run all six before every commit. Adding a source file also means re-running
+`./setup-xcode.sh --no-open` before the next Xcode build, or the project
+compiles the old file list.
 
 **What the tests cannot reach**, and what the first real listen is for: the
 drag-and-drop itself (a platform drag package is not something a unit test can
-manufacture), whether the panel looks right, and whether five milliseconds is
-in fact enough declick on real material. Everything the tests *do* reach —
-every WAV format, the loop wrap, the rate conversion, the envelope, the
-parameter block's bound — is asserted rather than assumed.
+manufacture), whether the panel looks right, whether five milliseconds is in
+fact enough declick on real material, and whether a host's `ProcessContext`
+says what this code assumes it says — `TransportTests` proves the arithmetic
+is right about the numbers it is given, not that the numbers arrive. That last
+one is the first thing to check in a real DAW: if the display reads
+"No transport" or the playhead does not move, the flags in
+`getProcessContextRequirements` are where to look.
+
+Everything the tests *do* reach — every WAV format, the loop wrap, the rate
+conversion, the envelope, the bar arithmetic in five time signatures, the
+parameter blocks' bounds — is asserted rather than assumed.
 
 **Still to do on a Mac**, in this order:
 
@@ -193,11 +204,11 @@ added carelessly.
 
 | Left out | The trap |
 |---|---|
-| `processContextRequirements` | Since VST3 3.7 the `ProcessContext` is **opt-in and the default is no flags**. Anything that reads the tempo silently gets 120 in every host, and the validator prints `- None` rather than complaining. Where to add it is written into the banner of `Project6Processor.h`. |
+| ~~`processContextRequirements`~~ | **Done — see §10.** The trap was exactly as written down here before it was needed: opt-in since VST3 3.7, default no flags, every field silently invalid, tempo reads 120 everywhere, and the validator says nothing about it. A plug-in that launches on the bar would simply never have launched. |
 | Processor → controller messages beyond the sample rate | **A message sent from `process()` is silently discarded** by the host's connection proxy — it returns success and does nothing. Per-block values go out through `data.outputParameterChanges` as hidden read-only parameters instead. Both halves of that rule are written into `Project6IDs.h` and `Project6Params.h`. |
 | Published ("live") parameters | None are needed yet. When the first one is appended, `kNumStoredParams` moves with it, and **the range check on it must be bounded by its own end, not by `kNumParams`** — a predicate reading `id < kNumParams` misclassified the next parameter appended after such a block in VocalFilter, and the symptom was a control that wrote its parameter, was seen by the host, and did nothing. |
 | `IMidiMapping`, and notes | No CC handling, and no pitched playback: the event input exists and consumes events so nothing can hang, but a note-on does not start a pad. Mapping notes to slots is the obvious next step, and the trigger parameters are the thing to move — a note-on writing `slotPlayParam(n)` gets automation and the panel for nothing. ForTran is the worked example for CCs. |
-| ~~Voices, and a conditional `silenceFlags`~~ | **Done.** `process()` now flags silence only when `mDsp.soundingVoiceCount() == 0`, and a voice counts as sounding through its fade-out. A synth that flags silence while something is playing is silenced by the host, which presents as a pad that lights up and cannot be heard. |
+| ~~Voices, and a conditional `silenceFlags`~~ | **Done — see §9.** `process()` now flags silence only when `mDsp.soundingVoiceCount() == 0`, and a voice counts as sounding through its fade-out. A synth that flags silence while something is playing is silenced by the host, which presents as a pad that lights up and cannot be heard. |
 
 Handled rather than omitted, and worth not undoing:
 
@@ -315,6 +326,11 @@ parameter instead.
 Click a loaded slot and its file loops; click it again and it stops. Three
 separate mechanisms make that work, and they are separate on purpose.
 
+> **Since the transport arrived (§10), a click no longer starts anything
+> directly.** It sets the trigger parameter; the next bar line is what turns
+> that into sound. Everything in this section still holds — it is the
+> mechanism the bar line acts on.
+
 ### The trigger is a PARAMETER, not a message
 
 `kSlotPlayBase + 0 … + 63`, appended after the output trim, two states each.
@@ -399,7 +415,7 @@ declick envelope, and nothing else.
 
 | | |
 |---|---|
-| Start | From **frame 0**. A pad you click plays its sample, not the middle of it. |
+| Start | From **frame 0**, at the bar line that launches it. A pad you click plays its sample, not the middle of it. |
 | Loop | The playhead wraps with `fmod`, and **the interpolation's second tap wraps to frame 0** — so the loop is continuous rather than fading into the last frame and jumping. A file whose ends do not match will still click; that is the file's business, not the player's. |
 | Pitch | The playhead advances `file rate / session rate` per output frame, linearly interpolated. A 48 k file in a 44.1 k session plays at pitch instead of a fifth flat. Linear interpolation is a gentle low-pass upward and mild aliasing downward — anything better is a resampler, and a resampler is a decision about latency and cost that belongs with the rest of the DSP. |
 | Declick | A **5 ms linear** ramp in on start and out on stop. A loop does not start at zero, and cutting one in or out at full gain is a click — sixty-four of which is what makes a sampler sound cheap. Linear, not the one-pole the trim uses, because an exponential approaches zero without reaching it and a voice asked to stop would never actually finish. |
@@ -453,7 +469,129 @@ A slot that took the drop, showed the name and did nothing when clicked would
 be the failure this project keeps coming back to: a control that looks live
 and is not.
 
-## 10. The SDK
+## 10. The transport, and launching on the bar
+
+Pads are **gated on the transport** and **launched on the bar line**. A click
+arms; the bar starts. A second click arms the stop, and the next bar ends it.
+
+### First, the trap the scaffold wrote down before it was needed
+
+`getProcessContextRequirements()` now declares `needTransportState`,
+`needProjectTimeMusic`, `needTempo` and `needTimeSignature`.
+
+**Without that declaration none of it arrives.** The `ProcessContext` has been
+opt-in since VST3 3.7 and the default is no flags: `data.processContext` comes
+through with nothing valid in it, the tempo reads 120 in every host, no bar
+line is ever found, and the validator prints `- None` rather than complaining.
+A plug-in built to launch on the bar would simply never launch, in every host,
+with nothing anywhere saying why. `AudioEffect` already implements
+`IProcessContextRequirements`; only the flags were missing.
+
+### Armed is not playing
+
+Two arrays in the processor, and one function that copies one into the other:
+
+```
+mArmed[64]     ← the trigger parameters, every block. What was clicked.
+mLaunched[64]  ← what the DSP has been told. What is sounding.
+
+applyBarLine() ← the ONLY thing that copies armed into launched.
+```
+
+`applyBarLine()` acts only on slots where the two differ, which makes it
+**idempotent**: a bar line that arrives twice — a host repeating a block, a
+cycle wrapping straight back onto it — cannot restart a pad that is already
+running, and a pad free-running past the bar is left alone.
+
+### Where the bar line is
+
+`Project6Transport.{h,cpp}`, SDK-free, and it is the file that most needed to
+be. Every way of getting this wrong is silent:
+
+| The mistake | What you would see |
+|---|---|
+| Bar length hard-coded to four | Right in 4/4, wrong everywhere else. 7/8 is 3.5 quarter notes. |
+| A line at offset 0 not counted | Every launch a bar late — but only when playback starts exactly on a bar, which is most of the time. |
+| A line fired by two blocks | A pad launched and relaunched a sample apart. |
+| A line never fired again | A one-bar cycle that works exactly once. |
+| Launching at the block edge instead of the sample | Up to 11 ms late at 512 samples, worse with the buffer size, audible against a click. |
+
+All five are covered by `tests/TransportTests.cpp`, which is why the
+arithmetic takes plain doubles and knows nothing about VST3. The processor's
+job is only to copy the `ProcessContext` into a `TransportInfo` and act on the
+sample offsets that come back — and it renders **segment by segment**, exactly
+as it already did for events, so a launch lands on its own sample.
+
+Two details worth keeping:
+
+* The "have I already fired this line" guard is cleared by a **jump
+  backwards**, compared against the previous block's **start** and not its
+  end. Against the end, a host handing over the same position twice would look
+  like a locate; against the start, a cycle wrap still does.
+* `BarClock::reset()` is called whenever the transport is not rolling. Without
+  it, rewinding to the bar you just played and pressing play launches nothing,
+  because that line is remembered as already fired.
+
+### The three levels of knowledge, degrading separately
+
+| What the host gives | What happens |
+|---|---|
+| No `ProcessContext` at all | **Launch immediately**, as the plug-in did before it had a transport. A sampler that is silent in a host reporting no transport looks broken, not careful. The panel says "No transport". |
+| A context, but no tempo / signature / position | Gate on the transport, but launch as soon as it rolls. Closer to what was asked for than never launching. |
+| Everything | Gate on the transport, launch on the bar. |
+
+Tempo, time signature and position are treated as **one flag**, not three: a
+tempo without a position cannot locate a bar either, so there is one thing for
+every caller to check.
+
+### Stopping the transport
+
+The voices are silenced and **the arming is left alone**. A pad stays lit
+while the transport is stopped and comes back in on the next bar line when it
+rolls again, from the top of its sample — which is what makes a rewind
+something you can do without re-clicking eight pads.
+
+`setupProcessing` and `setActive(true)` both clear `mLaunched`, because both
+reset the DSP and every voice with it. Miss that and `applyBarLine()` sees
+"already launched" and never starts anything again.
+
+### Showing the wait
+
+A pad that has been clicked and has not started yet must not look like a pad
+that ignored the click. So the processor **publishes what is actually
+sounding**, through the mechanism §8 described and did not yet need:
+`data.outputParameterChanges`, as a hidden read-only block appended after the
+triggers — the transport state, the position through the bar, the beats in a
+bar, and one flag per slot.
+
+**This is the append the trigger block's bound was written for.**
+`isSlotPlayParam` reads `id >= kSlotPlayBase && id < kSlotPlayEnd`, and now
+that something follows the triggers that bound is load-bearing rather than
+merely careful. `ParamsTests` §7 and §8 fail if it ever becomes `kNumParams`.
+One enum trap came with it: an enumerator following an explicitly valued one
+carries on from *that* value, so `kLiveTransport` is anchored to
+`kSlotPlayEnd` by hand or the published block starts one id past the gap.
+
+Only values that have **moved** are published, and the bar phase is quantised
+to 1/128 of a bar first — published raw it changes every block and would fill
+the host's queue with hundreds of points a second to move a playhead two
+pixels.
+
+What the panel does with it:
+
+* a slot is **amber** while armed and not sounding, **or** sounding and no
+  longer armed — the same mark for both, because "about to start" and "about
+  to stop" are the same fact; **red** while playing; plain otherwise;
+* the display is now **one bar wide**, ruled into beats from the host's own
+  numerator, with a playhead sweeping it and the transport state in words.
+  Its horizontal axis had no meaning before this and the comment in the file
+  said so; the transport is what gave it one.
+
+If a host never forwards published values, the panel falls back to showing
+what was **asked for** — the right pad lit early rather than the wrong one for
+ever. That is VocalFilter's rule for the same problem, and the same fallback.
+
+## 11. The SDK
 
 **In-tree clone**, chosen deliberately over pointing at a sibling project's
 checkout. The first `cmake` configure clones the VST3 SDK (~250 MB) into

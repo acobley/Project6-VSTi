@@ -60,7 +60,14 @@ void Project6Controller::addParameters ()
 		UString (title, str16BufferSize (String128)).assign (name ? name : "Parameter");
 		UString (units, str16BufferSize (String128)).assign (def.units ? def.units : "");
 
-		const int32 flags = ParameterInfo::kCanAutomate;
+		// The published values are READ-ONLY and HIDDEN: no host lists
+		// them, nothing outside the plug-in can write them, and they exist
+		// only as the route data.outputParameterChanges travels on.
+		// kIsHidden implies kIsReadOnly and the absence of kCanAutomate,
+		// but saying both is clearer than relying on that.
+		const int32 flags = isLiveParam (id)
+			? (ParameterInfo::kIsReadOnly | ParameterInfo::kIsHidden)
+			: ParameterInfo::kCanAutomate;
 
 		// A two-state or enumerated parameter wants a
 		// StringListParameter, not a RangeParameter with a step count:
@@ -302,6 +309,12 @@ tresult PLUGIN_API Project6Controller::setParamNormalized (ParamID tag, ParamVal
 	const tresult result = EditControllerEx1::setParamNormalized (tag, value);
 	if (result != kResultOk)
 		return result;
+
+	// A published value arriving is the proof that this host forwards
+	// data.outputParameterChanges at all. Until one does, the panel shows
+	// what was asked for rather than what is happening.
+	if (isLiveParam (tag))
+		mHaveLiveValues = true;
 
 	// The host, an automation lane and the panel all arrive here, so this
 	// is the ONE place a control's position is kept in step with the

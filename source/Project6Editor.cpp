@@ -233,7 +233,18 @@ void Project6Editor::refreshDisplay ()
 	if (mDisplay == nullptr || mController == nullptr)
 		return;
 
-	mDisplay->setLevel (plainOf (kOutputTrim), mController->dspSampleRate ());
+	// The published transport values. toInternal already rounds an Int
+	// parameter, so nothing here adds a half.
+	const int transport = static_cast<int> (
+		paramDef (kLiveTransport).toInternal (
+			mController->getParamNormalized (kLiveTransport)));
+	const int beats = static_cast<int> (
+		paramDef (kLiveBeatsPerBar).toInternal (
+			mController->getParamNormalized (kLiveBeatsPerBar)));
+
+	mDisplay->setState (plainOf (kOutputTrim), mController->dspSampleRate (),
+	                    transport, mController->getParamNormalized (kLiveBarPhase),
+	                    beats);
 }
 
 //------------------------------------------------------------------------
@@ -267,6 +278,15 @@ void Project6Editor::refreshSlots ()
 		// status second means at most one redraw shows the old verdict
 		// about the new file, and setStatus invalidates again.
 		mSlots[index]->setStatus (mController->slotStatus (index));
+
+		// What it is ACTUALLY doing, if the processor has told us. If it
+		// has not - a host that does not forward published values, or
+		// simply the first moments after the editor opened - fall back to
+		// what was asked for, so the pad lights early rather than never.
+		mSlots[index]->setSounding (
+			mController->getParamNormalized (
+				mController->hasLiveValues () ? liveSlotParam (index)
+				                              : slotPlayParam (index)) >= 0.5);
 	}
 }
 
@@ -337,11 +357,43 @@ void Project6Editor::updateControl (ParamID tag, ParamValue normalized)
 	if (frame == nullptr)
 		return;
 
+	//--------------------------------------------------------------------
+	// The published values have no control of their own behind them: they
+	// are what the processor says is happening, and the panel READS them.
+	// They are handled first, and return, so nothing below has to know
+	// they exist.
+	//--------------------------------------------------------------------
+	if (isLiveSlotParam (tag))
+	{
+		const int slot = slotOfLiveParam (tag);
+		if (isSlotIndex (slot) && mSlots[slot])
+			mSlots[slot]->setSounding (normalized >= 0.5);
+		return;
+	}
+
+	if (tag == kLiveTransport || tag == kLiveBarPhase || tag == kLiveBeatsPerBar)
+	{
+		refreshDisplay ();
+		return;
+	}
+
 	auto it = mControls.find (tag);
 	if (it == mControls.end () || it->second == nullptr)
 		return;
 
 	showValue (it->second, normalized);
+
+	// In a host that never forwards published values there is nothing to
+	// tell a pad it has started, so a trigger has to light its own slot.
+	// Where published values DO arrive this would be a lie for the length
+	// of one bar, which is exactly the wait the panel is meant to show -
+	// hence the guard.
+	if (isSlotPlayParam (tag) && !mController->hasLiveValues ())
+	{
+		const int slot = slotOfPlayParam (tag);
+		if (isSlotIndex (slot) && mSlots[slot])
+			mSlots[slot]->setSounding (normalized >= 0.5);
+	}
 
 	// The display reads parameters rather than controls, so it has to be
 	// told too - the timer would get there within 30 ms, but a control

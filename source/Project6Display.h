@@ -1,13 +1,20 @@
 //------------------------------------------------------------------------
 // Project6 - the panel display
 //
-// AN EMPTY CANVAS, on purpose. It is VocalFilter's SpyResponseDisplay with
-// everything vocal-tract-specific taken out: the plate, the border, the
-// caption band, the decibel grid and - the part that was expensive to get
-// right - drawPolyline(), which breaks a curve at the bottom of the scale
-// instead of clamping it. What it has to draw is one horizontal line at
-// the output trim, because that is the only thing this plug-in currently
-// computes.
+// ONE BAR WIDE AND THE TRIM'S RANGE TALL.
+//
+// It began as VocalFilter's SpyResponseDisplay with everything
+// vocal-tract-specific taken out, and its horizontal axis carried no
+// quantity at all - the grid was even thirds, waiting for something to
+// mean. The transport gave it one: the plot is now ONE BAR, ruled into
+// beats, with a playhead sweeping it. That is what tells a person why a
+// pad they clicked has not started yet, which is the question a panel
+// that launches on the bar has to be able to answer.
+//
+// The vertical axis is still decibels, with the output trim drawn across
+// it. The plate, the caption band and drawPolyline() - which breaks a
+// curve at the bottom of the scale instead of clamping it - are as they
+// were.
 //
 // It is NOT in Project6Controls.*, deliberately. That file is a control
 // set carried across three plug-ins and it knows nothing about any of
@@ -38,17 +45,17 @@ class SpyDisplay : public VSTGUI::CView
 public:
 	explicit SpyDisplay (const VSTGUI::CRect& size);
 
-	/** What the panel is showing: the output trim in decibels, and the
-	    rate the DSP is running at.
-
-	    The sample rate is carried even though nothing drawn yet depends on
-	    it, because the first thing that does will be a filter shape - a
-	    function of f/fs - and a display that had to start assuming 44.1 k
-	    would be drawing a filter nobody is hearing.
+	/** Everything the panel shows: the output trim in decibels, the rate
+	    the DSP is running at, the transport state as a TransportDisplay,
+	    where the transport is through the current bar, and how many beats
+	    that bar has.
 
 	    Returns true if anything moved, so the editor's timer can skip the
-	    redraw when nothing has. */
-	bool setLevel (double trimDb, double sampleRate);
+	    redraw when nothing has - which matters more now that a playhead
+	    means the answer is usually yes while the transport rolls and
+	    always no while it does not. */
+	bool setState (double trimDb, double sampleRate, int transport,
+	               double barPhase, int beatsPerBar);
 
 	void draw (VSTGUI::CDrawContext* context) override;
 
@@ -85,8 +92,13 @@ private:
 	                   const std::function<double (double)>& sampler,
 	                   const VSTGUI::CColor& colour, VSTGUI::CCoord width);
 
-	double mTrimDb     = kTrimDefaultDb;
-	double mSampleRate = 44100.0;
+	void drawPlayhead (VSTGUI::CDrawContext* context, const VSTGUI::CRect& plot);
+
+	double mTrimDb      = kTrimDefaultDb;
+	double mSampleRate  = 44100.0;
+	int    mTransport   = 0;          ///< a TransportDisplay
+	double mBarPhase    = 0.0;
+	int    mBeatsPerBar = 4;
 };
 
 //------------------------------------------------------------------------

@@ -55,8 +55,45 @@ enum Param : Steinberg::Vst::ParamID
 	// APPENDED after kOutputTrim, which is why the trim is still id 0.
 	//--------------------------------------------------------------------
 	kSlotPlayBase,
+	kSlotPlayEnd = kSlotPlayBase + kSlotCount,
 
-	kNumParams = kSlotPlayBase + kSlotCount
+	//--------------------------------------------------------------------
+	// WHAT THE DSP IS ACTUALLY DOING, published by the processor for the
+	// panel. Read-only and hidden, so no host lists them and nothing
+	// outside the plug-in can write them.
+	//
+	// This is the route a per-block value takes from the processor to the
+	// controller, and the reason it is not a message is that a message
+	// sent from process() is silently discarded by the host's connection
+	// proxy - it returns success and does nothing.
+	// data.outputParameterChanges is the mechanism that works.
+	//
+	// They matter here because a pad's PARAMETER and a pad's SOUND are no
+	// longer the same thing: a click arms a slot, and the bar line is
+	// what starts it. Without these the panel could only show what had
+	// been asked for, never what was happening - and "armed, waiting for
+	// the bar" and "playing" are exactly the two states a person needs to
+	// tell apart.
+	//--------------------------------------------------------------------
+	// = kSlotPlayEnd, spelt out: an enumerator after an explicitly valued
+	// one carries on from THAT value, so leaving this bare would start the
+	// published block one id past where the triggers end and leave a hole.
+	kLiveTransport = kSlotPlayEnd,   ///< TransportDisplay: unknown, stopped or playing
+	kLiveBarPhase,       ///< 0..1 through the current bar
+	kLiveBeatsPerBar,    ///< the time signature's numerator, for the panel's grid
+	kLiveSlotBase,       ///< 64 of them: is this slot actually sounding?
+	kLiveSlotEnd = kLiveSlotBase + kSlotCount,
+
+	kNumParams = kLiveSlotEnd
+};
+
+/** What kLiveTransport carries. */
+enum TransportDisplay
+{
+	kTransportUnknown = 0,   ///< the host told us nothing; pads launch at once
+	kTransportStopped = 1,
+	kTransportPlaying = 2,
+	kTransportStates  = 3
 };
 
 /** The trigger for one slot. The only place this arithmetic lives. */
@@ -65,20 +102,52 @@ constexpr Steinberg::Vst::ParamID slotPlayParam (int slot)
 	return static_cast<Steinberg::Vst::ParamID> (kSlotPlayBase + slot);
 }
 
-/** One past the last trigger.
+/** BOUNDED BY ITS OWN BLOCK, NOT BY THE END OF THE TABLE.
 
-    BOUNDED BY THE BLOCK, NOT BY THE TABLE. VocalFilter's equivalent
-    predicate read `id < kNumParams`, survived one append, and then
-    misclassified the parameter that had just been added after it: the
-    processor refused to record it and the editor refused to redraw for
-    it, so the control wrote its parameter, the host saw the write, and
-    nothing whatsoever happened. A range check whose upper bound is "the
-    end of the table" is a bug waiting for the next append. */
-constexpr Steinberg::Vst::ParamID kSlotPlayEnd = kSlotPlayBase + kSlotCount;
+    VocalFilter's equivalent predicate read `id < kNumParams`, survived one
+    append, and then misclassified the parameter that had just been added
+    after it: the processor refused to record it and the editor refused to
+    redraw for it, so the control wrote its parameter, the host saw the
+    write, and nothing whatsoever happened.
 
+    That append has now happened here - the published block above sits
+    after the triggers - so this bound is no longer merely careful, it is
+    load-bearing. ParamsTests section 7 fails if it ever becomes
+    kNumParams again. */
 constexpr bool isSlotPlayParam (Steinberg::Vst::ParamID id)
 {
 	return id >= kSlotPlayBase && id < kSlotPlayEnd;
+}
+
+//------------------------------------------------------------------------
+// The published block
+//------------------------------------------------------------------------
+
+constexpr Steinberg::Vst::ParamID kLiveBase = kLiveTransport;
+constexpr Steinberg::Vst::ParamID kLiveEnd  = kLiveSlotEnd;
+
+/** True for anything the processor publishes. These are never written by
+    a host, never saved, and never looked up in the editor's control map -
+    the panel reads them, it does not own controls for them. */
+constexpr bool isLiveParam (Steinberg::Vst::ParamID id)
+{
+	return id >= kLiveBase && id < kLiveEnd;
+}
+
+/** Is this slot actually making a sound? */
+constexpr Steinberg::Vst::ParamID liveSlotParam (int slot)
+{
+	return static_cast<Steinberg::Vst::ParamID> (kLiveSlotBase + slot);
+}
+
+constexpr bool isLiveSlotParam (Steinberg::Vst::ParamID id)
+{
+	return id >= kLiveSlotBase && id < kLiveSlotEnd;
+}
+
+constexpr int slotOfLiveParam (Steinberg::Vst::ParamID id)
+{
+	return static_cast<int> (id - kLiveSlotBase);
 }
 
 /** Which slot a trigger belongs to. Only meaningful for a trigger id. */
@@ -163,6 +232,18 @@ extern const ParamDef kParams[kNumTableParams];
 
 /** The definition every slot trigger shares. */
 const ParamDef& slotPlayDef ();
+
+/** The published shapes: the transport state, the position through the
+    bar, how many beats are in one, and one slot's "is it sounding". */
+const ParamDef& liveTransportDef ();
+const ParamDef& liveBarPhaseDef ();
+const ParamDef& liveBeatsPerBarDef ();
+const ParamDef& liveSlotDef ();
+
+/** The widest bar the panel will draw a grid for. Beyond it the grid is
+    noise rather than information, and a host reporting something sillier
+    than this is reporting nonsense. */
+constexpr int kMaxBeatsPerBar = 32;
 
 /** Look a definition up by id, RANGE-CHECKED, table or block. Returns the
     trim's definition for anything unknown - including kBypass, which is

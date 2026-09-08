@@ -3,6 +3,7 @@
 //------------------------------------------------------------------------
 
 #include "Project6Display.h"
+#include "Project6Params.h"
 
 #include <algorithm>
 #include <cmath>
@@ -34,10 +35,13 @@ const CColor kOutputTrace (255, 255, 255, 205);
     on the bottom of the trim's travel. */
 constexpr double kDbLines[] = { 12.0, 0.0, -12.0, -24.0, -36.0, -48.0, -60.0 };
 
-/** Vertical lines, as fractions of the width. There is no horizontal
-    quantity yet - the axis is waiting for one - so the grid is even
-    thirds rather than pretending to be a frequency scale it is not. */
-constexpr double kVerticals[] = { 0.25, 0.5, 0.75 };
+/** The playhead: where the transport is through the bar. Bright, because
+    it is the only thing on the panel that moves, and it is what says how
+    long a clicked pad still has to wait. */
+const CColor kPlayhead     (255, 190,  60, 255);
+/** The same when the transport is stopped - still drawn, at the position
+    the transport is parked at, but not competing for attention. */
+const CColor kPlayheadIdle (255, 190,  60,  70);
 
 /** Points across the plot. One per pixel would be wasteful on a wide panel
     and jagged on a narrow one; a fixed count keeps the curve smooth and
@@ -55,12 +59,20 @@ SpyDisplay::SpyDisplay (const CRect& size)
 }
 
 //------------------------------------------------------------------------
-bool SpyDisplay::setLevel (double trimDb, double sampleRate)
+bool SpyDisplay::setState (double trimDb, double sampleRate, int transport,
+                           double phase, int beatsPerBar)
 {
-	const bool changed = (trimDb != mTrimDb) || (sampleRate != mSampleRate);
+	const int beats = std::min (kMaxBeatsPerBar, std::max (1, beatsPerBar));
 
-	mTrimDb     = trimDb;
-	mSampleRate = sampleRate;
+	const bool changed = (trimDb != mTrimDb) || (sampleRate != mSampleRate)
+	                     || (transport != mTransport) || (phase != mBarPhase)
+	                     || (beats != mBeatsPerBar);
+
+	mTrimDb      = trimDb;
+	mSampleRate  = sampleRate;
+	mTransport   = transport;
+	mBarPhase    = std::min (1.0, std::max (0.0, phase));
+	mBeatsPerBar = beats;
 
 	if (changed)
 		invalid ();
@@ -84,10 +96,15 @@ void SpyDisplay::drawGrid (CDrawContext* context, const CRect& plot)
 {
 	context->setLineWidth (1.);
 
-	for (double fraction : kVerticals)
+	// ONE LINE PER BEAT, and the downbeat brighter - the plot is one bar
+	// wide, so this is the ruler a person reads the playhead against. The
+	// beat count is the host's own time signature numerator, published
+	// for exactly this: a 3/4 bar ruled into four would be worse than no
+	// ruling at all.
+	for (int beat = 0; beat < mBeatsPerBar; ++beat)
 	{
-		context->setFrameColor (kGridLine);
-		const CCoord x = xOf (fraction, plot);
+		context->setFrameColor ((beat == 0) ? kGridStrong : kGridLine);
+		const CCoord x = xOf (beat / static_cast<double> (mBeatsPerBar), plot);
 		context->drawLine (CPoint (x, plot.top), CPoint (x, plot.bottom));
 	}
 
@@ -98,6 +115,22 @@ void SpyDisplay::drawGrid (CDrawContext* context, const CRect& plot)
 		const CCoord y = yOf (decibels, plot);
 		context->drawLine (CPoint (plot.left, y), CPoint (plot.right, y));
 	}
+}
+
+//------------------------------------------------------------------------
+void SpyDisplay::drawPlayhead (CDrawContext* context, const CRect& plot)
+{
+	// Nothing to point at: the host reported no transport at all, so the
+	// bar this plot draws is imaginary and a playhead on it would be a
+	// claim rather than a readout.
+	if (mTransport == kTransportUnknown)
+		return;
+
+	const CCoord x = xOf (mBarPhase, plot);
+
+	context->setLineWidth (mTransport == kTransportPlaying ? 2. : 1.);
+	context->setFrameColor (mTransport == kTransportPlaying ? kPlayhead : kPlayheadIdle);
+	context->drawLine (CPoint (x, plot.top), CPoint (x, plot.bottom));
 }
 
 //------------------------------------------------------------------------
@@ -198,12 +231,27 @@ void SpyDisplay::draw (CDrawContext* context)
 
 	context->setFont (kNormalFontVerySmall);
 	context->setFontColor (kCaption);
-	context->drawString ("Output", caption, kLeftText, true);
+
+	// THE TRANSPORT, in words, because it is the answer to "why has the
+	// pad I clicked not started". "No transport" is not a fault: it is a
+	// host that reports none, in which case pads launch at once and the
+	// bar ruler below is decoration.
+	{
+		const char* state = "No transport";
+		if (mTransport == kTransportPlaying)
+			state = "Playing";
+		else if (mTransport == kTransportStopped)
+			state = "Stopped";
+
+		char buffer[64];
+		std::snprintf (buffer, sizeof (buffer), "%s  -  %d/bar", state, mBeatsPerBar);
+		context->drawString (buffer, caption, kLeftText, true);
+	}
 
 	// The rate the DSP is actually running at, in the corner. It is here
 	// because it is the one fact the panel has that the host's own generic
 	// view does not, and because a wrong one is the first thing to suspect
-	// when a curve added later does not match what is heard.
+	// when a sample plays at the wrong pitch.
 	{
 		char buffer[32];
 		std::snprintf (buffer, sizeof (buffer), "%.4g kHz", mSampleRate / 1000.0);
@@ -222,6 +270,9 @@ void SpyDisplay::draw (CDrawContext* context)
 			return linearToDb (gain, kMinDb - 1.0);   // below the floor = break
 		},
 		kOutputTrace, 2.0);
+
+	// LAST, over everything, because it is the only thing that moves.
+	drawPlayhead (context, plot);
 
 	setDirty (false);
 }

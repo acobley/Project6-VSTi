@@ -38,16 +38,105 @@ const ParamDef& slotPlayDef ()
 }
 
 //------------------------------------------------------------------------
+const ParamDef& liveTransportDef ()
+{
+	// An integer rather than an enumerated parameter: it is hidden, so no
+	// host ever renders its choices, and a StringListParameter would buy
+	// three strings nobody reads.
+	static const ParamDef def =
+		{ kLiveTransport, "Transport", "", ParamType::Int,
+		  0.0, static_cast<double> (kTransportStates - 1), 0.0,
+		  0.0, static_cast<double> (kTransportStates - 1), kTransportStates - 1, false };
+	return def;
+}
+
+//------------------------------------------------------------------------
+const ParamDef& liveBarPhaseDef ()
+{
+	static const ParamDef def =
+		{ kLiveBarPhase, "Bar Phase", "", ParamType::Float,
+		  0.0, 1.0, 0.0, 0.0, 1.0, 0, false };
+	return def;
+}
+
+//------------------------------------------------------------------------
+const ParamDef& liveBeatsPerBarDef ()
+{
+	// The panel draws one vertical line per beat, so it needs the
+	// numerator - a 3/4 bar ruled into four is worse than no ruling at
+	// all. Published rather than assumed for exactly that reason.
+	static const ParamDef def =
+		{ kLiveBeatsPerBar, "Beats Per Bar", "", ParamType::Int,
+		  1.0, static_cast<double> (kMaxBeatsPerBar), 4.0,
+		  1.0, static_cast<double> (kMaxBeatsPerBar), kMaxBeatsPerBar - 1, false };
+	return def;
+}
+
+//------------------------------------------------------------------------
+const ParamDef& liveSlotDef ()
+{
+	static const ParamDef def =
+		{ kLiveSlotBase, "Slot Sounding", "", ParamType::Bool,
+		  0.0, 1.0, 0.0, 0.0, 1.0, 1, false };
+	return def;
+}
+
+//------------------------------------------------------------------------
+namespace {
+
+/** "A1" .. "H8" - the grid reference of a slot, lettered by row and
+    numbered by column, so a parameter name says where the pad is on the
+    panel rather than making the reader divide by eight. */
+std::string slotReference (int slot)
+{
+	const int row = slot / kSlotColumns;
+	const int column = slot % kSlotColumns;
+	return std::string (1, static_cast<char> ('A' + row)) + std::to_string (column + 1);
+}
+
+/** Built once, on first use, and never touched again: ParamDef and the
+    SDK both want a const char*, so the strings have to outlive the call,
+    and sixty-four literals would be sixty-four lines differing in one
+    character. */
+const std::vector<std::string>& slotNames (const char* suffix)
+{
+	static std::vector<std::string> play;
+	static std::vector<std::string> sounding;
+
+	std::vector<std::string>& names = (suffix[0] == 'P') ? play : sounding;
+	if (names.empty ())
+	{
+		names.reserve (kSlotCount);
+		for (int slot = 0; slot < kSlotCount; ++slot)
+			names.push_back ("Slot " + slotReference (slot) + " " + suffix);
+	}
+	return names;
+}
+
+} // namespace
+
+//------------------------------------------------------------------------
 // The table has to agree with itself. These cost nothing at run time and
 // fire at compile time, which is the only place a typo in a table like
 // this is cheap to find.
 //------------------------------------------------------------------------
 static_assert (kNumTableParams == 1, "one described parameter: the output trim");
-static_assert (kNumParams == kNumTableParams + kSlotCount,
-               "the table plus the trigger block is every parameter there is");
-static_assert (kSlotPlayEnd == kNumParams,
-               "the trigger block currently runs to the end - if you append after "
-               "it, isSlotPlayParam must still be bounded by kSlotPlayEnd");
+static_assert (kNumParams == kNumTableParams + kSlotCount + 3 + kSlotCount,
+               "the trim, 64 triggers, the transport, the bar phase, the beats per "
+               "bar and 64 published slot states is every parameter there is");
+// THE APPEND THE BOUND WAS WRITTEN FOR. The published block now sits
+// after the triggers, so isSlotPlayParam's upper bound is load-bearing
+// rather than merely careful.
+static_assert (kSlotPlayEnd < kNumParams,
+               "something follows the trigger block, so isSlotPlayParam must be "
+               "bounded by kSlotPlayEnd and never by kNumParams");
+static_assert (kLiveBase == kSlotPlayEnd, "the published block starts where the triggers end");
+static_assert (kLiveEnd == kNumParams, "and currently runs to the end");
+static_assert (! isSlotPlayParam (kLiveTransport), "a published id is not a trigger");
+static_assert (! isLiveParam (slotPlayParam (kSlotCount - 1)), "and a trigger is not published");
+static_assert (isLiveParam (kLiveTransport) && isLiveParam (kLiveSlotEnd - 1),
+               "the published block covers its own ends");
+static_assert (slotOfLiveParam (liveSlotParam (42)) == 42, "the two directions agree");
 static_assert (kNumStoredParams == kNumTableParams,
                "only the trim is saved; the triggers are a moment, not a setting");
 static_assert (kBypass > kNumParams,
@@ -67,6 +156,15 @@ const ParamDef& paramDef (Steinberg::Vst::ParamID id)
 	if (isSlotPlayParam (id))
 		return slotPlayDef ();
 
+	if (id == kLiveTransport)
+		return liveTransportDef ();
+	if (id == kLiveBarPhase)
+		return liveBarPhaseDef ();
+	if (id == kLiveBeatsPerBar)
+		return liveBeatsPerBarDef ();
+	if (isLiveSlotParam (id))
+		return liveSlotDef ();
+
 	return kParams[kOutputTrim];
 }
 
@@ -76,34 +174,20 @@ const char* paramTitle (Steinberg::Vst::ParamID id)
 	if (id < kNumTableParams)
 		return kParams[id].title;
 
+	// LETTERED BY ROW, NUMBERED BY COLUMN - "Slot C6 Play" - so a name in
+	// a host's automation lane says where the pad is on the panel.
 	if (isSlotPlayParam (id))
-	{
-		// LETTERED BY ROW, NUMBERED BY COLUMN - "Slot C6 Play" - so a name
-		// in a host's automation lane says where the pad is on the panel.
-		// A flat 1..64 would make the reader do the division.
-		//
-		// Built once, on first use, and never touched again: ParamDef and
-		// the SDK both want a const char*, so the strings have to outlive
-		// the call, and sixty-four literals would be sixty-four lines
-		// differing in one character.
-		static const std::vector<std::string> titles = []
-		{
-			std::vector<std::string> names;
-			names.reserve (kSlotCount);
-			for (int slot = 0; slot < kSlotCount; ++slot)
-			{
-				const int row = slot / kSlotColumns;
-				const int column = slot % kSlotColumns;
-				names.push_back (std::string ("Slot ")
-				                 + static_cast<char> ('A' + row)
-				                 + std::to_string (column + 1)
-				                 + " Play");
-			}
-			return names;
-		}();
+		return slotNames ("Play")[static_cast<std::size_t> (slotOfPlayParam (id))].c_str ();
 
-		return titles[static_cast<std::size_t> (slotOfPlayParam (id))].c_str ();
-	}
+	if (isLiveSlotParam (id))
+		return slotNames ("Sounding")[static_cast<std::size_t> (slotOfLiveParam (id))].c_str ();
+
+	if (id == kLiveTransport)
+		return liveTransportDef ().title;
+	if (id == kLiveBarPhase)
+		return liveBarPhaseDef ().title;
+	if (id == kLiveBeatsPerBar)
+		return liveBeatsPerBarDef ().title;
 
 	if (id == kBypass)
 		return "Bypass";

@@ -26,6 +26,9 @@ const CColor kWellFillFull ( 58,  58,  58, 255);
     that has few to spare, and on a grid of sixty-four cells the eye finds
     a block of colour faster than it finds four lit dots. */
 const CColor kWellFillLive ( 96,  34,  34, 255);
+/** ARMED AND WAITING for the bar line. Dimmer than playing and warmer
+    than idle: something has been asked for and has not happened yet. */
+const CColor kWellFillArmed( 74,  60,  30, 255);
 /** Recessed: the DXi's Draw3dRect colours the OTHER WAY ROUND from the
     raised bar in Project6Controls.cpp. Same two values, opposite corners. */
 const CColor kWellShadow   (100, 100, 100, 255);
@@ -43,6 +46,10 @@ const CColor kSlotTextBad  (208, 132, 132, 255);
 
 /** The border while the loop is running. The DXi's own lamp red. */
 const CColor kLiveBorder   (255,  70,  70, 255);
+/** The border while a change is waiting for the next bar line - in
+    EITHER direction, because "about to start" and "about to stop" are the
+    same fact about the same slot and want the same mark. */
+const CColor kPendingBorder(255, 190,  60, 255);
 /** The frame while an acceptable file is over the slot. Green, the
     panel's own label colour, so "this one, and yes" is one glance. */
 const CColor kDropAccept   ( 50, 255,  50, 255);
@@ -117,6 +124,16 @@ void SpySampleSlot::setStatus (SampleStatus status)
 }
 
 //------------------------------------------------------------------------
+void SpySampleSlot::setSounding (bool sounding)
+{
+	if (sounding == mSounding)
+		return;
+
+	mSounding = sounding;
+	invalid ();
+}
+
+//------------------------------------------------------------------------
 void SpySampleSlot::refreshTooltip ()
 {
 	// The full path, because the name on the slot is shortened and two
@@ -166,7 +183,7 @@ void SpySampleSlot::onMouseDownEvent (MouseDownEvent& event)
 	// can record and undo, and what carries the change to the processor
 	// and to any other editor open on this instance.
 	beginEdit ();
-	setValueNormalized (playing () ? 0.f : 1.f);
+	setValueNormalized (armed () ? 0.f : 1.f);
 	valueChanged ();
 	endEdit ();
 	invalid ();
@@ -335,23 +352,32 @@ void SpySampleSlot::drawName (CDrawContext* context, const CRect& band)
 void SpySampleSlot::draw (CDrawContext* context)
 {
 	const CRect r = getViewSize ();
-	const bool live = playing () && playable ();
+
+	// THREE STATES, from two facts. Sounding is what the processor says is
+	// happening; armed is what was clicked. A slot that is armed and not
+	// yet sounding is waiting for the bar line - and so is one that is
+	// sounding and no longer armed.
+	const bool sounding = mSounding && playable ();
+	const bool waiting  = playable () && pending ();
 
 	// The well itself.
-	context->setFillColor (live ? kWellFillLive
-	                            : (mPath.empty () ? kWellFill : kWellFillFull));
+	context->setFillColor (sounding ? kWellFillLive
+	                                : (waiting ? kWellFillArmed
+	                                           : (mPath.empty () ? kWellFill : kWellFillFull)));
 	context->drawRect (r, kDrawFilled);
 	drawWell (context, r, kWellShadow, kWellHigh);
 
-	// Playing, or an acceptable file is over this slot. Both are drawn
-	// inside the well's own edge so the two do not fight; the drag wins
-	// where they coincide, because it is about what is happening NOW.
-	if (live || mDragOver)
+	// An edge, for whichever of the three things is true. They are drawn
+	// inside the well's own edge so the two do not fight, and the order is
+	// what is most immediate: a drag is happening now, a pending change is
+	// about to, and playing is already.
+	if (mDragOver || waiting || sounding)
 	{
 		CRect highlight (r);
 		highlight.inset (1., 1.);
 		context->setLineWidth (1.);
-		context->setFrameColor (mDragOver ? kDropAccept : kLiveBorder);
+		context->setFrameColor (mDragOver ? kDropAccept
+		                                  : (waiting ? kPendingBorder : kLiveBorder));
 		context->drawRect (highlight, kDrawStroked);
 	}
 

@@ -1,15 +1,21 @@
 # Project6
 
 A VST3 and Audio Unit **instrument** for macOS: an **8 × 8 bank of looping
-sample pads**.
+sample pads, launched on the bar**.
 
-Drag a `.wav` onto a slot from the Finder and it loads. Click the slot and it
-loops; click it again and it stops. The filename shows in white, the slot
-lights while it plays, and the path is saved with the project. Every pad is
-also a host parameter, so a DAW can automate, record and undo it.
+Drag a `.wav` onto a slot from the Finder and it loads. Click the slot to arm
+it; it starts **when the transport crosses the next bar line**. Click again
+and it stops on the bar after that. Nothing sounds while the transport is
+stopped, and a pad left armed comes back in on the next bar when it rolls
+again.
 
-Underneath that it is still the shell a bigger instrument goes inside — buses,
-parameter plumbing, event handling, state and four test suites, with the traps
+An armed slot glows amber while it waits and red while it plays, so the wait
+is visible rather than mysterious. The display beside the pads is one bar
+wide, ruled into beats, with a playhead showing how long that wait has left.
+
+Every pad is also a host parameter, so a DAW can automate, record and undo it.
+Underneath, it is still the shell a bigger instrument goes inside — buses,
+parameter plumbing, event handling, state and five test suites, with the traps
 already handled. There is no note handling yet: the event input exists and
 consumes events, but nothing is pitched.
 
@@ -80,6 +86,15 @@ c++ -std=c++17 -O2 -Isource tests/WavTests.cpp source/Project6Sample.cpp \
     -o /tmp/wavtests && /tmp/wavtests
 ```
 
+`tests/TransportTests.cpp` is SDK-free too, and is the one to run first after
+touching anything about launching: every way of getting bar detection wrong is
+silent.
+
+```sh
+c++ -std=c++17 -O2 -Isource tests/TransportTests.cpp \
+    source/Project6Transport.cpp -o /tmp/transporttests && /tmp/transporttests
+```
+
 `tests/ParamsTests.cpp` needs the SDK's **headers** only, `vsttypes.h` being
 typedefs:
 
@@ -105,6 +120,7 @@ python3 tools/check-editor.py
 | `source/Project6Dsp.{h,cpp}` | the audio line: 64 looping voices and the output trim — **no SDK header may enter these** |
 | `source/Project6Sample.{h,cpp}` | the WAV reader and the decoded buffers — **SDK-free too** |
 | `source/Project6Slots.{h,cpp}` | the 8 × 8 slot bank and its path rules — **and these** |
+| `source/Project6Transport.{h,cpp}` | the bar clock: where a bar line falls in a block — **and these** |
 | `source/Project6SlotState.{h,cpp}` | the slot block of the state stream, written and read by one pair of functions |
 | `source/Project6Params.{h,cpp}` | the parameter table: normalised, plain and internal ranges |
 | `source/Project6Processor.{h,cpp}` | `AudioEffect` — buses, events, state, the authoritative slot bank |
@@ -114,7 +130,7 @@ python3 tools/check-editor.py
 | `source/Project6SlotView.{h,cpp}` | one slot: the drop target and how it draws a filename |
 | `source/Project6Editor.{h,cpp}` | the panel |
 | `source/Project6Entry.cpp` | the factory |
-| `tests/` | `DspTests.cpp`, `SlotTests.cpp` and `WavTests.cpp`, SDK-free; `ParamsTests.cpp`, headers only |
+| `tests/` | `DspTests.cpp`, `SlotTests.cpp`, `WavTests.cpp` and `TransportTests.cpp`, SDK-free; `ParamsTests.cpp`, headers only |
 | `tools/check-editor.py` | the editor guard |
 | `resource/au-info.plist` | the AU's four-character identity and bus layouts |
 
@@ -138,3 +154,7 @@ python3 tools/check-editor.py
    are loaded on the UI thread, published to the DSP as a bare pointer, and
    the buffer they replace is retired until the block counter proves no block
    can still be reading it. `PORTING-NOTES.md` §9 has the whole handoff.
+5. **A click arms; the bar line launches.** What was asked for and what is
+   sounding are two different facts, and the panel shows both — see
+   `PORTING-NOTES.md` §10. If you change anything about that, run
+   `TransportTests` first: bar detection fails silently.

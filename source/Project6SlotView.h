@@ -2,8 +2,17 @@
 // Project6 - the sample slot view
 //
 // One cell of the 8 x 8 grid. Drag a .wav onto it from the Finder and it
-// takes the file; click it and the file loops; click it again and the
-// loop stops. Empty, it is blank - just the well.
+// takes the file; click it and the file loops from the next bar line;
+// click it again and it stops at the one after that. Empty, it is blank -
+// just the well.
+//
+// THE CLICK AND THE SOUND ARE NOW TWO DIFFERENT THINGS, and the slot has
+// to show both. What was asked for is the trigger parameter - this
+// control's own value. What is happening is published back by the
+// processor and arrives through setSounding(). While they disagree the
+// slot is WAITING FOR A BAR LINE, in whichever direction, and says so
+// with an amber edge; a pad clicked into silence with no visible change
+// would be the worst kind of control this panel could have.
 //
 // IT IS HALF A PARAMETER AND HALF NOT, and the split is worth knowing:
 //
@@ -74,6 +83,12 @@ public:
 		return !mPath.empty () && mStatus == SampleStatus::Loaded;
 	}
 
+	/** Whether this slot is ACTUALLY making a sound, as published by the
+	    processor. Not the same as its parameter: between a click and the
+	    next bar line the two deliberately disagree. */
+	void setSounding (bool sounding);
+	bool sounding () const { return mSounding; }
+
 	/** Called with (index, path) when a file the plug-in will take is
 	    dropped here. */
 	void setHandler (std::function<void (int, const std::string&)> handler);
@@ -128,11 +143,17 @@ private:
 	    play. */
 	void refreshTooltip ();
 
-	bool playing () const { return getValueNormalized () >= 0.5f; }
+	/** What the user has asked for - this control's own parameter. */
+	bool armed () const { return getValueNormalized () >= 0.5f; }
+
+	/** Armed and not yet sounding, or sounding and no longer armed:
+	    either way, waiting for a bar line. */
+	bool pending () const { return armed () != mSounding; }
 
 	int mIndex = 0;
 	std::string mPath;
 	SampleStatus mStatus = SampleStatus::Empty;
+	bool mSounding = false;
 	std::function<void (int, const std::string&)> mHandler;
 	bool mDragOver = false;
 };

@@ -151,10 +151,12 @@ int main ()
 		{
 			const ParamDef& def = paramDef (id);
 
-			// A two-state parameter SNAPS rather than scaling - that is
-			// toInternal doing its job, not the ranges differing - so it
-			// is checked on its own, below.
-			if (def.type == ParamType::Bool)
+			// A two-state or integer parameter SNAPS or ROUNDS rather
+			// than scaling - that is toInternal doing its job, not the
+			// ranges differing - so those are checked on their own,
+			// below.
+			if (def.type == ParamType::Bool || def.type == ParamType::Int
+			    || def.type == ParamType::Enum)
 				continue;
 
 			for (int step = 0; step <= 20; ++step)
@@ -171,6 +173,22 @@ int main ()
 		check (trigger.toInternal (0.49) == 0.0, "just under half is still stopped");
 		check (trigger.toInternal (0.5)  == 1.0, "half is playing");
 		check (trigger.toInternal (1.0)  == 1.0, "and so is 1");
+
+		// And the rounding, which is what the panel relies on to turn a
+		// published transport state back into an enum.
+		const ParamDef& state = liveTransportDef ();
+		check (state.toInternal (state.toNormalized (kTransportUnknown)) == kTransportUnknown,
+		       "the transport state round-trips through normalised: unknown");
+		check (state.toInternal (state.toNormalized (kTransportStopped)) == kTransportStopped,
+		       "stopped");
+		check (state.toInternal (state.toNormalized (kTransportPlaying)) == kTransportPlaying,
+		       "and playing");
+
+		const ParamDef& beats = liveBeatsPerBarDef ();
+		bool beatsRoundTrip = true;
+		for (int n = 1; n <= kMaxBeatsPerBar; ++n)
+			beatsRoundTrip &= (static_cast<int> (beats.toInternal (beats.toNormalized (n))) == n);
+		check (beatsRoundTrip, "and every bar length from 1 to 32 does too");
 	}
 
 	//--------------------------------------------------------------------
@@ -247,7 +265,9 @@ int main ()
 	{
 		check (kSlotPlayBase == kOutputTrim + 1, "the block is APPENDED after the trim");
 		check (kSlotPlayEnd - kSlotPlayBase == kSlotCount, "one trigger per slot");
-		check (kNumParams == kSlotPlayEnd, "and it currently runs to the end");
+		check (kNumParams > kSlotPlayEnd,
+		       "and something is now appended AFTER it - which is what makes the "
+		       "bound below load-bearing");
 
 		// The two directions have to agree for every slot, not just for
 		// one - an off-by-one here plays the wrong pad.
@@ -290,6 +310,60 @@ int main ()
 		       "a host's list reads Stopped");
 		check (std::string (paramChoiceName (slotPlayParam (0), 1)) == "Playing",
 		       "and Playing, rather than 0 and 1");
+	}
+
+	//--------------------------------------------------------------------
+	section ("8. The published block");
+	//--------------------------------------------------------------------
+	{
+		check (kLiveBase == kSlotPlayEnd, "it starts where the triggers end, with no hole");
+		check (kLiveEnd == kNumParams,    "and currently runs to the end");
+		check (kLiveSlotEnd - kLiveSlotBase == kSlotCount, "one published state per slot");
+
+		// The enum trap this block was written into: an enumerator after
+		// an explicitly valued one carries on from THAT value, so
+		// kLiveTransport had to be anchored to kSlotPlayEnd by hand. If
+		// it is ever left bare, this is the check that notices the hole.
+		check (kLiveTransport == kSlotPlayEnd, "the first published id is not one past the gap");
+		check (kLiveBarPhase == kLiveTransport + 1, "and they are contiguous");
+		check (kLiveBeatsPerBar == kLiveBarPhase + 1, "all the way");
+		check (kLiveSlotBase == kLiveBeatsPerBar + 1, "to the per-slot block");
+
+		bool roundTrips = true, classified = true, notTriggers = true;
+		for (int slot = 0; slot < kSlotCount; ++slot)
+		{
+			const ParamID id = liveSlotParam (slot);
+			roundTrips  &= (slotOfLiveParam (id) == slot);
+			classified  &= isLiveParam (id) && isLiveSlotParam (id);
+			// THE WHOLE POINT OF THE BOUND. Every one of these ids is
+			// past kSlotPlayEnd, so a predicate reading `id < kNumParams`
+			// would classify all sixty-four of them as triggers.
+			notTriggers &= ! isSlotPlayParam (id);
+		}
+		check (roundTrips,  "slot -> published id -> slot round-trips for all 64");
+		check (classified,  "and all 64 are classified as published");
+		check (notTriggers, "NEGATIVE CONTROL: and none of them as a trigger");
+
+		check (isLiveParam (kLiveTransport) && isLiveParam (kLiveBarPhase)
+		           && isLiveParam (kLiveBeatsPerBar),
+		       "the three single published values are in the block");
+		check (! isLiveParam (kOutputTrim), "the trim is not");
+		check (! isLiveParam (kNumParams),  "and neither is one past the end");
+
+		// They are NOT saved, and both sides reset them before reading.
+		check (kNumStoredParams < kLiveBase, "nothing published is in the saved block");
+
+		// Names, so a debugger and a host's own list are readable.
+		check (std::string (paramTitle (liveSlotParam (0)))  == "Slot A1 Sounding",
+		       "a published slot state is named for its cell");
+		check (std::string (paramTitle (liveSlotParam (63))) == "Slot H8 Sounding",
+		       "at both ends");
+		check (std::string (paramTitle (liveSlotParam (0)))
+		           != std::string (paramTitle (slotPlayParam (0))),
+		       "and is not the same name as its trigger");
+		check (std::string (paramTitle (kLiveTransport)) == "Transport", "the transport");
+		check (std::string (paramTitle (kLiveBeatsPerBar)) == "Beats Per Bar",
+		       "and the bar length have names too");
 	}
 
 	//--------------------------------------------------------------------

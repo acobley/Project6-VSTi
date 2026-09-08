@@ -7,11 +7,14 @@
 #include "Project6SlotState.h"
 
 #include "base/source/fstreamer.h"
+#include "public.sdk/source/vst/utility/processcontextrequirements.h"
 #include "pluginterfaces/vst/ivstevents.h"
 #include "pluginterfaces/vst/ivstparameterchanges.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
+#include <limits>
 #include <string>
 #include <utility>
 
@@ -26,7 +29,14 @@ Project6Processor::Project6Processor ()
 	setControllerClass (kProject6ControllerUID);
 
 	for (ParamID id = 0; id < kNumParams; ++id)
+	{
 		mParams[id] = paramDef (id).defaultNormalized ();
+
+		// NaN, so that the first block publishes every value however it
+		// compares - "different from last time" has to be true when there
+		// was no last time.
+		mPublished[id] = std::numeric_limits<double>::quiet_NaN ();
+	}
 }
 
 //------------------------------------------------------------------------
@@ -41,6 +51,148 @@ tresult PLUGIN_API Project6Processor::initialize (FUnknown* context)
 	addEventInput (STR16 ("Event In"), 16);
 
 	return kResultOk;
+}
+
+//------------------------------------------------------------------------
+uint32 PLUGIN_API Project6Processor::getProcessContextRequirements ()
+{
+	// WITHOUT THIS, ALL OF IT ARRIVES INVALID. Opt-in since VST3 3.7, and
+	// the failure is silent: the tempo reads 120 everywhere, the bar lines
+	// land in the wrong places or nowhere at all, and the validator says
+	// nothing about it.
+	//
+	// Only what is actually read. kNeedTransportState is the play flag,
+	// kNeedProjectTimeMusic the position, and the other two are what a bar
+	// is made of.
+	processContextRequirements.needTransportState ();
+	processContextRequirements.needProjectTimeMusic ();
+	processContextRequirements.needTempo ();
+	processContextRequirements.needTimeSignature ();
+
+	return AudioEffect::getProcessContextRequirements ();
+}
+
+//------------------------------------------------------------------------
+TransportInfo Project6Processor::readTransport (const ProcessData& data) const
+{
+	TransportInfo info;
+
+	const ProcessContext* context = data.processContext;
+	if (context == nullptr)
+	{
+		// THE HOST GAVE US NOTHING. Not an error - some hosts, and some
+		// offline renders, simply do not. Gating on a transport we cannot
+		// see would make the plug-in silent and look broken, so this is
+		// kTransportUnknown, where a pad launches at once.
+		return info;
+	}
+
+	info.hasContext = true;
+	info.playing = (context->state & ProcessContext::kPlaying) != 0;
+
+	const bool haveTempo = (context->state & ProcessContext::kTempoValid) != 0;
+	const bool haveSig   = (context->state & ProcessContext::kTimeSigValid) != 0;
+	const bool havePos   = (context->state & ProcessContext::kProjectTimeMusicValid) != 0;
+
+	// ALL THREE OR NONE. A tempo without a position, or a position
+	// without a time signature, cannot locate a bar - so there is one
+	// flag rather than three, and every caller has one thing to check.
+	info.musical = haveTempo && haveSig && havePos;
+
+	if (haveTempo)
+		info.tempoBpm = context->tempo;
+	if (haveSig)
+	{
+		info.sigNumerator   = context->timeSigNumerator;
+		info.sigDenominator = context->timeSigDenominator;
+	}
+	if (havePos)
+		info.ppq = context->projectTimeMusic;
+
+	return info;
+}
+
+//------------------------------------------------------------------------
+void Project6Processor::applyBarLine ()
+{
+	for (int slot = 0; slot < kSlotCount; ++slot)
+	{
+		// ONLY WHAT CHANGED. A bar line that arrives twice - a host
+		// repeating a block, a cycle wrapping straight back onto it -
+		// must not restart a pad that is already running, and a pad that
+		// is free-running past the bar must be left alone.
+		if (mArmed[slot] == mLaunched[slot])
+			continue;
+
+		mLaunched[slot] = mArmed[slot];
+		mDsp.setSlotPlaying (slot, mLaunched[slot]);
+	}
+}
+
+//------------------------------------------------------------------------
+void Project6Processor::silenceForTransport ()
+{
+	// THE ARMING IS LEFT ALONE. A pad stays lit while the transport is
+	// stopped and comes back in on the next bar line when it rolls again,
+	// from the top of its sample - which is what makes a rewind something
+	// you can do without re-clicking eight pads.
+	for (int slot = 0; slot < kSlotCount; ++slot)
+	{
+		if (!mLaunched[slot])
+			continue;
+
+		mLaunched[slot] = false;
+		mDsp.setSlotPlaying (slot, false);
+	}
+}
+
+//------------------------------------------------------------------------
+void Project6Processor::publishOne (IParameterChanges* changes, ParamID id, double normalized)
+{
+	// Only what moved. `!=` is deliberate on a double seeded with NaN:
+	// NaN compares unequal to everything including itself, which is
+	// exactly the "there was no last time" behaviour wanted here.
+	if (!(mPublished[id] != normalized))
+		return;
+
+	int32 index = 0;
+	if (auto* queue = changes->addParameterData (id, index))
+	{
+		int32 point = 0;
+		queue->addPoint (0, normalized, point);
+		mPublished[id] = normalized;
+	}
+}
+
+//------------------------------------------------------------------------
+void Project6Processor::publishLiveValues (ProcessData& data)
+{
+	IParameterChanges* changes = data.outputParameterChanges;
+	if (changes == nullptr)
+		return;                 // a host that does not forward these; the panel copes
+
+	const TransportInfo info = readTransport (data);
+
+	const int state = !info.hasContext ? kTransportUnknown
+	                                   : (info.playing ? kTransportPlaying : kTransportStopped);
+
+	publishOne (changes, kLiveTransport,
+	            liveTransportDef ().toNormalized (static_cast<double> (state)));
+
+	// The bar phase is QUANTISED before it is published. Left raw it
+	// changes every single block, and would fill the host's queue with
+	// hundreds of points a second to move a playhead by two pixels.
+	const double phase = info.musical ? barPhase (info) : 0.0;
+	publishOne (changes, kLiveBarPhase, std::floor (phase * 128.0) / 128.0);
+
+	const int beats = info.musical
+		? std::min (kMaxBeatsPerBar, std::max (1, info.sigNumerator))
+		: 4;
+	publishOne (changes, kLiveBeatsPerBar,
+	            liveBeatsPerBarDef ().toNormalized (static_cast<double> (beats)));
+
+	for (int slot = 0; slot < kSlotCount; ++slot)
+		publishOne (changes, liveSlotParam (slot), mDsp.slotSounding (slot) ? 1.0 : 0.0);
 }
 
 //------------------------------------------------------------------------
@@ -90,6 +242,15 @@ tresult PLUGIN_API Project6Processor::setupProcessing (ProcessSetup& setup)
 	mDsp.setSampleRate (mSampleRate);
 	mScratch.assign (static_cast<size_t> (setup.maxSamplesPerBlock) * kChannelCount, 0.f);
 
+	// setSampleRate resets the DSP, so nothing is playing any more and
+	// mLaunched must say so - otherwise applyBarLine sees "already
+	// launched" and never starts the pads again. The ARMING survives: the
+	// user has not un-clicked anything.
+	for (bool& launched : mLaunched)
+		launched = false;
+	mBarClock.reset ();
+	mWasPlaying = false;
+
 	return AudioEffect::setupProcessing (setup);
 }
 
@@ -99,6 +260,13 @@ tresult PLUGIN_API Project6Processor::setActive (TBool state)
 	if (state)
 	{
 		mDsp.reset ();
+
+		// Same reason as in setupProcessing: reset() stopped every voice.
+		for (bool& launched : mLaunched)
+			launched = false;
+		mBarClock.reset ();
+		mWasPlaying = false;
+
 		mActive.store (true, std::memory_order_release);
 		sendSampleRateToController ();
 
@@ -377,17 +545,50 @@ tresult PLUGIN_API Project6Processor::process (ProcessData& data)
 
 	mDsp.setOutputTrimDb (paramDef (kOutputTrim).toInternal (mParams[kOutputTrim]));
 
-	// THE TRIGGERS, once per block. Every slot every block rather than
-	// only the ones that changed: sixty-four comparisons is nothing, and
-	// tracking "changed" here would be a second copy of the state the
-	// DSP already keeps - which is how a pad ends up stuck on because a
-	// block was dropped.
+	//--------------------------------------------------------------------
+	// WHAT HAS BEEN ASKED FOR, which is no longer what is playing.
+	//
+	// A click sets a trigger parameter, and that is all it does. The bar
+	// line is what turns armed into launched - see applyBarLine.
+	//--------------------------------------------------------------------
 	for (int slot = 0; slot < kSlotCount; ++slot)
-		mDsp.setSlotPlaying (slot, mParams[slotPlayParam (slot)] >= 0.5);
+		mArmed[slot] = mParams[slotPlayParam (slot)] >= 0.5;
+
+	const TransportInfo transport = readTransport (data);
+
+	//--------------------------------------------------------------------
+	// The three levels of knowledge, degrading separately.
+	//--------------------------------------------------------------------
+	if (!transport.hasContext)
+	{
+		// The host told us nothing. Launch at once, as this plug-in did
+		// before it had a transport at all: a sampler that is silent in a
+		// host reporting no transport looks broken, not careful.
+		applyBarLine ();
+	}
+	else if (!transport.playing)
+	{
+		// STOPPED. Silence the voices and leave the arming alone, so the
+		// pads come back in on the next bar line when the transport rolls
+		// again. Resetting the clock is what makes that bar line fire
+		// even when it is the very one that was fired before the stop.
+		mBarClock.reset ();
+		silenceForTransport ();
+	}
+	else if (!transport.musical)
+	{
+		// Rolling, but the host cannot say where the bars are. Launching
+		// as soon as it rolls is closer to what was asked for than never
+		// launching at all.
+		applyBarLine ();
+	}
+
+	mWasPlaying = transport.playing;
 
 	// A PARAMETER-ONLY BLOCK: numSamples == 0, or no output bus at all.
 	// Hosts send these, and the validator sends them deliberately. Consume
-	// the events anyway so a note-off is never dropped.
+	// the events anyway so a note-off is never dropped, and still publish
+	// - the panel's transport readout should not freeze on one.
 	if (data.numOutputs <= 0 || data.outputs == nullptr || data.numSamples <= 0)
 	{
 		if (auto* events = data.inputEvents)
@@ -400,26 +601,80 @@ tresult PLUGIN_API Project6Processor::process (ProcessData& data)
 					handleEvent (e);
 			}
 		}
+
+		publishLiveValues (data);
 		return kResultOk;
 	}
 
-	// Sample-accurate: render up to each event, apply it, carry on.
-	int32 position = 0;
-	if (auto* events = data.inputEvents)
+	//--------------------------------------------------------------------
+	// Where the bar lines fall inside this block. Usually none; sometimes
+	// one; more than one only at a tempo nobody writes at.
+	//--------------------------------------------------------------------
+	int barOffsets[kMaxBarLinesPerBlock];
+	int barCount = 0;
+	if (transport.playing && transport.musical)
 	{
-		const int32 count = events->getEventCount ();
-		for (int32 i = 0; i < count; ++i)
-		{
-			Event e;
-			if (events->getEvent (i, e) != kResultOk)
-				continue;
+		barCount = mBarClock.barLinesInBlock (transport, data.numSamples, mSampleRate,
+		                                      barOffsets, kMaxBarLinesPerBlock);
+	}
 
-			const int32 at = std::clamp (e.sampleOffset, position, data.numSamples);
-			renderSegment (data, position, at - position);
-			position = at;
-			handleEvent (e);
+	//--------------------------------------------------------------------
+	// SAMPLE-ACCURATE, and for two kinds of thing at once: render up to
+	// whichever comes first - an event or a bar line - act on it, carry
+	// on. A pad launched at the block boundary instead would be up to
+	// eleven milliseconds late, which is audible against a click track
+	// and gets worse with the buffer size.
+	//--------------------------------------------------------------------
+	int32 position = 0;
+	int32 eventIndex = 0;
+	int barIndex = 0;
+
+	IEventList* events = data.inputEvents;
+	const int32 eventCount = (events != nullptr) ? events->getEventCount () : 0;
+
+	for (;;)
+	{
+		// The next event, if there is one we can read.
+		Event event;
+		int32 nextEvent = -1;
+		while (eventIndex < eventCount)
+		{
+			if (events->getEvent (eventIndex, event) == kResultOk)
+			{
+				nextEvent = std::clamp (event.sampleOffset, position, data.numSamples);
+				break;
+			}
+			++eventIndex;
+		}
+
+		const int32 nextBar = (barIndex < barCount)
+			? std::clamp (static_cast<int32> (barOffsets[barIndex]), position, data.numSamples)
+			: -1;
+
+		if (nextEvent < 0 && nextBar < 0)
+			break;
+
+		// The bar line wins a tie: whatever it launches should be heard
+		// from that sample, not from the sample after an event that
+		// happens to share it.
+		const bool takeBar = (nextEvent < 0) || (nextBar >= 0 && nextBar <= nextEvent);
+		const int32 at = takeBar ? nextBar : nextEvent;
+
+		renderSegment (data, position, at - position);
+		position = at;
+
+		if (takeBar)
+		{
+			applyBarLine ();
+			++barIndex;
+		}
+		else
+		{
+			handleEvent (event);
+			++eventIndex;
 		}
 	}
+
 	renderSegment (data, position, data.numSamples - position);
 
 	// Tell the host when there is genuinely nothing sounding, so it can
@@ -435,6 +690,8 @@ tresult PLUGIN_API Project6Processor::process (ProcessData& data)
 	               ? ~0ULL
 	               : ((1ULL << data.outputs[0].numChannels) - 1))
 	        : 0;
+
+	publishLiveValues (data);
 
 	return kResultOk;
 }
