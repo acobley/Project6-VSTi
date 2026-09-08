@@ -69,5 +69,19 @@ static const char* const kProject6SlotMessage       = "Project6Slot";
 static const char* const kProject6SlotIndexAttribute = "Slot";
 static const char* const kProject6SlotPathAttribute  = "Path";
 
+/** Processor -> controller: how a slot's file actually read.
+
+    The reply to the message above, and sent again for every slot from
+    setActive - which is the ONLY thing that makes a panel opened later,
+    or a project loaded before the components were connected, show the
+    truth rather than an optimistic guess.
+
+    It exists because a slot that will not play has to be able to SAY so.
+    A slot that takes the drop, shows the name and does nothing when
+    clicked is the failure this project keeps coming back to: a control
+    that looks live and is not. The value is a SampleStatus. */
+static const char* const kProject6SlotStatusMessage    = "Project6SlotStatus";
+static const char* const kProject6SlotStatusAttribute  = "Status";
+
 //------------------------------------------------------------------------
 } // namespace Project6

@@ -17,12 +17,24 @@
 //     first of them, and the response display already calls it rather
 //     than converting decibels itself.
 //
-// Nothing is synthesised yet. render() writes silence and then runs the
-// output stage over it, so the host -> parameter -> DSP chain is complete
-// and exercised from the first build; the voices go in underneath it.
+// What it does: sixty-four looping sample voices, one per slot, mixed and
+// passed through the output trim.
+//
+// THE SAMPLES ARE NOT OWNED HERE. Project6Processor loads a file on the UI
+// thread, keeps the buffer alive, and publishes a bare pointer through
+// setSlotSample(); the audio thread only ever READS that pointer. That is
+// the whole thread story, and it works only because a SampleBuffer is
+// immutable once published and because the processor does not free the old
+// one until the audio thread has demonstrably moved past it - see the
+// retire list in Project6Processor.
 //------------------------------------------------------------------------
 
 #pragma once
+
+#include "Project6Sample.h"
+#include "Project6Slots.h"
+
+#include <atomic>
 
 namespace Project6 {
 
@@ -44,6 +56,20 @@ constexpr int kChannelCount = 2;
 /** How long the output trim takes to reach a new setting. About 10 ms is
     inaudible on a fader move and far faster than anyone can turn a knob. */
 constexpr double kTrimSmoothingSeconds = 0.01;
+
+/** How long a voice takes to fade in when it starts and out when it stops.
+
+    A LOOP DOES NOT START AT ZERO. Cutting a sample in at full gain on
+    whatever value happens to be at frame 0, and cutting it out on whatever
+    is under the playhead when you click again, is a click both times - and
+    a click on every one of sixty-four pads is what makes a sampler sound
+    cheap. Five milliseconds is short enough that a drum transient survives
+    it and long enough to remove the step.
+
+    The ramp is LINEAR, not the one-pole the trim uses: an exponential
+    approaches zero without reaching it, so a voice asked to stop would
+    never actually finish and would sit in the mix for ever. */
+constexpr double kVoiceDeclickSeconds = 0.005;
 
 /** Decibels to a linear gain, with a floor that means SILENCE rather than
     a very small number. `minDb` is the bottom of the control's travel: a
@@ -80,6 +106,43 @@ public:
 	    first block, which is what makes that block snap. */
 	double currentGain () const { return (mGain < 0.0) ? mTarget : mGain; }
 
+	//--------------------------------------------------------------------
+	// The sample slots
+	//--------------------------------------------------------------------
+
+	/** Publish a slot's decoded audio, or nullptr to empty it.
+
+	    CALLED ON THE UI THREAD, never the audio thread. The store is
+	    atomic and release-ordered, so an audio thread that sees the new
+	    pointer also sees the buffer's contents. THE CALLER KEEPS THE
+	    BUFFER ALIVE - this class stores the pointer and nothing else. */
+	void setSlotSample (int index, const SampleBuffer* sample);
+
+	/** What a slot currently points at. Mostly for the tests. */
+	const SampleBuffer* slotSample (int index) const;
+
+	/** Start or stop a slot's loop.
+
+	    Called from the audio thread, once per block, with the slot's
+	    trigger parameter. A rising edge starts FROM THE BEGINNING; a
+	    falling edge fades out and then stops. Re-triggering during the
+	    fade-out is a change of mind: the fade reverses where it is rather
+	    than jumping back to frame 0, which would be the click the fade
+	    exists to avoid. */
+	void setSlotPlaying (int index, bool playing);
+
+	/** True while a slot is producing audio - including during its
+	    fade-out, which still has to be mixed. */
+	bool slotSounding (int index) const;
+
+	/** How many are. The processor's silence flag depends on this: a synth
+	    that flags silence while something is playing gets silenced by the
+	    host. */
+	int soundingVoiceCount () const;
+
+	/** Where a slot's playhead is, in source frames. For the tests. */
+	double slotPosition (int index) const;
+
 	/** Render `numSamples` frames of interleaved stereo into `out`.
 
 	    There are no voices yet, so this clears the buffer and then runs
@@ -98,6 +161,31 @@ public:
 	void applyOutputTrim (float* interleaved, int numSamples);
 
 private:
+	//--------------------------------------------------------------------
+	/** One slot's playback state.
+
+	    Everything except `sample` is touched by the AUDIO THREAD ONLY, so
+	    none of it needs to be atomic. `sample` is the one field the UI
+	    thread writes, and it is the only atomic in the class. */
+	struct Voice
+	{
+		std::atomic<const SampleBuffer*> sample { nullptr };
+
+		bool   sounding = false;   ///< mixing, fade-out included
+		bool   stopping = false;   ///< fading out, will stop when gain hits 0
+		double position = 0.0;     ///< in SOURCE frames, fractional
+		double gain     = 0.0;     ///< the declick envelope, 0..1
+	};
+
+	/** Mix every sounding voice into `out`, which is expected to be
+	    silent on the way in. */
+	void renderVoices (float* out, int numSamples);
+
+	Voice mVoices[kSlotCount];
+
+	/** How far the declick envelope moves in one sample. */
+	double mDeclickStep = 1.0;
+
 	double mSampleRate = 44100.0;
 	double mTrimDb     = kTrimDefaultDb;
 	double mTarget     = 1.0;

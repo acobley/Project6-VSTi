@@ -1,13 +1,17 @@
 # Project6 — porting notes
 
-Nothing has been ported yet. This file exists anyway, because it records the
-decisions that are **permanent from the first shipped build** and the traps
-that were deliberately handled before there was any code to hide them in. It
-is the file that outlives the session that made the project.
+Nothing has been *ported* yet — no DXi is behind any of this. The file exists
+because it records the decisions that are **permanent from the first shipped
+build**, and the traps that were handled deliberately rather than discovered.
+It is the file that outlives the session that made the project.
+
+What the plug-in currently is: an 8 × 8 bank of looping sample pads. Drag a
+`.wav` onto a slot, click it to loop, click again to stop. §8 is the grid and
+§9 the playback.
 
 Scaffolded from `~/DXi-DEv/vst3-port-template` on 8 September 2026, following
-the `blank-vst3-plugin` skill, and given its 8 × 8 sample slot grid the same
-day (§9). `PORTING-GUIDE.md` and `PORT-CHECKLIST.md` came
+the `blank-vst3-plugin` skill; the slot grid and the playback were added the
+same day. `PORTING-GUIDE.md` and `PORT-CHECKLIST.md` came
 with the template and are unchanged; read the guide before writing a real
 processing loop.
 
@@ -96,13 +100,19 @@ default patch, rendered  : silence (-inf dBFS)
 output stage, full scale : 0.00 dBFS
 ```
 
-The instrument is silent because nothing is synthesised yet. **The second
-number is the one the first real DSP must repeat**: full scale in, full scale
+The default patch is silent because a fresh instance has no samples in it.
+**The second number is the one to keep repeating**: full scale in, full scale
 out, at the default trim. A level that clips masks other faults and sends you
-chasing the wrong bug, so re-run that measurement the moment there is anything
-to hear — and if it has moved, find out why before listening to anything.
+chasing the wrong bug.
 
 The top of the trim's travel is unity, not a boost, for the same reason.
+
+**Voices sum at unity.** A pad plays its file at the file's own level, and
+sixty-four pads at once will clip — which is what the trim is for, and what
+anyone running that many loops would expect. Scaling by the voice count
+instead would make a single pad quieter every time another one started, which
+is worse. `DspTests.cpp` §6 asserts the summing, so a later change to it is a
+decision rather than an accident.
 
 ## 6. What was verified, and what could not be
 
@@ -115,17 +125,21 @@ What was run, and passed:
 ```sh
 cd ~/DXi-DEv/Project6-VSTi
 
-# 1. All three test suites, from a clean build.
-c++ -std=c++17 -O2 -Wall -Isource \
-    tests/DspTests.cpp source/Project6Dsp.cpp -o /tmp/dsptests && /tmp/dsptests
+# 1. All four test suites, from a clean build.
+c++ -std=c++17 -O2 -Wall -Isource tests/DspTests.cpp \
+    source/Project6Dsp.cpp source/Project6Sample.cpp \
+    -o /tmp/dsptests && /tmp/dsptests
 
 c++ -std=c++17 -O2 -Wall -Isource \
     tests/SlotTests.cpp source/Project6Slots.cpp -o /tmp/slottests && /tmp/slottests
 
+c++ -std=c++17 -O2 -Wall -Isource \
+    tests/WavTests.cpp source/Project6Sample.cpp -o /tmp/wavtests && /tmp/wavtests
+
 SDK=~/DXi-DEv/VocalFilter-VSTi/external/vst3sdk        # any existing checkout
 c++ -std=c++17 -O2 -Wall -Isource -I$SDK \
     tests/ParamsTests.cpp source/Project6Params.cpp source/Project6Dsp.cpp \
-    -o /tmp/paramstests && /tmp/paramstests
+    source/Project6Sample.cpp -o /tmp/paramstests && /tmp/paramstests
 
 # 2. Every source compiled to an OBJECT FILE - not -fsyntax-only, which
 #    passes a header that declares a function nobody defined.
@@ -143,15 +157,22 @@ python3 tools/check-editor.py
 
 `-DRELEASE=1` is required or `fdebug.h` refuses to compile.
 
-Results, at the slot-grid commit: **all three suites all-pass**, all eleven
-translation units produced object files with no errors, all 34 undefined
+Results, at the playback commit: **all four suites all-pass**, all twelve
+translation units produced object files with no errors, all 43 undefined
 `Project6::` symbols resolved within the set, and `check-editor` reported ok.
 The panel's dimensions are checked by `static_assert` rather than by eye —
 735 × 481, with the grid meeting both margins exactly.
 
-Re-run all four before every commit. Adding a source file also means
+Re-run all five before every commit. Adding a source file also means
 re-running `./setup-xcode.sh --no-open` before the next Xcode build, or the
 project compiles the old file list.
+
+**What the tests cannot reach**, and what the first real listen is for: the
+drag-and-drop itself (a platform drag package is not something a unit test can
+manufacture), whether the panel looks right, and whether five milliseconds is
+in fact enough declick on real material. Everything the tests *do* reach —
+every WAV format, the loop wrap, the rate conversion, the envelope, the
+parameter block's bound — is asserted rather than assumed.
 
 **Still to do on a Mac**, in this order:
 
@@ -175,8 +196,8 @@ added carelessly.
 | `processContextRequirements` | Since VST3 3.7 the `ProcessContext` is **opt-in and the default is no flags**. Anything that reads the tempo silently gets 120 in every host, and the validator prints `- None` rather than complaining. Where to add it is written into the banner of `Project6Processor.h`. |
 | Processor → controller messages beyond the sample rate | **A message sent from `process()` is silently discarded** by the host's connection proxy — it returns success and does nothing. Per-block values go out through `data.outputParameterChanges` as hidden read-only parameters instead. Both halves of that rule are written into `Project6IDs.h` and `Project6Params.h`. |
 | Published ("live") parameters | None are needed yet. When the first one is appended, `kNumStoredParams` moves with it, and **the range check on it must be bounded by its own end, not by `kNumParams`** — a predicate reading `id < kNumParams` misclassified the next parameter appended after such a block in VocalFilter, and the symptom was a control that wrote its parameter, was seen by the host, and did nothing. |
-| `IMidiMapping` | No CC handling yet. ForTran is the worked example if channel volume, pan or the wheel are wanted. |
-| Voices, and a conditional `silenceFlags` | `process()` currently flags **every** block silent, which is correct while it is. **A synth that flags silence while a note is playing is silenced by the host** — make that flag conditional in the same commit that adds the first voice. |
+| `IMidiMapping`, and notes | No CC handling, and no pitched playback: the event input exists and consumes events so nothing can hang, but a note-on does not start a pad. Mapping notes to slots is the obvious next step, and the trigger parameters are the thing to move — a note-on writing `slotPlayParam(n)` gets automation and the panel for nothing. ForTran is the worked example for CCs. |
+| ~~Voices, and a conditional `silenceFlags`~~ | **Done.** `process()` now flags silence only when `mDsp.soundingVoiceCount() == 0`, and a voice counts as sounding through its fade-out. A synth that flags silence while something is playing is silenced by the host, which presents as a pad that lights up and cannot be heard. |
 
 Handled rather than omitted, and worth not undoing:
 
@@ -199,9 +220,9 @@ Handled rather than omitted, and worth not undoing:
 ## 8. The sample slots
 
 Added after the scaffold, at the point where the panel needed something to
-put samples in. **Nothing is loaded from a slot yet**: dropping a `.wav` on
-one records *where the file is*, saves that with the project, and draws its
-name. Reading the audio is the next piece of work.
+put samples in. This section is the **file path**: how it gets into a slot,
+how it is saved, and how it reaches the half of the plug-in that can open it.
+§9 is what happens to the audio once it is read.
 
 ### What a drop actually does
 
@@ -286,14 +307,153 @@ parameter instead.
 
 * **No way to empty a slot from the panel.** Dropping a different file
   replaces one, which is the recovery path; a clear gesture was not asked for.
-  `SlotBank::clear` and the state stream already handle it, so it is a mouse
-  override and a handler away.
-* **Nothing reads the file.** When it does: the load must happen on a
-  non-audio thread and hand `process()` a prepared buffer. `mSlots` is a
-  `SlotBank` of `std::string`, and a string assignment allocates — the audio
-  thread must never touch it.
+  `SlotBank::clear`, the message and the state stream already handle it, so it
+  is a mouse override and a handler away.
 
-## 9. The SDK
+## 9. Playing a slot
+
+Click a loaded slot and its file loops; click it again and it stops. Three
+separate mechanisms make that work, and they are separate on purpose.
+
+### The trigger is a PARAMETER, not a message
+
+`kSlotPlayBase + 0 … + 63`, appended after the output trim, two states each.
+That follows this project's own rule, written down when the slot *paths* had
+to travel as a message: **anything that can be expressed as a number is a
+parameter**, because a message is lost in a host that does not connect the
+two components and a parameter is not. A play/stop is a number.
+
+What it buys, all through machinery that already existed:
+
+* automation, host undo and a recordable gesture, because the click goes
+  through `beginEdit / setValueNormalized / valueChanged / endEdit` like any
+  other control;
+* a panel that follows an automation lane, because `setParamNormalized` →
+  `updateControl` → `showValue` already moves whatever is in `mControls`, and
+  the slot is now in `mControls`;
+* delivery that cannot silently fail.
+
+What it costs: sixty-four rows in a host's generic parameter list. That is the
+honest price of pads a DAW can automate. They are named **`Slot A1 Play` …
+`Slot H8 Play`** — lettered by row, numbered by column — so a name in an
+automation lane says where the pad is on the panel rather than making the
+reader divide by eight.
+
+**They are deliberately NOT saved.** `kNumStoredParams` stops at the trim, and
+both `setState` and `setComponentState` reset *every* parameter past it to its
+default before reading. A project that reopened with six pads already looping
+would be a project nobody could open quietly, and "what was playing when you
+saved" is a moment, not a setting. Automation still restores them, because
+automation lives in the host.
+
+The definitions are a **block described once**, not sixty-four table rows
+differing in one character: `slotPlayDef()` is the shared `ParamDef` and
+`paramTitle()` supplies the names. `paramDef(id)` is now the accessor
+everywhere — `kParams[id]` only covers the individually described parameters.
+
+And the bound: `isSlotPlayParam` is `id >= kSlotPlayBase && id < kSlotPlayEnd`.
+**Not `< kNumParams`.** VocalFilter's equivalent predicate was bounded by the
+end of the table, survived one append, and then misclassified the parameter
+added after it — the control wrote its parameter, the host saw the write, and
+nothing happened. `ParamsTests.cpp` §7 fails if that bound ever becomes the
+table's end again.
+
+### The audio thread never opens a file, allocates, or frees one
+
+This is the whole thread story, and it is worth reading before changing any of
+it.
+
+```
+UI thread                                   audio thread
+─────────                                   ────────────
+notify() / setState()
+   loadWavFile()  ← opens, allocates, decodes
+   make_shared<const SampleBuffer>
+   publishSlot()
+     mSamples[i] = new buffer   (owned here, never freed on the audio thread)
+     mDsp.setSlotSample(i, ptr) ──── atomic store, release ────▶
+     mRetired.push_back(old, blockCounter)                     atomic load, acquire
+     collectRetired()                                          renderVoices() reads
+                                                               process() bumps blockCounter
+```
+
+* A `SampleBuffer` is **immutable once published**. That is the only reason a
+  bare pointer is safe to hand across at all.
+* The store is **release** and the load **acquire**, so a thread that sees the
+  new pointer also sees the bytes behind it. Without the ordering the pointer
+  can arrive before its contents on a weakly ordered machine — which is every
+  Apple Silicon Mac.
+* The buffer a publish **replaces** cannot be freed there: a block may be half
+  way through reading it. It goes on `mRetired` with the block counter's value
+  at the swap, and is freed once the counter has reached `at + 2` — by which
+  point the block that might have held it has certainly returned, because
+  `process()` runs one block at a time. `+2` and not `+1` because the block
+  running at the swap may have started at `at` itself.
+* When the plug-in is **inactive** no block is running, so `setActive(false)`
+  and `terminate()` free the whole retire list at once.
+
+### The voices
+
+One per slot, in `Project6Dsp`. Each is a playhead into its slot's buffer, a
+declick envelope, and nothing else.
+
+| | |
+|---|---|
+| Start | From **frame 0**. A pad you click plays its sample, not the middle of it. |
+| Loop | The playhead wraps with `fmod`, and **the interpolation's second tap wraps to frame 0** — so the loop is continuous rather than fading into the last frame and jumping. A file whose ends do not match will still click; that is the file's business, not the player's. |
+| Pitch | The playhead advances `file rate / session rate` per output frame, linearly interpolated. A 48 k file in a 44.1 k session plays at pitch instead of a fifth flat. Linear interpolation is a gentle low-pass upward and mild aliasing downward — anything better is a resampler, and a resampler is a decision about latency and cost that belongs with the rest of the DSP. |
+| Declick | A **5 ms linear** ramp in on start and out on stop. A loop does not start at zero, and cutting one in or out at full gain is a click — sixty-four of which is what makes a sampler sound cheap. Linear, not the one-pole the trim uses, because an exponential approaches zero without reaching it and a voice asked to stop would never actually finish. |
+| Re-click mid-fade | A change of mind: the envelope reverses **where it is**, and the playhead carries on. Jumping back to frame 0 there would be exactly the click the fade exists to prevent. |
+| Emptied while playing | Stops dead. There is nothing left to fade out of. |
+| Mix | Voices **sum** at unity, ahead of the output trim. |
+
+### The WAV reader
+
+`Project6Sample.{h,cpp}`, SDK-free, and **the parse is split from the file
+read** so `parseWav()` can be handed bytes. That is what lets `WavTests.cpp`
+cover a truncated chunk, an odd-length metadata chunk and a four-channel file
+without anyone first having to find one.
+
+It reads PCM at 8, 16, 24 and 32 bits, IEEE float at 32 and 64, any channel
+count, and `WAVE_FORMAT_EXTENSIBLE` — which is what a 24-bit file from most
+modern editors actually is. Everything comes out as **interleaved stereo float
+at the file's own rate**, so the audio thread deals with one layout however
+odd the file was.
+
+Four things in there that are not obvious, each with a test:
+
+* **8-bit PCM is unsigned.** Silence is 128. Read as signed, a quiet file
+  becomes a loud square wave.
+* **Chunks are word-aligned**: an odd-length chunk carries a pad byte the size
+  field does not count. Miss it and the next chunk's id is read one byte late,
+  which loses everything after the first metadata chunk — that is, most files.
+* **Divide by negative full scale** (32768, not 32767), or a file already at
+  full scale clips on load.
+* **Mono is duplicated, not panned left**, and more than two channels takes
+  the first two.
+
+Files longer than **60 seconds are refused**, not truncated, because a slot is
+filled by dropping whatever was under the pointer and sixty-four accidental
+album sides would be several gigabytes resident.
+
+### A slot that will not play says so
+
+A failed load **keeps its path** — the file may simply be on a drive that is
+not plugged in today — so the project still remembers it and the slot still
+shows its name. What it does not get is audio, so:
+
+* the processor reports a `SampleStatus` back to the controller
+  (`kProject6SlotStatusMessage`), and **re-sends all sixty-four from
+  `setActive`**, which is the only thing that makes a panel opened later, or a
+  project restored before the components were connected, show the truth;
+* the slot draws its name in a muted red rather than white, ignores clicks,
+  and puts the reason in its tooltip under the path.
+
+A slot that took the drop, showed the name and did nothing when clicked would
+be the failure this project keeps coming back to: a control that looks live
+and is not.
+
+## 10. The SDK
 
 **In-tree clone**, chosen deliberately over pointing at a sibling project's
 checkout. The first `cmake` configure clones the VST3 SDK (~250 MB) into

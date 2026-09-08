@@ -5,7 +5,8 @@
 // this suite compiles and runs anywhere with
 //
 //     c++ -std=c++17 -O2 -Isource tests/DspTests.cpp
-//         source/Project6Dsp.cpp -o /tmp/dsptests && /tmp/dsptests
+//         source/Project6Dsp.cpp source/Project6Sample.cpp
+//         -o /tmp/dsptests && /tmp/dsptests
 //
 //   (one line; it is broken here only because a comment line may not end
 //    in a backslash - the compiler reads that as a line continuation and
@@ -16,10 +17,17 @@
 // ONE THAT WOULD FAIL AGAINST A WRONG IMPLEMENTATION. Section 2's negative
 // control is there because a guard that has never failed is a guess.
 //
-// Nothing is synthesised yet, so what is under test is the output stage
-// and the mappings around it. That is not a small thing to have covered:
-// it is the stage every sample eventually passes through, and the one that
-// will be hardest to notice going wrong once there is audio to listen to.
+// Sections 1 to 5 are the output stage and the mappings around it - the
+// stage every sample eventually passes through, and the one hardest to
+// notice going wrong once there is audio to listen to. Section 6 is the
+// sixty-four looping sample voices in front of it.
+//
+// The voice tests run the DSP at 1000 Hz. Not because anything does, but
+// because the declick ramp is defined in SECONDS: at 1000 Hz it is five
+// samples long instead of two hundred and twenty, so an assertion about
+// what comes out after the fade-in can be written about sample 4 and read
+// by a person. Every ratio under test is the same one it would be at
+// 44.1 k.
 //------------------------------------------------------------------------
 
 #include "Project6Dsp.h"
@@ -308,6 +316,275 @@ int main ()
 		             20.0 * std::log10 (stagePeak));
 		check (close (stagePeak, 1.0, 1e-7),
 		       "the default trim neither boosts nor attenuates");
+	}
+
+	//--------------------------------------------------------------------
+	section ("6. The sample voices");
+	//--------------------------------------------------------------------
+	{
+		// Four frames, distinct in both channels and in both signs, so a
+		// swapped channel, a reversed loop or an off-by-one playhead all
+		// show up as a wrong number rather than as a wrong level.
+		const float kLeft[4]  = {  0.10f,  0.20f,  0.30f,  0.40f };
+		const float kRight[4] = { -0.15f, -0.25f, -0.35f, -0.45f };
+
+		auto makeLoop = [&] (double rate)
+		{
+			SampleBuffer buffer;
+			buffer.frameCount = 4;
+			buffer.sourceRate = rate;
+			buffer.samples.resize (4 * kSampleChannels);
+			for (int f = 0; f < 4; ++f)
+			{
+				buffer.samples[static_cast<size_t> (f) * 2]     = kLeft[f];
+				buffer.samples[static_cast<size_t> (f) * 2 + 1] = kRight[f];
+			}
+			buffer.peak = 0.45f;
+			return buffer;
+		};
+
+		const SampleBuffer loop = makeLoop (1000.0);
+
+		//----------------------------------------------------------------
+		// Plays, in a loop, at the right values
+		//----------------------------------------------------------------
+		{
+			Project6Dsp dsp;
+			dsp.setSampleRate (1000.0);          // declick = 5 samples
+			dsp.setOutputTrimDb (kTrimMaxDb);    // unity, so the numbers are the file's
+			dsp.setSlotSample (7, &loop);
+
+			check (dsp.slotSample (7) == &loop, "a published sample is what the slot points at");
+			check (! dsp.slotSounding (7),      "and publishing it does not start it");
+
+			dsp.setSlotPlaying (7, true);
+			check (dsp.slotSounding (7), "a rising edge starts the voice");
+
+			const int frames = 16;
+			std::vector<float> out (static_cast<size_t> (frames) * kChannelCount, 0.f);
+			dsp.render (out.data (), frames);
+
+			// The first five samples are the fade-in and are deliberately
+			// NOT full level - that is checked below. From sample 4 the
+			// envelope is at 1 and the output is the file, exactly.
+			bool exact = true;
+			for (int i = 4; i < frames; ++i)
+			{
+				exact &= (out[static_cast<size_t> (i) * 2]     == kLeft[i % 4]);
+				exact &= (out[static_cast<size_t> (i) * 2 + 1] == kRight[i % 4]);
+			}
+			check (exact,
+			       "once the fade-in is over the output IS the file, sample for sample");
+
+			// Which means it looped: samples 4..15 are three times round a
+			// four-frame file.
+			check (out[static_cast<size_t> (8) * 2] == kLeft[0],
+			       "and frame 8 is the start of the loop again");
+
+			// NEGATIVE CONTROL for that comparison. If the voice had not
+			// run at all, every sample would be zero and the loop above
+			// would have compared nothing - so assert it is NOT silent.
+			double peak = 0.0;
+			for (float v : out)
+				peak = std::max (peak, static_cast<double> (std::fabs (v)));
+			check (peak > 0.4, "NEGATIVE CONTROL: the voice really did produce audio");
+
+			// The channels are not the same signal.
+			check (out[8] != out[9], "left and right are the file's own two channels");
+		}
+
+		//----------------------------------------------------------------
+		// The fade-in, and the fade-out that follows a second click
+		//----------------------------------------------------------------
+		{
+			Project6Dsp dsp;
+			dsp.setSampleRate (1000.0);
+			dsp.setOutputTrimDb (kTrimMaxDb);
+			dsp.setSlotSample (0, &loop);
+			dsp.setSlotPlaying (0, true);
+
+			std::vector<float> out (64 * kChannelCount, 0.f);
+			dsp.render (out.data (), 64);
+
+			// A LOOP DOES NOT START AT ZERO: the first sample of this file
+			// is 0.1, and cutting it in at full gain would be a step.
+			check (std::fabs (out[0]) < std::fabs (kLeft[0]),
+			       "the first sample is attenuated by the fade-in");
+			check (out[0] != 0.f, "but the fade starts moving immediately");
+			check (std::fabs (out[0]) < std::fabs (out[2]),
+			       "and the envelope rises");
+
+			// Click again: it fades out and then stops on its own.
+			dsp.setSlotPlaying (0, false);
+			check (dsp.slotSounding (0), "the falling edge does not stop it dead");
+
+			std::vector<float> tail (64 * kChannelCount, 0.f);
+			dsp.render (tail.data (), 64);
+			check (! dsp.slotSounding (0), "it stops once the fade-out reaches zero");
+
+			// Five samples of fade, then nothing at all.
+			bool silentAfterFade = true;
+			for (int i = 8; i < 64; ++i)
+				silentAfterFade &= (tail[static_cast<size_t> (i) * 2] == 0.f
+				                    && tail[static_cast<size_t> (i) * 2 + 1] == 0.f);
+			check (silentAfterFade, "and produces nothing afterwards");
+
+			// And it starts again FROM THE BEGINNING.
+			dsp.setSlotPlaying (0, true);
+			std::vector<float> again (16 * kChannelCount, 0.f);
+			dsp.render (again.data (), 16);
+			check (again[static_cast<size_t> (4) * 2] == kLeft[0],
+			       "a fresh click restarts the loop from frame 0");
+		}
+
+		//----------------------------------------------------------------
+		// A re-click during the fade-out is a change of mind
+		//----------------------------------------------------------------
+		{
+			Project6Dsp dsp;
+			dsp.setSampleRate (1000.0);
+			dsp.setOutputTrimDb (kTrimMaxDb);
+			dsp.setSlotSample (1, &loop);
+			dsp.setSlotPlaying (1, true);
+
+			std::vector<float> settle (64 * kChannelCount, 0.f);
+			dsp.render (settle.data (), 64);
+			const double before = dsp.slotPosition (1);
+
+			// Two samples into the fade, change our mind.
+			dsp.setSlotPlaying (1, false);
+			std::vector<float> partial (2 * kChannelCount, 0.f);
+			dsp.render (partial.data (), 2);
+			dsp.setSlotPlaying (1, true);
+
+			check (dsp.slotSounding (1), "the voice survived the reversal");
+			// The playhead CARRIED ON. Jumping it back to zero here would
+			// be exactly the click the fade exists to prevent.
+			check (dsp.slotPosition (1) != before,
+			       "and the playhead kept moving rather than jumping back");
+
+			std::vector<float> after (16 * kChannelCount, 0.f);
+			dsp.render (after.data (), 16);
+			check (after[static_cast<size_t> (15) * 2] != 0.f,
+			       "and it is back at full level");
+		}
+
+		//----------------------------------------------------------------
+		// The file's own rate, against the session's
+		//----------------------------------------------------------------
+		{
+			const SampleBuffer fast = makeLoop (2000.0);   // twice the session rate
+
+			Project6Dsp dsp;
+			dsp.setSampleRate (1000.0);
+			dsp.setOutputTrimDb (kTrimMaxDb);
+			dsp.setSlotSample (2, &fast);
+			dsp.setSlotPlaying (2, true);
+
+			std::vector<float> out (16 * kChannelCount, 0.f);
+			dsp.render (out.data (), 16);
+
+			// Two source frames per output frame: 0, 2, 0, 2 ... A voice
+			// that ignored sourceRate would play this file a fifth flat.
+			bool stepped = true;
+			for (int i = 4; i < 16; ++i)
+				stepped &= (out[static_cast<size_t> (i) * 2] == kLeft[(i * 2) % 4]);
+			check (stepped, "a file at twice the session rate advances two frames a sample");
+
+			// NEGATIVE CONTROL: that is NOT what a one-to-one voice does.
+			check (out[static_cast<size_t> (5) * 2] != kLeft[5 % 4],
+			       "NEGATIVE CONTROL: which is not the same as ignoring the rate");
+		}
+
+		//----------------------------------------------------------------
+		// Slots with nothing in them, and slots emptied underneath
+		//----------------------------------------------------------------
+		{
+			Project6Dsp dsp;
+			dsp.setSampleRate (1000.0);
+			dsp.setOutputTrimDb (kTrimMaxDb);
+
+			// Clicking an empty slot must do nothing at all - not crash,
+			// and not leave a voice running that produces silence for ever
+			// and holds the host's silence flag down.
+			dsp.setSlotPlaying (5, true);
+			std::vector<float> out (16 * kChannelCount, 0.f);
+			dsp.render (out.data (), 16);
+
+			double peak = 0.0;
+			for (float v : out)
+				peak = std::max (peak, static_cast<double> (std::fabs (v)));
+			check (peak == 0.0, "an empty slot produces silence");
+			check (! dsp.slotSounding (5), "and does not leave a voice running");
+
+			// Emptied while playing - which is what dropping a new file
+			// on a sounding slot does for an instant.
+			dsp.setSlotSample (6, &loop);
+			dsp.setSlotPlaying (6, true);
+			dsp.render (out.data (), 16);
+			check (dsp.slotSounding (6), "a loaded slot is sounding");
+
+			dsp.setSlotSample (6, nullptr);
+			dsp.render (out.data (), 16);
+			check (! dsp.slotSounding (6), "and stops when its sample is taken away");
+
+			// Out-of-range indices are refused rather than clamped, the
+			// same rule the slot bank follows.
+			dsp.setSlotPlaying (-1, true);
+			dsp.setSlotPlaying (kSlotCount, true);
+			dsp.setSlotSample (kSlotCount, &loop);
+			check (dsp.soundingVoiceCount () == 0, "a bad slot index starts nothing");
+			check (dsp.slotSample (kSlotCount) == nullptr, "and publishes nothing");
+		}
+
+		//----------------------------------------------------------------
+		// Several at once, and what the host is told about silence
+		//----------------------------------------------------------------
+		{
+			Project6Dsp dsp;
+			dsp.setSampleRate (1000.0);
+			dsp.setOutputTrimDb (kTrimMaxDb);
+
+			const SampleBuffer other = makeLoop (1000.0);
+			dsp.setSlotSample (10, &loop);
+			dsp.setSlotSample (63, &other);
+			dsp.setSlotPlaying (10, true);
+			dsp.setSlotPlaying (63, true);
+
+			check (dsp.soundingVoiceCount () == 2, "two voices are sounding");
+
+			std::vector<float> out (16 * kChannelCount, 0.f);
+			dsp.render (out.data (), 16);
+
+			// They SUM. Two copies of the same file is twice the file -
+			// not one of them, and not an average.
+			check (close (out[static_cast<size_t> (8) * 2], 2.0 * kLeft[0], 1e-6),
+			       "and they sum rather than replacing each other");
+
+			// reset() is what setActive(false) calls: everything stops
+			// dead, because there is no block left to fade in.
+			dsp.reset ();
+			check (dsp.soundingVoiceCount () == 0, "reset stops every voice dead");
+			check (dsp.slotSample (10) == &loop,
+			       "but leaves the samples loaded - they are still in their slots");
+		}
+
+		//----------------------------------------------------------------
+		// The trim is still the last stage
+		//----------------------------------------------------------------
+		{
+			Project6Dsp dsp;
+			dsp.setSampleRate (1000.0);
+			dsp.setOutputTrimDb (-6.020599913279624);      // half
+			dsp.setSlotSample (4, &loop);
+			dsp.setSlotPlaying (4, true);
+
+			std::vector<float> out (32 * kChannelCount, 0.f);
+			dsp.render (out.data (), 32);
+
+			check (close (out[static_cast<size_t> (16) * 2], kLeft[0] * 0.5, 1e-6),
+			       "the output trim scales the voices, not the other way round");
+		}
 	}
 
 	//--------------------------------------------------------------------

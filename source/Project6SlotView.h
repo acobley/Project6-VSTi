@@ -1,12 +1,30 @@
 //------------------------------------------------------------------------
 // Project6 - the sample slot view
 //
-// One cell of the 8 x 8 grid: a well you can drag a .wav onto from the
-// Finder. Empty it is blank - just the well. Loaded it shows the file's
-// name in white, shortened to fit.
+// One cell of the 8 x 8 grid. Drag a .wav onto it from the Finder and it
+// takes the file; click it and the file loops; click it again and the
+// loop stops. Empty, it is blank - just the well.
 //
-// It is NOT in Project6Controls.*, and deliberately so. That file is the
-// control set carried across SpyBand, VocalFilter and this plug-in with a
+// IT IS HALF A PARAMETER AND HALF NOT, and the split is worth knowing:
+//
+//   * the FILE PATH is not a parameter. No host can automate a string or
+//     interpolate between two of them, so it travels to the processor as
+//     a message and is saved in the state stream by hand;
+//
+//   * the PLAY TRIGGER is. It is a two-state number, and this project's
+//     rule is that anything expressible as a number is a parameter -
+//     because a message can be lost when a host does not connect the two
+//     components and a parameter cannot. So the view is a CControl,
+//     tagged with slotPlayParam(index), and a click is an ordinary edit
+//     gesture that a host can record, undo and automate.
+//
+// The consequence is that this view sets its own VALUE on a click - as
+// every CControl must, and as SpyToggle does - but never its own TEXT.
+// The path arrives through the controller, which is the one place a
+// slot's file changes and the reason two open editors cannot drift.
+//
+// It is NOT in Project6Controls.*, deliberately. That file is the control
+// set carried across SpyBand, VocalFilter and this plug-in with a
 // namespace change and nothing else, so that a `diff` between the three
 // copies shows only what genuinely differs; putting the first control
 // that is unique to Project6 into it would end that. For the same reason
@@ -14,19 +32,11 @@
 // a slot is a RECESSED well rather than a raised bar, so it wants the two
 // edge colours the other way round, and it draws its own rather than
 // exporting a helper out of a file that is meant to stay comparable.
-//
-// A SLOT IS NOT A PARAMETER. It carries no tag and never calls
-// valueChanged, beginEdit or endEdit - a file path is not something a
-// host can automate or interpolate - which is why it is a CView and not a
-// CControl. What it does on a drop is call its handler; the handler
-// writes through the controller, and the controller writes back to every
-// open editor's slot. The view never sets its own text, exactly as the
-// parameter controls never set their own value: ONE PLACE keeps the panel
-// and the plug-in in step.
 //------------------------------------------------------------------------
 
 #pragma once
 
+#include "Project6Sample.h"
 #include "Project6Slots.h"
 
 #include "vstgui/vstgui.h"
@@ -38,10 +48,11 @@
 namespace Project6 {
 
 //------------------------------------------------------------------------
-class SpySampleSlot : public VSTGUI::CView, public VSTGUI::DropTargetAdapter
+class SpySampleSlot : public VSTGUI::CControl, public VSTGUI::DropTargetAdapter
 {
 public:
-	SpySampleSlot (const VSTGUI::CRect& size, int index);
+	SpySampleSlot (const VSTGUI::CRect& size, VSTGUI::IControlListener* listener,
+	               int32_t tag, int index);
 
 	int index () const { return mIndex; }
 
@@ -50,11 +61,34 @@ public:
 	void setPath (const std::string& path);
 	const std::string& path () const { return mPath; }
 
+	/** How that file actually read, as the processor reported it. A slot
+	    that will not play has to be able to SAY so - a slot that takes
+	    the drop, shows the name and does nothing when clicked is the
+	    worst thing a control can do. */
+	void setStatus (SampleStatus status);
+	SampleStatus status () const { return mStatus; }
+
+	/** True when there is a loaded file here and a click should start it. */
+	bool playable () const
+	{
+		return !mPath.empty () && mStatus == SampleStatus::Loaded;
+	}
+
 	/** Called with (index, path) when a file the plug-in will take is
 	    dropped here. */
 	void setHandler (std::function<void (int, const std::string&)> handler);
 
 	void draw (VSTGUI::CDrawContext* context) override;
+
+	/** A click toggles the loop. Firing on DOWN rather than up, as
+	    SpyToggle does: a pad should sound the instant it is hit. */
+	void onMouseDownEvent (VSTGUI::MouseDownEvent& event) override;
+
+	/** Deliberately inert. CControl's wheel handling would move the
+	    trigger by fractions of its one step, which on a two-state
+	    parameter means a pad that starts and stops as the pointer passes
+	    over it. */
+	void onMouseWheelEvent (VSTGUI::MouseWheelEvent& event) override;
 
 	//--------------------------------------------------------------------
 	// Drag and drop
@@ -73,7 +107,7 @@ public:
 	void onDragLeave (VSTGUI::DragEventData data) override;
 	bool onDrop (VSTGUI::DragEventData data) override;
 
-	CLASS_METHODS (SpySampleSlot, VSTGUI::CView)
+	CLASS_METHODS (SpySampleSlot, VSTGUI::CControl)
 
 private:
 	/** The first path in the package this plug-in will take, or "".
@@ -84,14 +118,21 @@ private:
 	    overwrites four that were already loaded. */
 	static std::string firstAcceptedPath (VSTGUI::IDataPackage* package);
 
-	/** Draw the name into `band`, in white, shortened until it fits:
-	    first by shedding the .wav - every file here has one, so it is the
-	    four characters least worth reading - then by dropping a font
-	    size, and only then by cutting characters off the end. */
+	/** Draw the name into `band`, shortened until it fits: first by
+	    shedding the .wav - every file here has one, so it is the four
+	    characters least worth reading - then by dropping a font size, and
+	    only then by cutting characters off the end. */
 	void drawName (VSTGUI::CDrawContext* context, const VSTGUI::CRect& band);
+
+	/** Path and, when there is something to explain, why it will not
+	    play. */
+	void refreshTooltip ();
+
+	bool playing () const { return getValueNormalized () >= 0.5f; }
 
 	int mIndex = 0;
 	std::string mPath;
+	SampleStatus mStatus = SampleStatus::Empty;
 	std::function<void (int, const std::string&)> mHandler;
 	bool mDragOver = false;
 };

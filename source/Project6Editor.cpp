@@ -177,7 +177,7 @@ bool PLUGIN_API Project6Editor::open (void* parent, const PlatformType& platform
 	// left dangling by a later refactor - and it is the index, not the
 	// view, that the controller and the state stream speak in.
 	//--------------------------------------------------------------------
-	addHeading ("Samples  -  drag .wav files onto the slots",
+	addHeading ("Samples  -  drag .wav files onto the slots, click to loop",
 	            CRect (kMargin, kSlotHeadingTop, kEditorWidth - kMargin,
 	                   kSlotHeadingTop + kHeadingHeight));
 
@@ -186,9 +186,23 @@ bool PLUGIN_API Project6Editor::open (void* parent, const PlatformType& platform
 		for (int column = 0; column < kSlotColumns; ++column)
 		{
 			const int index = slotIndex (column, row);
-			auto* slot = new SpySampleSlot (slotCell (column, row), index);
+
+			// TAGGED WITH ITS PLAY PARAMETER, so a click is an ordinary
+			// edit gesture and the slot goes into mControls with the
+			// sliders. That is what makes updateControl move it when a
+			// host automates the trigger: the pad follows the automation
+			// lane through machinery that was already here.
+			auto* slot = new SpySampleSlot (
+				slotCell (column, row), this,
+				static_cast<int32_t> (slotPlayParam (index)), index);
+
 			slot->setHandler ([this] (int at, const std::string& path)
 			                  { slotDropped (at, path); });
+
+			mControls[slotPlayParam (index)] = slot;
+			if (mController)
+				showValue (slot, mController->getParamNormalized (slotPlayParam (index)));
+
 			mSlots[index] = slot;
 			frame->addView (slot);
 		}
@@ -242,8 +256,18 @@ void Project6Editor::refreshSlots ()
 
 	const SlotBank& bank = mController->slots ();
 	for (int index = 0; index < kSlotCount; ++index)
-		if (mSlots[index])
-			mSlots[index]->setPath (bank.path (index));
+	{
+		if (mSlots[index] == nullptr)
+			continue;
+
+		mSlots[index]->setPath (bank.path (index));
+
+		// The status too, and in that order: a slot draws its name in the
+		// colour its status decides, so setting the path first and the
+		// status second means at most one redraw shows the old verdict
+		// about the new file, and setStatus invalidates again.
+		mSlots[index]->setStatus (mController->slotStatus (index));
+	}
 }
 
 //------------------------------------------------------------------------

@@ -41,28 +41,53 @@ void Project6Controller::addParameters ()
 {
 	for (ParamID id = 0; id < kNumParams; ++id)
 	{
-		const ParamDef& def = kParams[id];
+		// paramDef, not kParams[id]: the sixty-four slot triggers share
+		// one definition and are not rows in the table.
+		const ParamDef& def = paramDef (id);
 
 		// NEVER PASS A NULL TITLE OR UNITS TO RangeParameter. It
 		// dereferences both without a null check, and the symptom is the
 		// VALIDATOR SEGFAULTING in the post-build step rather than
 		// anything that points at this line. A parameter whose value
 		// string carries its own unit wants an EMPTY units field, not a
-		// null one, or the host renders "200 ms %".
+		// null one, or the host renders "200 ms %". paramTitle is
+		// documented never to return null; the guard costs nothing and
+		// the failure it prevents costs an afternoon.
+		const char* name = paramTitle (id);
+
 		String128 title;
 		String128 units;
-		UString (title, str16BufferSize (String128)).assign (def.title ? def.title : "Parameter");
+		UString (title, str16BufferSize (String128)).assign (name ? name : "Parameter");
 		UString (units, str16BufferSize (String128)).assign (def.units ? def.units : "");
 
 		const int32 flags = ParameterInfo::kCanAutomate;
 
-		// An enumerated parameter wants a StringListParameter, not a
-		// RangeParameter with a step count: the host shows the names, and
-		// getParamStringByValue / getParamValueByString round-trip through
-		// them exactly. There are none yet; the branch is here so the
-		// first one is added in the right place.
-		if (def.type == ParamType::Enum)
+		// A two-state or enumerated parameter wants a
+		// StringListParameter, not a RangeParameter with a step count:
+		// the host shows the names, and getParamStringByValue /
+		// getParamValueByString round-trip through them exactly rather
+		// than through a number that has to be re-derived. The slot
+		// triggers read "Stopped" and "Playing" in a host's own list,
+		// which is worth having sixty-four times over.
+		if (def.type == ParamType::Bool || def.type == ParamType::Enum)
+		{
+			auto* list = new StringListParameter (title, id, units, flags);
+
+			const int choices = (def.type == ParamType::Bool)
+			                        ? 2
+			                        : static_cast<int> (def.plainMax) + 1;
+			for (int choice = 0; choice < choices; ++choice)
+			{
+				String128 choiceName;
+				UString (choiceName, str16BufferSize (String128))
+					.assign (paramChoiceName (id, choice));
+				list->appendString (choiceName);
+			}
+
+			parameters.addParameter (list);
+			list->setNormalized (def.defaultNormalized ());
 			continue;
+		}
 
 		RangeParameter* parameter = new RangeParameter (
 			title, id, units,
@@ -121,8 +146,13 @@ tresult PLUGIN_API Project6Controller::setComponentState (IBStream* state)
 	if (!streamer.readInt32 (count))
 		return kResultFalse;
 
-	for (ParamID id = 0; id < kNumStoredParams; ++id)
-		setParamNormalized (id, kParams[id].defaultNormalized ());
+	// EVERY parameter back to its default first, not just the saved ones.
+	// The sixty-four slot triggers live past kNumStoredParams and are
+	// deliberately not in the stream, so this loop is the only thing that
+	// stops a project reopening with whatever pads the previous one left
+	// playing.
+	for (ParamID id = 0; id < kNumParams; ++id)
+		setParamNormalized (id, paramDef (id).defaultNormalized ());
 	setParamNormalized (kBypass, 0.0);
 
 	double value = 0.0;
@@ -146,6 +176,13 @@ tresult PLUGIN_API Project6Controller::setComponentState (IBStream* state)
 	// slots existed loads with all sixty-four empty.
 	readSlots (streamer, mSlots);
 
+	// The processor is reading the files right now and will report each
+	// one; until it does, a restored slot is assumed good for the same
+	// reason a dropped one is.
+	for (int index = 0; index < kSlotCount; ++index)
+		mSlotStatus[index] = mSlots.loaded (index) ? SampleStatus::Loaded
+		                                           : SampleStatus::Empty;
+
 	// Usually there is no editor yet at this point - the host sets state
 	// before opening a window - but "usually" is not "never", and a panel
 	// showing the previous project's samples is a bad way to find out.
@@ -156,12 +193,28 @@ tresult PLUGIN_API Project6Controller::setComponentState (IBStream* state)
 }
 
 //------------------------------------------------------------------------
+SampleStatus Project6Controller::slotStatus (int index) const
+{
+	if (!isSlotIndex (index))
+		return SampleStatus::Empty;
+
+	return mSlotStatus[index];
+}
+
+//------------------------------------------------------------------------
 void Project6Controller::setSlotPath (int index, const std::string& path)
 {
 	// REFUSED, not clamped, by SlotBank itself. A drop that somehow
 	// carried a bad index must not land on a real slot.
 	if (!mSlots.setPath (index, path))
 		return;
+
+	// Optimistic, and corrected by the processor's reply within one
+	// message round trip. The alternative - leaving the previous file's
+	// status in place - would show a red "not a WAV file" against a file
+	// that has only just arrived and about which nothing is yet known,
+	// which is a lie about a different file.
+	mSlotStatus[index] = path.empty () ? SampleStatus::Empty : SampleStatus::Loaded;
 
 	sendSlotToProcessor (index, path);
 
@@ -203,6 +256,23 @@ tresult PLUGIN_API Project6Controller::notify (IMessage* message)
 {
 	if (message == nullptr)
 		return kInvalidArgument;
+
+	if (FIDStringsEqual (message->getMessageID (), kProject6SlotStatusMessage))
+	{
+		int64 index = -1;
+		int64 status = 0;
+		if (message->getAttributes ()->getInt (kProject6SlotIndexAttribute, index) == kResultOk
+		    && message->getAttributes ()->getInt (kProject6SlotStatusAttribute, status)
+		           == kResultOk
+		    && isSlotIndex (static_cast<int> (index)))
+		{
+			mSlotStatus[index] = static_cast<SampleStatus> (status);
+
+			for (auto* editor : mEditors)
+				editor->refreshSlots ();
+		}
+		return kResultOk;
+	}
 
 	if (FIDStringsEqual (message->getMessageID (), kProject6SampleRateMessage))
 	{

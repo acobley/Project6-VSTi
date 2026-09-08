@@ -7,6 +7,7 @@
 #pragma once
 
 #include "Project6Params.h"
+#include "Project6Sample.h"
 #include "Project6Slots.h"
 
 #include "public.sdk/source/vst/vsteditcontroller.h"
@@ -61,6 +62,13 @@ public:
 
 	const SlotBank& slots () const { return mSlots; }
 
+	/** How a slot's file actually read, as the processor reported it.
+
+	    The panel needs this to know whether a slot can be clicked at all,
+	    and to say WHY when it cannot. SampleStatus::Empty for a slot with
+	    no file in it. */
+	SampleStatus slotStatus (int index) const;
+
 	/** A file was dropped on a slot, or a slot was emptied. Records it,
 	    tells the processor, and refreshes every open editor.
 
@@ -79,6 +87,7 @@ private:
 
 	double mSampleRate = 44100.0;
 	SlotBank mSlots;
+	SampleStatus mSlotStatus[kSlotCount] = {};
 };
 
 //------------------------------------------------------------------------

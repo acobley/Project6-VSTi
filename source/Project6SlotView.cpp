@@ -17,24 +17,35 @@ namespace {
 
 /** The well. Darker than the panel, so an empty slot reads as a hole
     rather than as a raised button nobody has labelled. */
-const CColor kWellFill    ( 40,  40,  40, 255);
+const CColor kWellFill     ( 40,  40,  40, 255);
 /** Loaded slots are a shade lighter, so a full row and an empty one are
     told apart at a glance and not only by reading sixty-four names. */
-const CColor kWellFillFull( 58,  58,  58, 255);
+const CColor kWellFillFull ( 58,  58,  58, 255);
+/** PLAYING. A tint across the whole well rather than a lamp in the
+    corner: a lamp would cost the name several characters of a control
+    that has few to spare, and on a grid of sixty-four cells the eye finds
+    a block of colour faster than it finds four lit dots. */
+const CColor kWellFillLive ( 96,  34,  34, 255);
 /** Recessed: the DXi's Draw3dRect colours the OTHER WAY ROUND from the
     raised bar in Project6Controls.cpp. Same two values, opposite corners. */
-const CColor kWellShadow  (100, 100, 100, 255);
-const CColor kWellHigh    (200, 200, 200, 255);
+const CColor kWellShadow   (100, 100, 100, 255);
+const CColor kWellHigh     (200, 200, 200, 255);
 
 /** WHITE, as asked for - not the near-white Colours::kValue the sliders
     use for their readouts. A slot's name is the only thing in its well,
     with nothing to compete with, and the extra contrast is what makes a
     grid of sixty-four of them scannable. */
-const CColor kSlotText    (255, 255, 255, 255);
+const CColor kSlotText     (255, 255, 255, 255);
+/** A file that will not play. Muted and warm, so the slot reads as "there
+    is something wrong with this one" rather than as an empty slot or a
+    working one. The tooltip says what. */
+const CColor kSlotTextBad  (208, 132, 132, 255);
 
-/** The frame while a file the plug-in will take is over the slot. Green,
-    the panel's own label colour, so "this one, and yes" is one glance. */
-const CColor kDropAccept  ( 50, 255,  50, 255);
+/** The border while the loop is running. The DXi's own lamp red. */
+const CColor kLiveBorder   (255,  70,  70, 255);
+/** The frame while an acceptable file is over the slot. Green, the
+    panel's own label colour, so "this one, and yes" is one glance. */
+const CColor kDropAccept   ( 50, 255,  50, 255);
 
 /** Inset from the well's edge to the text. */
 constexpr CCoord kTextInset = 4.;
@@ -66,15 +77,21 @@ void drawWell (CDrawContext* context, const CRect& r,
 } // namespace
 
 //------------------------------------------------------------------------
-SpySampleSlot::SpySampleSlot (const CRect& size, int index)
-: CView (size)
+SpySampleSlot::SpySampleSlot (const CRect& size, IControlListener* listener,
+                              int32_t tag, int index)
+: CControl (size, listener, tag)
 , mIndex (index)
 {
-	// A slot has no click behaviour, but it MUST stay mouse-enabled: a
-	// view with the mouse turned off is skipped by the frame's hit test,
-	// and the drag never reaches getDropTarget(). That is the whole
-	// control gone, from one line that looks like tidying up.
+	// A view with the mouse turned off is skipped by the frame's hit test,
+	// and the drag never reaches getDropTarget() - so an empty slot has to
+	// stay mouse-enabled even though a click on it does nothing. That is
+	// the whole control gone, from one line that looks like tidying up.
 	setMouseEnabled (true);
+
+	// Two states, no travel between them.
+	setMin (0.f);
+	setMax (1.f);
+	setValueNormalized (0.f);
 }
 
 //------------------------------------------------------------------------
@@ -84,19 +101,83 @@ void SpySampleSlot::setPath (const std::string& path)
 		return;
 
 	mPath = path;
-
-	// The full path as a tooltip, because the name on the slot is
-	// shortened and two takes of the same sample usually differ in the
-	// directory. Costs nothing when the frame has tooltips off.
-	setTooltipText (mPath.empty () ? nullptr : mPath.c_str ());
-
+	refreshTooltip ();
 	invalid ();
+}
+
+//------------------------------------------------------------------------
+void SpySampleSlot::setStatus (SampleStatus status)
+{
+	if (status == mStatus)
+		return;
+
+	mStatus = status;
+	refreshTooltip ();
+	invalid ();
+}
+
+//------------------------------------------------------------------------
+void SpySampleSlot::refreshTooltip ()
+{
+	// The full path, because the name on the slot is shortened and two
+	// takes of the same sample usually differ only in the directory - and
+	// the reason it will not play, when there is one, because a slot that
+	// refuses to start has to be able to say why somewhere.
+	if (mPath.empty ())
+	{
+		setTooltipText (nullptr);
+		return;
+	}
+
+	std::string text = mPath;
+	if (mStatus != SampleStatus::Loaded && mStatus != SampleStatus::Empty)
+	{
+		text += "\n";
+		text += sampleStatusText (mStatus);
+	}
+
+	setTooltipText (text.c_str ());
 }
 
 //------------------------------------------------------------------------
 void SpySampleSlot::setHandler (std::function<void (int, const std::string&)> handler)
 {
 	mHandler = std::move (handler);
+}
+
+//------------------------------------------------------------------------
+void SpySampleSlot::onMouseDownEvent (MouseDownEvent& event)
+{
+	if (! event.buttonState.isLeft ())
+		return;
+
+	// Consumed either way, so a click on an empty slot does not fall
+	// through to the frame and do something else instead.
+	event.consumed = true;
+
+	// NOTHING TO PLAY. Lighting the well for a slot that cannot make a
+	// sound would be the exact failure the status message exists to
+	// prevent - and the tooltip already says why.
+	if (! playable ())
+		return;
+
+	// A COMPLETE EDIT GESTURE, exactly as SpyToggle does it: begin, set,
+	// notify, end. That is what makes the host treat this as something it
+	// can record and undo, and what carries the change to the processor
+	// and to any other editor open on this instance.
+	beginEdit ();
+	setValueNormalized (playing () ? 0.f : 1.f);
+	valueChanged ();
+	endEdit ();
+	invalid ();
+}
+
+//------------------------------------------------------------------------
+void SpySampleSlot::onMouseWheelEvent (MouseWheelEvent& event)
+{
+	// Swallowed on purpose - see the header. A wheel over a pad grid
+	// would otherwise start and stop loops as the pointer passed over.
+	event.consumed = true;
 }
 
 //------------------------------------------------------------------------
@@ -217,16 +298,10 @@ void SpySampleSlot::drawName (CDrawContext* context, const CRect& band)
 	for (const auto& attempt : attempts)
 	{
 		context->setFont (attempt.font);
-		if (context->getStringWidth (attempt.text->c_str ()) <= room)
-		{
-			shown = *attempt.text;
-			font  = attempt.font;
-			break;
-		}
-		// Remember the smallest attempt, so the truncation below works on
-		// the version that fits the most characters in.
 		shown = *attempt.text;
 		font  = attempt.font;
+		if (context->getStringWidth (shown.c_str ()) <= room)
+			break;
 	}
 
 	// Still too wide: cut from the END and mark the cut. A name is
@@ -250,7 +325,9 @@ void SpySampleSlot::drawName (CDrawContext* context, const CRect& band)
 	                  band.right,
 	                  band.top + (band.getHeight () - height) * 0.5 + height);
 
-	context->setFontColor (kSlotText);
+	// A file that will not play says so in its colour as well as in its
+	// tooltip: a name in white is a name you can click.
+	context->setFontColor (playable () ? kSlotText : kSlotTextBad);
 	context->drawString (shown.c_str (), line, kCenterText, true);
 }
 
@@ -258,20 +335,23 @@ void SpySampleSlot::drawName (CDrawContext* context, const CRect& band)
 void SpySampleSlot::draw (CDrawContext* context)
 {
 	const CRect r = getViewSize ();
+	const bool live = playing () && playable ();
 
 	// The well itself.
-	context->setFillColor (mPath.empty () ? kWellFill : kWellFillFull);
+	context->setFillColor (live ? kWellFillLive
+	                            : (mPath.empty () ? kWellFill : kWellFillFull));
 	context->drawRect (r, kDrawFilled);
 	drawWell (context, r, kWellShadow, kWellHigh);
 
-	// An acceptable file is over this slot: outline it, inside the well's
-	// own edge so the two do not fight.
-	if (mDragOver)
+	// Playing, or an acceptable file is over this slot. Both are drawn
+	// inside the well's own edge so the two do not fight; the drag wins
+	// where they coincide, because it is about what is happening NOW.
+	if (live || mDragOver)
 	{
 		CRect highlight (r);
 		highlight.inset (1., 1.);
 		context->setLineWidth (1.);
-		context->setFrameColor (kDropAccept);
+		context->setFrameColor (mDragOver ? kDropAccept : kLiveBorder);
 		context->drawRect (highlight, kDrawStroked);
 	}
 

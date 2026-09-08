@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <string>
+#include <utility>
 
 using namespace Steinberg;
 using namespace Steinberg::Vst;
@@ -24,8 +25,8 @@ Project6Processor::Project6Processor ()
 {
 	setControllerClass (kProject6ControllerUID);
 
-	for (int i = 0; i < kNumParams; ++i)
-		mParams[i] = kParams[i].defaultNormalized ();
+	for (ParamID id = 0; id < kNumParams; ++id)
+		mParams[id] = paramDef (id).defaultNormalized ();
 }
 
 //------------------------------------------------------------------------
@@ -45,6 +46,13 @@ tresult PLUGIN_API Project6Processor::initialize (FUnknown* context)
 //------------------------------------------------------------------------
 tresult PLUGIN_API Project6Processor::terminate ()
 {
+	// Nothing is rendering by the time terminate is reached, so the
+	// retire list can go without waiting for the block counter.
+	mActive.store (false, std::memory_order_release);
+	for (int index = 0; index < kSlotCount; ++index)
+		mDsp.setSlotSample (index, nullptr);
+	collectRetired (true);
+
 	return AudioEffect::terminate ();
 }
 
@@ -91,8 +99,24 @@ tresult PLUGIN_API Project6Processor::setActive (TBool state)
 	if (state)
 	{
 		mDsp.reset ();
+		mActive.store (true, std::memory_order_release);
 		sendSampleRateToController ();
+
+		// EVERY slot's status, every time we are activated. A panel
+		// opened after the file was loaded, or a project restored before
+		// the two components were connected, has no other way to learn
+		// that a slot failed - and a slot that will not play and will not
+		// say why is worse than one that was never filled.
+		sendAllSlotStatusesToController ();
 	}
+	else
+	{
+		// No block can be running once we are inactive, so everything on
+		// the retire list is safe to free.
+		mActive.store (false, std::memory_order_release);
+		collectRetired (true);
+	}
+
 	return AudioEffect::setActive (state);
 }
 
@@ -136,11 +160,113 @@ tresult PLUGIN_API Project6Processor::notify (IMessage* message)
 		// setPath range-checks the index itself and refuses a bad one
 		// rather than clamping, so a message from a future build with a
 		// bigger grid is dropped instead of overwriting slot 63.
-		mSlots.setPath (static_cast<int> (index), path);
+		if (mSlots.setPath (static_cast<int> (index), path))
+		{
+			// notify() is [UI-thread], which is the only reason this is
+			// allowed to open a file at all.
+			loadSlot (static_cast<int> (index));
+		}
 		return kResultOk;
 	}
 
 	return AudioEffect::notify (message);
+}
+
+//------------------------------------------------------------------------
+void Project6Processor::loadSlot (int index)
+{
+	if (!isSlotIndex (index))
+		return;
+
+	const std::string& path = mSlots.path (index);
+
+	SampleBuffer buffer;
+	const SampleStatus status = path.empty () ? SampleStatus::Empty
+	                                          : loadWavFile (path, buffer);
+
+	// A FAILED LOAD STILL KEEPS THE PATH. The slot goes on showing the
+	// file's name and the project goes on remembering it - the file may
+	// simply be on a drive that is not plugged in today. What it does not
+	// get is audio, and the status is how the panel says so.
+	std::shared_ptr<const SampleBuffer> sample;
+	if (status == SampleStatus::Loaded)
+		sample = std::make_shared<const SampleBuffer> (std::move (buffer));
+
+	mStatus[index] = status;
+	publishSlot (index, std::move (sample));
+	sendSlotStatusToController (index);
+}
+
+//------------------------------------------------------------------------
+void Project6Processor::loadAllSlots ()
+{
+	for (int index = 0; index < kSlotCount; ++index)
+		loadSlot (index);
+}
+
+//------------------------------------------------------------------------
+void Project6Processor::publishSlot (int index, std::shared_ptr<const SampleBuffer> sample)
+{
+	if (!isSlotIndex (index))
+		return;
+
+	std::shared_ptr<const SampleBuffer> previous = std::move (mSamples[index]);
+	mSamples[index] = std::move (sample);
+
+	// The DSP gets a bare pointer into a buffer this object owns. It is
+	// only ever read there, and never freed there.
+	mDsp.setSlotSample (index, mSamples[index] ? mSamples[index].get () : nullptr);
+
+	// The counter is read AFTER the swap, so any block still holding the
+	// old pointer started at or before this value.
+	if (previous)
+		mRetired.push_back (
+			{ std::move (previous), mBlockCounter.load (std::memory_order_acquire) });
+
+	collectRetired (false);
+}
+
+//------------------------------------------------------------------------
+void Project6Processor::collectRetired (bool force)
+{
+	const std::uint64_t now = mBlockCounter.load (std::memory_order_acquire);
+	const bool inactive = !mActive.load (std::memory_order_acquire);
+
+	mRetired.erase (
+		std::remove_if (mRetired.begin (), mRetired.end (),
+		                [&] (const Retired& retired)
+		                {
+			                // +2, not +1: the block that was running when
+			                // the swap happened may have started at `at`
+			                // itself, so one further increment only proves
+			                // that block began, not that it finished.
+			                return force || inactive || now >= retired.at + 2;
+		                }),
+		mRetired.end ());
+}
+
+//------------------------------------------------------------------------
+void Project6Processor::sendSlotStatusToController (int index)
+{
+	if (!isSlotIndex (index))
+		return;
+
+	if (auto* message = allocateMessage ())
+	{
+		FReleaser releaser (message);
+		message->setMessageID (kProject6SlotStatusMessage);
+		message->getAttributes ()->setInt (kProject6SlotIndexAttribute, index);
+		message->getAttributes ()->setInt (kProject6SlotStatusAttribute,
+		                                   static_cast<int64> (mStatus[index]));
+		sendMessage (message);
+	}
+}
+
+//------------------------------------------------------------------------
+void Project6Processor::sendAllSlotStatusesToController ()
+{
+	for (int index = 0; index < kSlotCount; ++index)
+		sendSlotStatusToController (index);
 }
 
 //------------------------------------------------------------------------
@@ -243,9 +369,21 @@ void Project6Processor::renderSegment (ProcessData& data, int32 offset, int32 nu
 //------------------------------------------------------------------------
 tresult PLUGIN_API Project6Processor::process (ProcessData& data)
 {
+	// FIRST, and before anything can read a published sample pointer.
+	// This is what the retire list waits on - see collectRetired.
+	mBlockCounter.fetch_add (1, std::memory_order_acq_rel);
+
 	applyParameterChanges (data.inputParameterChanges);
 
 	mDsp.setOutputTrimDb (paramDef (kOutputTrim).toInternal (mParams[kOutputTrim]));
+
+	// THE TRIGGERS, once per block. Every slot every block rather than
+	// only the ones that changed: sixty-four comparisons is nothing, and
+	// tracking "changed" here would be a second copy of the state the
+	// DSP already keeps - which is how a pad ends up stuck on because a
+	// block was dropped.
+	for (int slot = 0; slot < kSlotCount; ++slot)
+		mDsp.setSlotPlaying (slot, mParams[slotPlayParam (slot)] >= 0.5);
 
 	// A PARAMETER-ONLY BLOCK: numSamples == 0, or no output bus at all.
 	// Hosts send these, and the validator sends them deliberately. Consume
@@ -284,13 +422,19 @@ tresult PLUGIN_API Project6Processor::process (ProcessData& data)
 	}
 	renderSegment (data, position, data.numSamples - position);
 
-	// Nothing is sounding, and saying so lets the host skip downstream
-	// work. WHEN VOICES ARRIVE THIS MUST BECOME CONDITIONAL - a synth that
-	// flags silence while a note is playing is silenced by the host.
+	// Tell the host when there is genuinely nothing sounding, so it can
+	// skip downstream work - and ONLY then. A synth that flags silence
+	// while something is playing is silenced by the host, which presents
+	// as a pad that lights up and cannot be heard.
+	//
+	// A voice counts as sounding through its fade-out too, which is why
+	// this asks the DSP rather than the parameters.
 	data.outputs[0].silenceFlags =
-	    (data.outputs[0].numChannels >= 64)
-	        ? ~0ULL
-	        : ((1ULL << data.outputs[0].numChannels) - 1);
+	    (mDsp.soundingVoiceCount () == 0)
+	        ? ((data.outputs[0].numChannels >= 64)
+	               ? ~0ULL
+	               : ((1ULL << data.outputs[0].numChannels) - 1))
+	        : 0;
 
 	return kResultOk;
 }
@@ -334,6 +478,20 @@ tresult PLUGIN_API Project6Processor::setState (IBStream* state)
 	if (!streamer.readInt32 (count))
 		return kResultFalse;
 
+	// EVERYTHING back to its default BEFORE anything is read. A project
+	// saved before a parameter existed carries a shorter stream, and
+	// whatever it does not mention must go back to its default rather
+	// than keeping what the previous patch left in this instance -
+	// loading an old project after a new one must not inherit the new
+	// one's settings. It is also what stops the sixty-four slot
+	// triggers, which are deliberately not in the stream at all, from
+	// surviving a project load and leaving pads playing.
+	//
+	// The controller's setComponentState does the identical thing, from
+	// the identical layout.
+	for (ParamID id = 0; id < kNumParams; ++id)
+		mParams[id] = paramDef (id).defaultNormalized ();
+
 	for (int32 i = 0; i < count; ++i)
 	{
 		double v = 0.0;
@@ -342,15 +500,6 @@ tresult PLUGIN_API Project6Processor::setState (IBStream* state)
 		if (i < static_cast<int32> (kNumStoredParams))
 			mParams[i] = std::min (1.0, std::max (0.0, v));
 	}
-
-	// A project saved before a parameter existed carries a SHORTER stream.
-	// Everything it does not mention goes back to its DEFAULT rather than
-	// keeping whatever the previous patch left in this instance - loading
-	// an old project after a new one must not inherit the new one's
-	// settings. The controller's setComponentState does the identical
-	// thing, from the identical layout.
-	for (int32 i = count; i < static_cast<int32> (kNumStoredParams); ++i)
-		mParams[i] = kParams[i].defaultNormalized ();
 
 	int32 bypass = 0;
 	mBypass = false;
@@ -363,6 +512,12 @@ tresult PLUGIN_API Project6Processor::setState (IBStream* state)
 	// case and is not an error. The CONTROLLER reads the identical block,
 	// through the identical function.
 	readSlots (streamer, mSlots);
+
+	// The paths are back; now read the files. setState is not the audio
+	// thread, so this is where sixty-four disk reads belong - and a slot
+	// whose file has moved since the project was saved gets a status
+	// rather than silence.
+	loadAllSlots ();
 
 	return kResultOk;
 }

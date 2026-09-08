@@ -18,7 +18,8 @@
 //
 //     c++ -std=c++17 -O2 -Isource -Iexternal/vst3sdk
 //         tests/ParamsTests.cpp source/Project6Params.cpp
-//         source/Project6Dsp.cpp -o /tmp/paramstests && /tmp/paramstests
+//         source/Project6Dsp.cpp source/Project6Sample.cpp
+//         -o /tmp/paramstests && /tmp/paramstests
 //
 //   (one line, wrapped; a comment line may not end in a backslash)
 //------------------------------------------------------------------------
@@ -28,6 +29,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <set>
 #include <string>
 
 using namespace Project6;
@@ -66,27 +68,43 @@ int main ()
 	//--------------------------------------------------------------------
 	{
 		bool idsMatch = true, titlesPresent = true, unitsPresent = true, rangesSane = true;
+		bool titlesDistinct = true;
+
+		std::set<std::string> seenTitles;
 
 		for (ParamID id = 0; id < kNumParams; ++id)
 		{
-			const ParamDef& def = kParams[id];
+			// paramDef, not kParams[id]: the sixty-four triggers share one
+			// definition and are not rows in the table.
+			const ParamDef& def = paramDef (id);
 
-			// A row in the wrong place is the one mistake this table can
-			// make that nothing else notices: every lookup is by index.
-			idsMatch &= (def.id == id);
+			// A row in the wrong place is the one mistake the table can
+			// make that nothing else notices: every table lookup is by
+			// index. The shared trigger definition is exempt - it cannot
+			// carry sixty-four ids, and nothing reads its id.
+			if (id < kNumTableParams)
+				idsMatch &= (def.id == id);
 
 			// NEVER null. RangeParameter dereferences both without a
 			// check, and the symptom is the VALIDATOR segfaulting in the
 			// post-build step rather than anything pointing at the table.
-			titlesPresent &= (def.title != nullptr && def.title[0] != '\0');
+			const char* title = paramTitle (id);
+			titlesPresent &= (title != nullptr && title[0] != '\0');
 			unitsPresent  &= (def.units != nullptr);
+
+			// And DISTINCT. Sixty-four parameters called "Slot Play" is a
+			// host automation menu nobody can use - which is the whole
+			// reason paramTitle exists apart from ParamDef::title.
+			if (title != nullptr)
+				titlesDistinct &= seenTitles.insert (std::string (title)).second;
 
 			rangesSane &= (def.plainMax > def.plainMin);
 			rangesSane &= (def.plainDefault >= def.plainMin && def.plainDefault <= def.plainMax);
 		}
 
-		check (idsMatch,       "every row's id equals its index");
+		check (idsMatch,       "every table row's id equals its index");
 		check (titlesPresent,  "no title is null or empty");
+		check (titlesDistinct, "and no two parameters share a name");
 		check (unitsPresent,   "no units string is null (empty is fine, null is not)");
 		check (rangesSane,     "every range is ordered and contains its default");
 	}
@@ -99,7 +117,7 @@ int main ()
 
 		for (ParamID id = 0; id < kNumParams; ++id)
 		{
-			const ParamDef& def = kParams[id];
+			const ParamDef& def = paramDef (id);
 
 			ends &= close (def.toPlain (0.0), def.plainMin, 1e-9);
 			ends &= close (def.toPlain (1.0), def.plainMax, 1e-9);
@@ -131,14 +149,28 @@ int main ()
 		bool identical = true;
 		for (ParamID id = 0; id < kNumParams; ++id)
 		{
-			const ParamDef& def = kParams[id];
+			const ParamDef& def = paramDef (id);
+
+			// A two-state parameter SNAPS rather than scaling - that is
+			// toInternal doing its job, not the ranges differing - so it
+			// is checked on its own, below.
+			if (def.type == ParamType::Bool)
+				continue;
+
 			for (int step = 0; step <= 20; ++step)
 			{
 				const double n = step / 20.0;
 				identical &= close (def.toInternal (n), def.toPlain (n), 1e-9);
 			}
 		}
-		check (identical, "every parameter's internal range equals its plain range");
+		check (identical, "every continuous parameter's internal range equals its plain range");
+
+		// The snap, at the boundary and either side of it.
+		const ParamDef& trigger = slotPlayDef ();
+		check (trigger.toInternal (0.0)  == 0.0, "a trigger at 0 is stopped");
+		check (trigger.toInternal (0.49) == 0.0, "just under half is still stopped");
+		check (trigger.toInternal (0.5)  == 1.0, "half is playing");
+		check (trigger.toInternal (1.0)  == 1.0, "and so is 1");
 	}
 
 	//--------------------------------------------------------------------
@@ -155,9 +187,15 @@ int main ()
 		check (&paramDef (kNumParams) == &kParams[kOutputTrim],
 		       "so is one past the end of the table");
 
-		check (isTableParam (kOutputTrim),  "the trim is a table parameter");
-		check (! isTableParam (kBypass),    "kBypass is not");
-		check (kBypass > kNumParams,        "and it is past the end, as the convention requires");
+		check (&paramDef (slotPlayParam (0)) == &slotPlayDef (),
+		       "every trigger resolves to the one shared definition");
+		check (&paramDef (slotPlayParam (kSlotCount - 1)) == &slotPlayDef (),
+		       "including the last one");
+
+		check (isPluginParam (kOutputTrim),  "the trim is one of this plug-in's parameters");
+		check (isPluginParam (slotPlayParam (kSlotCount - 1)), "so is the last trigger");
+		check (! isPluginParam (kBypass),    "kBypass is not");
+		check (kBypass > kNumParams,         "and it is past the end, as the convention requires");
 	}
 
 	//--------------------------------------------------------------------
@@ -165,13 +203,23 @@ int main ()
 	//--------------------------------------------------------------------
 	{
 		// The processor and the controller both write and read exactly
-		// kNumStoredParams doubles. While there are no published values it
-		// equals kNumParams - and when the first one is appended, THIS is
-		// the line that has to move with it.
-		check (kNumStoredParams == kNumParams,
-		       "every parameter is currently a saved setting");
+		// kNumStoredParams doubles.
+		check (kNumStoredParams == kNumTableParams,
+		       "only the trim is saved");
+		check (kNumStoredParams < kNumParams,
+		       "the triggers are deliberately outside the saved block");
 		check (kNumStoredParams <= kNumParams,
-		       "the saved block never runs past the end of the table");
+		       "and the saved block never runs past the end");
+
+		// A project that reopened with six pads looping would be a
+		// project nobody could open quietly. The triggers stay out of the
+		// stream, and BOTH sides reset every parameter past the saved
+		// block to its default before reading - which only works if the
+		// default is "stopped".
+		check (slotPlayDef ().plainDefault == 0.0,
+		       "a trigger defaults to stopped, so a loaded project is quiet");
+		check (slotPlayDef ().defaultNormalized () == 0.0,
+		       "in normalised terms too");
 	}
 
 	//--------------------------------------------------------------------
@@ -191,6 +239,57 @@ int main ()
 		check (close (dbToLinear (trim.plainDefault, kTrimMinDb), 1.0, 1e-12),
 		       "the default trim is unity gain");
 		check (trim.smoothed, "the trim is marked smoothed - it is, in the DSP");
+	}
+
+	//--------------------------------------------------------------------
+	section ("7. The trigger block, and the bound that is not kNumParams");
+	//--------------------------------------------------------------------
+	{
+		check (kSlotPlayBase == kOutputTrim + 1, "the block is APPENDED after the trim");
+		check (kSlotPlayEnd - kSlotPlayBase == kSlotCount, "one trigger per slot");
+		check (kNumParams == kSlotPlayEnd, "and it currently runs to the end");
+
+		// The two directions have to agree for every slot, not just for
+		// one - an off-by-one here plays the wrong pad.
+		bool roundTrips = true, classified = true;
+		for (int slot = 0; slot < kSlotCount; ++slot)
+		{
+			const ParamID id = slotPlayParam (slot);
+			roundTrips &= (slotOfPlayParam (id) == slot);
+			classified &= isSlotPlayParam (id);
+		}
+		check (roundTrips, "slot -> parameter -> slot round-trips for all 64");
+		check (classified, "and all 64 are classified as triggers");
+
+		check (! isSlotPlayParam (kOutputTrim), "the trim is not one");
+		check (! isSlotPlayParam (kBypass),     "and neither is the bypass");
+		check (! isSlotPlayParam (kSlotPlayEnd),
+		       "NEGATIVE CONTROL: one past the block is not in the block");
+
+		// THE TRAP THIS WHOLE SECTION IS ABOUT. VocalFilter's equivalent
+		// predicate was bounded by the end of the TABLE rather than by the
+		// end of its own block. It survived one append and then
+		// misclassified the parameter added after it, and the symptom was
+		// a control that wrote its parameter, was seen by the host, and
+		// did nothing. If a parameter is ever appended after the triggers,
+		// this check fails and says why.
+		check (isSlotPlayParam (kSlotPlayEnd - 1) && !isSlotPlayParam (kSlotPlayEnd),
+		       "the block is bounded by kSlotPlayEnd, not by kNumParams");
+
+		// Names that say where the pad is.
+		check (std::string (paramTitle (slotPlayParam (0)))  == "Slot A1 Play",
+		       "slot 0 is named for the top-left cell");
+		check (std::string (paramTitle (slotPlayParam (7)))  == "Slot A8 Play",
+		       "slot 7 ends the first row");
+		check (std::string (paramTitle (slotPlayParam (8)))  == "Slot B1 Play",
+		       "slot 8 starts the second");
+		check (std::string (paramTitle (slotPlayParam (63))) == "Slot H8 Play",
+		       "and slot 63 is the bottom-right cell");
+
+		check (std::string (paramChoiceName (slotPlayParam (0), 0)) == "Stopped",
+		       "a host's list reads Stopped");
+		check (std::string (paramChoiceName (slotPlayParam (0), 1)) == "Playing",
+		       "and Playing, rather than 0 and 1");
 	}
 
 	//--------------------------------------------------------------------

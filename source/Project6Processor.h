@@ -32,11 +32,15 @@
 
 #include "Project6Dsp.h"
 #include "Project6Params.h"
+#include "Project6Sample.h"
 #include "Project6Slots.h"
 
 #include "public.sdk/source/vst/vstaudioeffect.h"
 #include "pluginterfaces/vst/ivstevents.h"
 
+#include <atomic>
+#include <cstdint>
+#include <memory>
 #include <vector>
 
 namespace Project6 {
@@ -76,6 +80,38 @@ public:
 private:
 	void applyParameterChanges (Steinberg::Vst::IParameterChanges* changes);
 	void sendSampleRateToController ();
+
+	//--------------------------------------------------------------------
+	// Sample loading
+	//
+	// ALL OF THIS IS UI-THREAD ONLY. It opens files, allocates, decodes
+	// and frees - none of which may happen while a block is being
+	// rendered.
+	//--------------------------------------------------------------------
+
+	/** Read whatever is in a slot's path, publish it, and tell the
+	    controller how it went. */
+	void loadSlot (int index);
+
+	/** Load every slot that has a path. Called after the state stream has
+	    filled the bank. */
+	void loadAllSlots ();
+
+	/** Hand a decoded buffer to the DSP and retire the one it replaces.
+
+	    THE RETIREMENT IS THE POINT. The audio thread may be half way
+	    through a block holding the old pointer, so the old buffer cannot
+	    be freed here; it goes on mRetired and is freed later, once the
+	    block counter proves no block that could have seen it is still
+	    running. */
+	void publishSlot (int index, std::shared_ptr<const SampleBuffer> sample);
+
+	/** Free the retired buffers it is now safe to free. `force` is for
+	    teardown, where there is no audio thread left to wait for. */
+	void collectRetired (bool force);
+
+	void sendSlotStatusToController (int index);
+	void sendAllSlotStatusesToController ();
 	/** Note-on / note-off at one sample offset. Nothing sounds yet; the
 	    events are consumed anyway so that when something does, the
 	    sample-accurate path underneath it is already the one being used. */
@@ -102,6 +138,38 @@ private:
 	    non-audio thread, never these strings: a std::string assignment
 	    allocates, and process() must not. */
 	SlotBank mSlots;
+
+	/** The decoded audio, OWNED HERE. The DSP holds bare pointers into
+	    these; nothing else may. */
+	std::shared_ptr<const SampleBuffer> mSamples[kSlotCount];
+
+	/** How each slot's file read, so the panel can say why one will not
+	    play. */
+	SampleStatus mStatus[kSlotCount] = {};
+
+	/** A buffer that has been replaced, and the block number at which it
+	    was replaced. */
+	struct Retired
+	{
+		std::shared_ptr<const SampleBuffer> sample;
+		std::uint64_t at = 0;
+	};
+	std::vector<Retired> mRetired;
+
+	/** Incremented at the top of every process() call.
+
+	    This is the whole lock-free handoff: a buffer retired when the
+	    counter read N cannot still be in use once the counter has reached
+	    N + 2, because process() runs one block at a time and the block
+	    that might have held the old pointer must have returned before the
+	    next one started. No lock, no allocation on the audio thread, and
+	    nothing freed underneath a block that is still reading it. */
+	std::atomic<std::uint64_t> mBlockCounter { 0 };
+
+	/** False when the host has deactivated us. Then no block is running,
+	    nothing can be holding a retired pointer, and everything on the
+	    retire list can go at once. */
+	std::atomic<bool> mActive { false };
 
 	Project6Dsp mDsp;
 
