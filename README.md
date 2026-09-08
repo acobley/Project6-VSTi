@@ -23,8 +23,13 @@ and the pad above shows the value in decibels while you do.
 
 **Each row sums to a fader on the right.** The eight pads of a row go through
 their own levels, sum, pass that row's level, and the eight rows sum into the
-output trim. `docs/routing.png` is the whole path drawn out — and it is
-generated from the headers, so it cannot quietly disagree with the code.
+output trim.
+
+**Nine output buses**: the main stereo mix, plus one stereo aux bus per row
+carrying that row's **direct out — tapped before the row fader**, so the fader
+balances the mix without touching what leaves for the desk.
+`docs/routing.png` is the whole path drawn out, and it is generated from the
+headers, so it cannot quietly disagree with the code.
 
 Levels are saved with the project and automatable like everything else.
 
@@ -68,6 +73,12 @@ Then run the SDK validator, and:
 ```sh
 auval -v aumu Prj6 AECo
 ```
+
+**The Audio Unit side of the nine buses is the thing to check there.**
+Steinberg's wrapper builds one AU element per VST3 bus from `getBusCount`, so
+`SupportedNumChannels` in `resource/au-info.plist` describes only the main
+element and is deliberately still `0 in / 2 out`. Whether the eight extra
+elements appear correctly cannot be established from a Linux VM.
 
 **Adding a source file later regenerates the Xcode project mid-build and
 compiles the old file list.** The symptom is *"Bundle does not export the

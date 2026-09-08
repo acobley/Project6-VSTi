@@ -77,7 +77,14 @@
 
 	<!-- MUST match what your processor's setBusArrangements accepts. If you
 	     widen the bus support there, widen it here too or hosts will not
-	     offer the new layouts. auval is strict about this. -->
+	     offer the new layouts. auval is strict about this.
+
+	     THIS DESCRIBES THE MAIN ELEMENT ONLY. Project6 has nine output
+	     buses - the mix, and one per row - and Steinberg's AU wrapper
+	     builds one AU element per VST3 bus from getBusCount, not from
+	     this list. So 0 in / 2 out stays right here, and whether the
+	     eight extra elements appear correctly is a question for
+	     `auval -v aumu Prj6 AECo` on a machine that can run it. -->
 	<key>AudioUnit SupportedNumChannels</key>
 	<array>
 		<dict>

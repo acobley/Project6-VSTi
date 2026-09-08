@@ -247,7 +247,20 @@ void Project6Dsp::applyOutputTrim (float* interleaved, int numSamples)
 }
 
 //------------------------------------------------------------------------
-void Project6Dsp::renderVoices (float* out, int numSamples)
+bool Project6Dsp::rowSounding (int row) const
+{
+	if (!isRowIndex (row))
+		return false;
+
+	for (int column = 0; column < kSlotColumns; ++column)
+		if (mVoices[slotIndex (column, row)].sounding)
+			return true;
+
+	return false;
+}
+
+//------------------------------------------------------------------------
+void Project6Dsp::renderVoices (float* out, float* const* rowOuts, int numSamples)
 {
 	const int capacity = static_cast<int> (mRowScratch.size () / kChannelCount);
 	if (capacity <= 0)
@@ -260,13 +273,27 @@ void Project6Dsp::renderVoices (float* out, int numSamples)
 	while (done < numSamples)
 	{
 		const int chunk = std::min (numSamples - done, capacity);
-		renderChunk (out + static_cast<size_t> (done) * kChannelCount, chunk);
+
+		// The row buffers have to be advanced with the output, and a
+		// null one has to stay null. A fixed-size array on the stack:
+		// eight pointers, no allocation.
+		float* chunkRows[kSlotRows] = { nullptr };
+		if (rowOuts != nullptr)
+		{
+			for (int row = 0; row < kSlotRows; ++row)
+				if (rowOuts[row] != nullptr)
+					chunkRows[row] = rowOuts[row]
+					                 + static_cast<size_t> (done) * kChannelCount;
+		}
+
+		renderChunk (out + static_cast<size_t> (done) * kChannelCount,
+		             (rowOuts != nullptr) ? chunkRows : nullptr, chunk);
 		done += chunk;
 	}
 }
 
 //------------------------------------------------------------------------
-void Project6Dsp::renderChunk (float* out, int numSamples)
+void Project6Dsp::renderChunk (float* out, float* const* rowOuts, int numSamples)
 {
 	const size_t samples = static_cast<size_t> (numSamples) * kChannelCount;
 
@@ -286,6 +313,9 @@ void Project6Dsp::renderChunk (float* out, int numSamples)
 			// nothing to smooth - and a fader moved while a row is silent
 			// is then already in place when a pad on it starts, instead
 			// of sliding into position over the first ten milliseconds.
+			//
+			// The row's direct out is left alone: render() cleared it,
+			// and a silent row sends silence.
 			bus.gain = bus.target;
 			continue;
 		}
@@ -299,6 +329,12 @@ void Project6Dsp::renderChunk (float* out, int numSamples)
 			if (voice.sounding)
 				renderVoice (voice, mRowScratch.data (), numSamples);
 		}
+
+		// THE DIRECT OUT TAPS HERE - after the pads and their own levels
+		// are summed, and before this row's fader is anywhere near it.
+		// A copy rather than an add, because one row writes one bus.
+		if (rowOuts != nullptr && rowOuts[row] != nullptr)
+			std::copy_n (mRowScratch.begin (), samples, rowOuts[row]);
 
 		// The row's level on that sum, and the result added to the mix.
 		// Smoothed per sample, like every other gain here.
@@ -418,16 +454,36 @@ void Project6Dsp::renderVoice (Voice& voice, float* dest, int numSamples)
 //------------------------------------------------------------------------
 void Project6Dsp::render (float* out, int numSamples)
 {
+	render (out, nullptr, numSamples);
+}
+
+//------------------------------------------------------------------------
+void Project6Dsp::render (float* out, float* const* rowOuts, int numSamples)
+{
 	if (out == nullptr || numSamples <= 0)
 		return;
 
-	// Silence first: renderVoices ADDS, so the mix has to start empty.
-	std::fill_n (out, static_cast<size_t> (numSamples) * kChannelCount, 0.f);
+	// Silence first: renderVoices ADDS into the mix, so it has to start
+	// empty - and the row buses have to start empty too, because a row
+	// with nothing sounding is skipped entirely and would otherwise send
+	// whatever was in the host's buffer last block.
+	const size_t samples = static_cast<size_t> (numSamples) * kChannelCount;
+	std::fill_n (out, samples, 0.f);
 
-	// Pads -> slot levels -> row buses -> row levels -> here.
-	renderVoices (out, numSamples);
+	if (rowOuts != nullptr)
+	{
+		for (int row = 0; row < kSlotRows; ++row)
+			if (rowOuts[row] != nullptr)
+				std::fill_n (rowOuts[row], samples, 0.f);
+	}
+
+	// Pads -> slot levels -> row buses -> (direct outs) -> row levels ->
+	// here.
+	renderVoices (out, rowOuts, numSamples);
 
 	// The trim is the last stage, over the whole mix, and stays there.
+	// IT DOES NOT TOUCH THE DIRECT OUTS: those left before the row fader
+	// and are certainly not going through the master.
 	applyOutputTrim (out, numSamples);
 }
 

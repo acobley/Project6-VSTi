@@ -48,6 +48,24 @@ tresult PLUGIN_API Project6Processor::initialize (FUnknown* context)
 
 	// An instrument: notes in, audio out, no audio input.
 	addAudioOutput (STR16 ("Stereo Out"), SpeakerArr::kStereo);
+
+	// ONE AUX BUS PER ROW, carrying that row's direct out. kAux and not
+	// kMain: VST3 has exactly one main output and these are extras, and a
+	// host reads the distinction to decide what to patch by default.
+	//
+	// DEFAULT ACTIVE, deliberately. A bus that arrives switched off looks
+	// to most people like a bus that is not there, and eight silent
+	// entries in a routing menu are cheaper than eight outputs nobody
+	// finds. A host can deactivate any of them, and renderSegment copes
+	// with that by skipping the bus rather than assuming it.
+	static const char16_t* const kRowBusNames[kSlotRows] = {
+		STR16 ("Row A"), STR16 ("Row B"), STR16 ("Row C"), STR16 ("Row D"),
+		STR16 ("Row E"), STR16 ("Row F"), STR16 ("Row G"), STR16 ("Row H") };
+
+	for (int row = 0; row < kSlotRows; ++row)
+		addAudioOutput (kRowBusNames[row], SpeakerArr::kStereo,
+		                BusTypes::kAux, BusInfo::kDefaultActive);
+
 	addEventInput (STR16 ("Event In"), 16);
 
 	return kResultOk;
@@ -219,14 +237,18 @@ tresult PLUGIN_API Project6Processor::terminate ()
 tresult PLUGIN_API Project6Processor::setBusArrangements (SpeakerArrangement* inputs, int32 numIns,
                                                           SpeakerArrangement* outputs, int32 numOuts)
 {
-	// Stereo out, nothing in. This must agree with the AudioComponents
-	// entry in resource/au-info.plist (0 in / 2 out) or auval rejects the
-	// AU - and it is the plist, not this function, that is usually the one
-	// left with the template's extra layout in it.
-	if (numIns == 0 && numOuts == 1 && outputs[0] == SpeakerArr::kStereo)
-		return AudioEffect::setBusArrangements (inputs, numIns, outputs, numOuts);
+	// Stereo out, nothing in - on the main bus and on all eight row
+	// buses. This must agree with the AudioComponents entry in
+	// resource/au-info.plist, which describes the MAIN element as 0 in /
+	// 2 out, or auval rejects the AU.
+	if (numIns != 0 || numOuts != 1 + kSlotRows)
+		return kResultFalse;
 
-	return kResultFalse;
+	for (int32 i = 0; i < numOuts; ++i)
+		if (outputs[i] != SpeakerArr::kStereo)
+			return kResultFalse;
+
+	return AudioEffect::setBusArrangements (inputs, numIns, outputs, numOuts);
 }
 
 //------------------------------------------------------------------------
@@ -253,6 +275,11 @@ tresult PLUGIN_API Project6Processor::setupProcessing (ProcessSetup& setup)
 	mDsp.setMaxBlockSize (setup.maxSamplesPerBlock);
 
 	mScratch.assign (static_cast<size_t> (setup.maxSamplesPerBlock) * kChannelCount, 0.f);
+
+	// One allocation for all eight row taps, indexed by stride. Sized
+	// here and never resized on the audio thread.
+	mRowScratchStride = static_cast<size_t> (setup.maxSamplesPerBlock) * kChannelCount;
+	mRowScratch.assign (mRowScratchStride * kSlotRows, 0.f);
 
 	// setSampleRate resets the DSP, so nothing is playing any more and
 	// mLaunched must say so - otherwise applyBarLine sees "already
@@ -504,24 +531,15 @@ void Project6Processor::handleEvent (const Event& event)
 }
 
 //------------------------------------------------------------------------
-void Project6Processor::renderSegment (ProcessData& data, int32 offset, int32 numSamples)
+void Project6Processor::writeBus (ProcessData& data, int32 busIndex,
+                                  const float* interleaved, int32 offset, int32 numSamples)
 {
-	if (numSamples <= 0)
+	// A BUS THE HOST DID NOT GIVE US. Deactivated, or a host that simply
+	// asked for fewer - either way it is skipped rather than assumed.
+	if (busIndex >= data.numOutputs || interleaved == nullptr)
 		return;
 
-	const size_t needed = static_cast<size_t> (numSamples) * kChannelCount;
-	if (mScratch.size () < needed)
-		return;                   // setupProcessing sized this; NEVER grow it here
-
-	mDsp.render (mScratch.data (), numSamples);
-
-	// Bypass on an instrument means "make no sound", there being no input
-	// to pass through. Events are still handled either way, so no note can
-	// hang behind a bypass switch.
-	if (mBypass)
-		std::fill_n (mScratch.begin (), needed, 0.f);
-
-	AudioBusBuffers& out = data.outputs[0];
+	AudioBusBuffers& out = data.outputs[busIndex];
 	const bool isDouble = (processSetup.symbolicSampleSize == kSample64);
 
 	for (int32 ch = 0; ch < out.numChannels; ++ch)
@@ -534,16 +552,59 @@ void Project6Processor::renderSegment (ProcessData& data, int32 offset, int32 nu
 			if (!out.channelBuffers64 || !out.channelBuffers64[ch]) continue;
 			Sample64* dst = out.channelBuffers64[ch] + offset;
 			for (int32 i = 0; i < numSamples; ++i)
-				dst[i] = mScratch[static_cast<size_t> (i) * kChannelCount + src];
+				dst[i] = interleaved[static_cast<size_t> (i) * kChannelCount + src];
 		}
 		else
 		{
 			if (!out.channelBuffers32 || !out.channelBuffers32[ch]) continue;
 			Sample32* dst = out.channelBuffers32[ch] + offset;
 			for (int32 i = 0; i < numSamples; ++i)
-				dst[i] = mScratch[static_cast<size_t> (i) * kChannelCount + src];
+				dst[i] = interleaved[static_cast<size_t> (i) * kChannelCount + src];
 		}
 	}
+}
+
+//------------------------------------------------------------------------
+void Project6Processor::renderSegment (ProcessData& data, int32 offset, int32 numSamples)
+{
+	if (numSamples <= 0)
+		return;
+
+	const size_t needed = static_cast<size_t> (numSamples) * kChannelCount;
+	if (mScratch.size () < needed)
+		return;                   // setupProcessing sized this; NEVER grow it here
+
+	// The eight row taps. A row whose bus the host did not give us gets a
+	// null pointer and the DSP skips it - there is no point summing into
+	// a buffer nobody will read.
+	float* rowOuts[kSlotRows] = { nullptr };
+	const bool haveRowScratch = (mRowScratchStride >= needed
+	                             && mRowScratch.size () >= mRowScratchStride * kSlotRows);
+	if (haveRowScratch)
+	{
+		for (int row = 0; row < kSlotRows; ++row)
+			if (1 + row < data.numOutputs)
+				rowOuts[row] = mRowScratch.data () + mRowScratchStride * row;
+	}
+
+	mDsp.render (mScratch.data (), haveRowScratch ? rowOuts : nullptr, numSamples);
+
+	// Bypass on an instrument means "make no sound", there being no input
+	// to pass through - and that has to include the direct outs, or a
+	// bypassed plug-in would still be feeding the desk. Events are still
+	// handled either way, so no note can hang behind a bypass switch.
+	if (mBypass)
+	{
+		std::fill_n (mScratch.begin (), needed, 0.f);
+		for (int row = 0; row < kSlotRows; ++row)
+			if (rowOuts[row] != nullptr)
+				std::fill_n (rowOuts[row], needed, 0.f);
+	}
+
+	writeBus (data, 0, mScratch.data (), offset, numSamples);
+
+	for (int row = 0; row < kSlotRows; ++row)
+		writeBus (data, 1 + row, rowOuts[row], offset, numSamples);
 }
 
 //------------------------------------------------------------------------
@@ -721,12 +782,31 @@ tresult PLUGIN_API Project6Processor::process (ProcessData& data)
 	//
 	// A voice counts as sounding through its fade-out too, which is why
 	// this asks the DSP rather than the parameters.
+	//
+	// PER BUS. A row's direct out is silent when nothing on that row is
+	// sounding, whatever the other seven are doing - which is most of the
+	// value of the flag on a nine-bus plug-in, since seven rows out of
+	// eight usually are silent.
+	const auto allChannels = [] (const AudioBusBuffers& bus) -> uint64
+	{
+		return (bus.numChannels >= 64) ? ~0ULL
+		                               : ((1ULL << bus.numChannels) - 1);
+	};
+
+	const bool bypassed = mBypass;
+
 	data.outputs[0].silenceFlags =
-	    (mDsp.soundingVoiceCount () == 0)
-	        ? ((data.outputs[0].numChannels >= 64)
-	               ? ~0ULL
-	               : ((1ULL << data.outputs[0].numChannels) - 1))
-	        : 0;
+	    (bypassed || mDsp.soundingVoiceCount () == 0) ? allChannels (data.outputs[0]) : 0;
+
+	for (int row = 0; row < kSlotRows; ++row)
+	{
+		const int32 bus = 1 + row;
+		if (bus >= data.numOutputs)
+			break;
+
+		data.outputs[bus].silenceFlags =
+		    (bypassed || !mDsp.rowSounding (row)) ? allChannels (data.outputs[bus]) : 0;
+	}
 
 	publishLiveValues (data);
 

@@ -228,8 +228,11 @@ bool PLUGIN_API Project6Editor::open (void* parent, const PlatformType& platform
 	            CRect (kMargin, kSlotHeadingTop, kMargin + kSlotGridWidth,
 	                   kSlotHeadingTop + kHeadingHeight));
 
-	addHeading ("Row levels",
-	            CRect (kRowFaderLeft, kSlotHeadingTop, kEditorWidth - kMargin,
+	// The fader is on the way to the MIX. Each row also leaves on its own
+	// output before the fader, which is worth saying on the panel because
+	// nothing about a fader suggests that something bypasses it.
+	addHeading ("Row levels  (direct outs tap before these)",
+	            CRect (kRowFaderLeft - 130, kSlotHeadingTop, kEditorWidth - kMargin,
 	                   kSlotHeadingTop + kHeadingHeight));
 
 	// The column launch boxes, above the pads they launch. Added FIRST so

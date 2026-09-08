@@ -1,12 +1,17 @@
 //------------------------------------------------------------------------
 // Project6 - audio processor
 //
-// Project6 is an INSTRUMENT: an event input and one stereo audio output,
-// no audio input. That decision reaches four places and they must agree -
+// Project6 is an INSTRUMENT: an event input and stereo audio outputs, no
+// audio input. That decision reaches four places and they must agree -
 // PlugType::kInstrumentSynth in Project6Entry.cpp, the buses added in
 // initialize(), what setBusArrangements accepts, and the 0-in / 2-out
 // entry in resource/au-info.plist. auval checks the last two against each
 // other.
+//
+// NINE OUTPUT BUSES: the main mix, and one AUX bus per row carrying that
+// row's DIRECT OUT - its pads summed, tapped before the row fader. See
+// Project6Dsp.h for where in the chain that is, and docs/routing.png for
+// the picture.
 //
 // The DSP renders silence. What is here is the bus layout, the parameter
 // plumbing, the event handling and the state - which is exactly what the
@@ -38,6 +43,7 @@
 #include "pluginterfaces/vst/ivstevents.h"
 
 #include <atomic>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <vector>
@@ -119,10 +125,20 @@ private:
 	    events are consumed anyway so that when something does, the
 	    sample-accurate path underneath it is already the one being used. */
 	void handleEvent (const Steinberg::Vst::Event& event);
-	/** Render `numSamples` into the interleaved scratch, then copy to the
-	    bus at `offset`. */
+	/** Render `numSamples` into the interleaved scratches, then copy each
+	    to its bus at `offset`. */
 	void renderSegment (Steinberg::Vst::ProcessData& data, Steinberg::int32 offset,
 	                    Steinberg::int32 numSamples);
+
+	/** De-interleave one scratch onto one output bus, in whichever sample
+	    size the host asked for.
+
+	    A bus the host has not given us - deactivated, or simply not asked
+	    for - is skipped rather than assumed. Nine buses is eight more
+	    chances for that to happen than this plug-in used to have. */
+	void writeBus (Steinberg::Vst::ProcessData& data, Steinberg::int32 busIndex,
+	               const float* interleaved, Steinberg::int32 offset,
+	               Steinberg::int32 numSamples);
 
 	//--------------------------------------------------------------------
 	// The transport, and launching on the bar
@@ -236,6 +252,12 @@ private:
 	    buffer by converting on the way out, rather than by a second
 	    allocation discovered halfway through a block. */
 	std::vector<float> mScratch;
+
+	/** kSlotRows more of the same, one per row's direct out, in one
+	    allocation. mRowScratch.data() + row * mRowScratchStride is that
+	    row's buffer; the stride is in FLOATS, not frames. */
+	std::vector<float> mRowScratch;
+	std::size_t mRowScratchStride = 0;
 };
 
 //------------------------------------------------------------------------

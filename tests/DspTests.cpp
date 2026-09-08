@@ -839,6 +839,132 @@ int main ()
 		}
 
 		//----------------------------------------------------------------
+		// The row direct outs, tapped BEFORE the row fader
+		//----------------------------------------------------------------
+		{
+			Project6Dsp dsp;
+			dsp.setSampleRate (1000.0);
+			dsp.setOutputTrimDb (kTrimMaxDb);
+
+			const int onRowTwo = slotIndex (3, 2);
+			dsp.setSlotSample (onRowTwo, &loop);
+			dsp.setSlotPlaying (onRowTwo, true);
+
+			const int frames = 16;
+			std::vector<std::vector<float>> taps (
+				kSlotRows, std::vector<float> (
+					static_cast<size_t> (frames) * kChannelCount, 0.f));
+			float* rowOuts[kSlotRows];
+			for (int row = 0; row < kSlotRows; ++row)
+				rowOuts[row] = taps[static_cast<size_t> (row)].data ();
+
+			std::vector<float> out (static_cast<size_t> (frames) * kChannelCount, 0.f);
+			dsp.render (out.data (), rowOuts, frames);
+
+			check (close (taps[2][static_cast<size_t> (8) * 2], kLeft[0], 1e-6),
+			       "a row's direct out carries that row's pads");
+
+			// EVERY OTHER ROW IS SILENT. A tap that carried the mix would
+			// be a mix, not a direct out.
+			bool othersSilent = true;
+			for (int row = 0; row < kSlotRows; ++row)
+			{
+				if (row == 2)
+					continue;
+				for (float v : taps[static_cast<size_t> (row)])
+					othersSilent &= (v == 0.f);
+			}
+			check (othersSilent, "and no other row's out carries anything");
+
+			// THE TAP IS PRE-FADER. Pull the row down to a tenth: the mix
+			// follows, the direct out does not move at all.
+			dsp.setRowLevelDb (2, -20.0);
+			std::vector<float> settle (4096 * kChannelCount, 0.f);
+			dsp.render (settle.data (), frames > 0 ? 4096 : 0);
+
+			std::vector<float> mixed (static_cast<size_t> (frames) * kChannelCount, 0.f);
+			for (auto& tap : taps)
+				std::fill (tap.begin (), tap.end (), 0.f);
+			dsp.render (mixed.data (), rowOuts, frames);
+
+			check (close (mixed[static_cast<size_t> (8) * 2], kLeft[0] * 0.1, 1e-5),
+			       "the row fader scales what reaches the mix");
+			check (close (taps[2][static_cast<size_t> (8) * 2], kLeft[0], 1e-6),
+			       "and does NOT touch the direct out - the tap is pre-fader");
+
+			// NEGATIVE CONTROL: if the tap were post-fader the two would
+			// now agree, and that comparison has to be able to fail.
+			check (! close (taps[2][static_cast<size_t> (8) * 2],
+			                mixed[static_cast<size_t> (8) * 2], 1e-5),
+			       "NEGATIVE CONTROL: the two are genuinely different signals");
+
+			// And the OUTPUT TRIM is not on the direct outs either: they
+			// left before the row fader, let alone the master.
+			dsp.setOutputTrimDb (-20.0);
+			dsp.render (settle.data (), 4096);
+			for (auto& tap : taps)
+				std::fill (tap.begin (), tap.end (), 0.f);
+			dsp.render (mixed.data (), rowOuts, frames);
+			check (close (taps[2][static_cast<size_t> (8) * 2], kLeft[0], 1e-6),
+			       "and neither does the output trim");
+		}
+
+		{
+			// A SILENT ROW SENDS SILENCE, and does not send whatever the
+			// host left in the buffer last block. The row is skipped
+			// entirely when nothing on it sounds, so render() has to
+			// clear the taps itself.
+			Project6Dsp dsp;
+			dsp.setSampleRate (1000.0);
+			dsp.setOutputTrimDb (kTrimMaxDb);
+
+			const int frames = 8;
+			std::vector<std::vector<float>> taps (
+				kSlotRows, std::vector<float> (
+					static_cast<size_t> (frames) * kChannelCount, 0.9f));   // dirty
+			float* rowOuts[kSlotRows];
+			for (int row = 0; row < kSlotRows; ++row)
+				rowOuts[row] = taps[static_cast<size_t> (row)].data ();
+
+			std::vector<float> out (static_cast<size_t> (frames) * kChannelCount, 0.f);
+			dsp.render (out.data (), rowOuts, frames);
+
+			bool clean = true;
+			for (const auto& tap : taps)
+				for (float v : tap)
+					clean &= (v == 0.f);
+			check (clean, "a dirty buffer handed to a silent row comes back silent");
+
+			check (! dsp.rowSounding (0), "and the row reports itself silent");
+
+			dsp.setSlotSample (slotIndex (0, 4), &loop);
+			dsp.setSlotPlaying (slotIndex (0, 4), true);
+			check (dsp.rowSounding (4), "a row with a pad on it reports itself sounding");
+			check (! dsp.rowSounding (3), "and its neighbours do not");
+			check (! dsp.rowSounding (-1) && ! dsp.rowSounding (kSlotRows),
+			       "a bad row index is not sounding");
+		}
+
+		{
+			// NULL IS LEGAL, everywhere. A host may deactivate a bus, and
+			// the single-buffer render() passes no array at all.
+			Project6Dsp dsp;
+			dsp.setSampleRate (1000.0);
+			dsp.setSlotSample (0, &loop);
+			dsp.setSlotPlaying (0, true);
+
+			std::vector<float> out (16 * kChannelCount, 0.f);
+			dsp.render (out.data (), nullptr, 16);
+
+			float* someNull[kSlotRows] = { nullptr };
+			std::vector<float> only (16 * kChannelCount, 0.f);
+			someNull[3] = only.data ();          // one bus active, seven not
+			dsp.render (out.data (), someNull, 16);
+
+			check (true, "null row buffers, and a mix of null and not, do not crash");
+		}
+
+		//----------------------------------------------------------------
 		// The trim is still the last stage
 		//----------------------------------------------------------------
 		{

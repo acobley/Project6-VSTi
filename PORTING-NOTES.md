@@ -164,10 +164,10 @@ python3 tools/render-routing.py
 
 `-DRELEASE=1` is required or `fdebug.h` refuses to compile.
 
-Results, at the launch-division commit: **all five suites all-pass**, all
-thirteen translation units produced object files with no errors, all 66
-undefined `Project6::` symbols resolved within the set, `check-editor`
-reported ok, and `render-routing` regenerated the diagram from the headers.
+Results, at the direct-out commit: **all five suites all-pass**, all thirteen
+translation units produced object files with no errors, all 67 undefined
+`Project6::` symbols resolved within the set, `check-editor` reported ok, and
+`render-routing` regenerated the diagram from the headers.
 The panel's dimensions are checked by `static_assert` rather than by eye —
 847 × 624, with the grid meeting the fader column, the faders meeting the
 right margin, the launch boxes clear of the pads, and the level bar and
@@ -731,6 +731,45 @@ asserted, because "it sounds fine" would not have caught it.
 At the default 0 dB a row's gain is exactly 1.0, so the existing bit-identical
 checks still pass unchanged — which is the evidence that inserting a whole bus
 stage cost no precision.
+
+#### The direct outs
+
+**Nine output buses**: the main mix, and one stereo **aux** bus per row.
+
+The tap is **before the row fader** — `renderChunk` copies the row scratch to
+that row's bus at the moment the pads and their own levels have been summed
+and before `bus.gain` is anywhere near it. So the fader sets how much of the
+row reaches the main mix, and the direct out carries the row itself whatever
+the fader is doing, which is what makes the fader usable as a balance control
+while the desk gets the untouched signal. `DspTests` §6 asserts exactly that:
+pull a row to a tenth, the mix follows, the tap does not move — with a
+negative control, because "the two are different" has to be able to fail.
+
+The rows still go to the main mix as well. "Additional outputs" is additive;
+nothing was taken away.
+
+Four things that needed care:
+
+* **`kAux`, not `kMain`.** VST3 has exactly one main output; a host reads the
+  distinction to decide what to patch by default.
+* **Default active.** A bus that arrives switched off looks to most people
+  like a bus that is not there. A host can deactivate any of them, and
+  `renderSegment` hands the DSP a null pointer for a bus it was not given
+  rather than assuming — there is no point summing into a buffer nobody will
+  read.
+* **A silent row must send silence**, not whatever the host left in the buffer
+  last block. A row with nothing sounding is skipped entirely, so `render()`
+  clears every tap before it starts. Tested by handing it a dirty buffer.
+* **Silence flags are per bus** now. Seven rows out of eight are usually
+  silent, which is most of the value of the flag on a nine-bus plug-in — and a
+  bus flagged silent while something is on it gets silenced by the host.
+  `rowSounding()` is what answers it.
+
+**What cannot be checked from here**: `auval`. Steinberg's AU wrapper builds
+one AU element per VST3 bus from `getBusCount`, so `au-info.plist`'s
+`SupportedNumChannels` still describes the main element only and is still
+`0 in / 2 out` — correctly, but the eight extra elements are the first thing
+to look at on a Mac.
 
 #### The row faders
 

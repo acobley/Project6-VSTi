@@ -21,10 +21,14 @@
 //
 //     one voice per slot   ->  the slot's own level
 //                          ->  summed with the seven others on its ROW
+//                          ->  ============ the row's DIRECT OUT taps here
 //                          ->  the row's level
 //                          ->  summed with the seven other rows
 //                          ->  the output trim
 //                          ->  out
+//
+// The direct out is taken BEFORE the row's fader, so the fader balances
+// what goes to the main mix without touching what goes to the desk.
 //
 // docs/routing.png is that drawn out, and tools/render-routing.py draws
 // it FROM THE HEADERS - so a diagram that disagrees with this comment is
@@ -222,11 +226,29 @@ public:
 
 	/** Render `numSamples` frames of interleaved stereo into `out`.
 
-	    There are no voices yet, so this clears the buffer and then runs
-	    the output stage over it. `out` must hold numSamples *
-	    kChannelCount floats. A null buffer or a non-positive count does
-	    nothing - process() is handed both by real hosts. */
+	    `out` must hold numSamples * kChannelCount floats. A null buffer or
+	    a non-positive count does nothing - process() is handed both by
+	    real hosts. */
 	void render (float* out, int numSamples);
+
+	/** The same, and ALSO hand out each row's bus on its own.
+
+	    `rowOuts` is kSlotRows interleaved stereo buffers of numSamples
+	    frames each - the row's direct output. Either the array or any
+	    entry in it may be null, which is how the single-buffer call above
+	    is served and how a host that has deactivated a bus is served.
+
+	    TAPPED BEFORE THE ROW'S LEVEL. That is the whole point of it: the
+	    fader sets how much of the row goes into the main mix, and the
+	    direct out carries the row itself regardless - which is what makes
+	    the fader usable as a balance control while the desk gets the
+	    untouched signal. */
+	void render (float* out, float* const* rowOuts, int numSamples);
+
+	/** Is anything on this row making a sound? The processor's per-bus
+	    silence flag depends on it: a bus flagged silent while something
+	    is on it gets silenced by the host. */
+	bool rowSounding (int row) const;
 
 	/** The output stage on its own, applied in place.
 
@@ -265,11 +287,11 @@ private:
 	    silent on the way in. Splits the block into chunks the row scratch
 	    can hold - which in practice it always can, the host having said
 	    so in setupProcessing. */
-	void renderVoices (float* out, int numSamples);
+	void renderVoices (float* out, float* const* rowOuts, int numSamples);
 
-	/** One chunk: each row summed into the scratch, scaled by the row's
-	    level, and added to `out`. */
-	void renderChunk (float* out, int numSamples);
+	/** One chunk: each row summed into the scratch, COPIED to that row's
+	    direct out, then scaled by the row's level and added to `out`. */
+	void renderChunk (float* out, float* const* rowOuts, int numSamples);
 
 	/** One voice, ADDED into `dest` - which is the row's scratch, not the
 	    output. */
