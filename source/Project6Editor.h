@@ -89,16 +89,24 @@ public:
 	static constexpr int kSlotHeight = 30;
 	static constexpr int kSlotGap    = 5;
 
-	/** The level bar under each pad. Nine pixels: enough to see and to
-	    hit, and too few for a number - which is why the pad above it
-	    shows the value while the bar is being dragged. */
-	static constexpr int kLevelHeight = 9;
-	static constexpr int kLevelGap    = 2;
+	/** The strip under each pad: its level bar, and the box that says
+	    which grid line it launches on. Thirteen pixels, which is what the
+	    nine-point face needs to put "1/4" in a box - the bar itself would
+	    have been happy with nine, and a strip too short to letter would
+	    have meant a second row.
 
-	/** A CELL is a pad and its level bar. The grid's row pitch is this
-	    plus the gap between cells, so the bar belongs visually to the pad
-	    above it rather than floating between two. */
-	static constexpr int kCellHeight = kSlotHeight + kLevelGap + kLevelHeight;
+	    The bar has no room for a number even at thirteen, which is why
+	    the pad above shows the level in decibels while it is dragged. */
+	static constexpr int kStripHeight   = 13;
+	static constexpr int kLevelGap      = 2;
+	static constexpr int kDivisionWidth = 33;
+	static constexpr int kStripGap      = 3;
+	static constexpr int kLevelWidth    = kSlotWidth - kDivisionWidth - kStripGap;
+
+	/** A CELL is a pad and the strip under it. The grid's row pitch is
+	    this plus the gap between cells, so the strip belongs visually to
+	    the pad above it rather than floating between two. */
+	static constexpr int kCellHeight = kSlotHeight + kLevelGap + kStripHeight;
 
 	static constexpr int kSlotGridWidth =
 		kSlotColumns * kSlotWidth + (kSlotColumns - 1) * kSlotGap;
@@ -174,6 +182,12 @@ public:
 	static_assert (kColumnButtonTop + kColumnButtonHeight < kSlotGridTop,
 	               "the column buttons overlap the pads");
 
+	// The strip under a pad is exactly as wide as the pad: a bar, a gap,
+	// and the division box.
+	static_assert (kLevelWidth + kStripGap + kDivisionWidth == kSlotWidth,
+	               "the level bar and the division box do not fill the cell's width");
+	static_assert (kLevelWidth > 0, "the division box has eaten the level bar");
+
 	/** How often the panel asks the controller where the DSP is. 30 ms is
 	    about 33 fps - fast enough that a smoothed move is a movement
 	    rather than three steps, and slow enough to cost nothing. */
@@ -195,8 +209,12 @@ private:
 	/** The launch box above one column, exactly as wide as it. */
 	VSTGUI::CRect columnCell (int column) const;
 
-	/** The level bar under one pad, the same width and directly below. */
+	/** The level bar under one pad, directly below it and taking what the
+	    division box leaves. */
 	VSTGUI::CRect levelCell (int column, int row) const;
+
+	/** The launch-division box, beside that bar. */
+	VSTGUI::CRect divisionCell (int column, int row) const;
 
 	/** One row's fader, beside its row and vertically centred on the
 	    cell so it lines up with the pad rather than with the level bar

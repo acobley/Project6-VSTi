@@ -113,14 +113,21 @@ TransportInfo Project6Processor::readTransport (const ProcessData& data) const
 }
 
 //------------------------------------------------------------------------
-void Project6Processor::applyBarLine ()
+void Project6Processor::applyGridLine (int step)
 {
 	for (int slot = 0; slot < kSlotCount; ++slot)
 	{
-		// ONLY WHAT CHANGED. A bar line that arrives twice - a host
-		// repeating a block, a cycle wrapping straight back onto it -
-		// must not restart a pad that is already running, and a pad that
-		// is free-running past the bar must be left alone.
+		// NOT THIS SLOT'S LINE. A slot set to a whole bar ignores the
+		// seven lines in between; one set to an eighth takes them all.
+		// Step 0 is the bar line and every division fires on it, which
+		// is what keeps a 1/1 slot and a 1/8 slot in phase.
+		if (!divisionFires (mDivision[slot], step))
+			continue;
+
+		// ONLY WHAT CHANGED. A line that arrives twice - a host repeating
+		// a block, a cycle wrapping straight back onto it - must not
+		// restart a pad that is already running, and a pad that is
+		// free-running past its line must be left alone.
 		if (mArmed[slot] == mLaunched[slot])
 			continue;
 
@@ -567,6 +574,12 @@ tresult PLUGIN_API Project6Processor::process (ProcessData& data)
 
 		mDsp.setSlotLevelDb (
 			slot, slotLevelDef ().toInternal (mParams[slotLevelParam (slot)]));
+
+		// Which line this slot is waiting for. Read every block rather
+		// than tracked: sixty-four conversions is nothing, and a cached
+		// copy would be one more thing to get out of step.
+		mDivision[slot] = divisionFromIndex (static_cast<int> (
+			slotDivisionDef ().toInternal (mParams[slotDivisionParam (slot)])));
 	}
 
 	// And the eight row buses, the same way.
@@ -582,8 +595,10 @@ tresult PLUGIN_API Project6Processor::process (ProcessData& data)
 	{
 		// The host told us nothing. Launch at once, as this plug-in did
 		// before it had a transport at all: a sampler that is silent in a
-		// host reporting no transport looks broken, not careful.
-		applyBarLine ();
+		// host reporting no transport looks broken, not careful. Step 0,
+		// because every division fires on the bar line and there is no
+		// grid here to be finer about.
+		applyGridLine (0);
 	}
 	else if (!transport.playing)
 	{
@@ -596,10 +611,10 @@ tresult PLUGIN_API Project6Processor::process (ProcessData& data)
 	}
 	else if (!transport.musical)
 	{
-		// Rolling, but the host cannot say where the bars are. Launching
-		// as soon as it rolls is closer to what was asked for than never
-		// launching at all.
-		applyBarLine ();
+		// Rolling, but the host cannot say where the bars are - so there
+		// are no divisions either. Launching as soon as it rolls is
+		// closer to what was asked for than never launching at all.
+		applyGridLine (0);
 	}
 
 	mWasPlaying = transport.playing;
@@ -626,15 +641,17 @@ tresult PLUGIN_API Project6Processor::process (ProcessData& data)
 	}
 
 	//--------------------------------------------------------------------
-	// Where the bar lines fall inside this block. Usually none; sometimes
-	// one; more than one only at a tempo nobody writes at.
+	// Where the grid lines fall inside this block. ALL of them, at the
+	// finest division, each carrying which step of the bar it is - one
+	// list for all sixty-four slots, which is only possible because the
+	// divisions nest.
 	//--------------------------------------------------------------------
-	int barOffsets[kMaxBarLinesPerBlock];
-	int barCount = 0;
+	GridLine gridLines[kMaxGridLinesPerBlock];
+	int lineCount = 0;
 	if (transport.playing && transport.musical)
 	{
-		barCount = mBarClock.barLinesInBlock (transport, data.numSamples, mSampleRate,
-		                                      barOffsets, kMaxBarLinesPerBlock);
+		lineCount = mBarClock.gridLinesInBlock (transport, data.numSamples, mSampleRate,
+		                                        gridLines, kMaxGridLinesPerBlock);
 	}
 
 	//--------------------------------------------------------------------
@@ -646,7 +663,7 @@ tresult PLUGIN_API Project6Processor::process (ProcessData& data)
 	//--------------------------------------------------------------------
 	int32 position = 0;
 	int32 eventIndex = 0;
-	int barIndex = 0;
+	int lineIndex = 0;
 
 	IEventList* events = data.inputEvents;
 	const int32 eventCount = (events != nullptr) ? events->getEventCount () : 0;
@@ -666,26 +683,27 @@ tresult PLUGIN_API Project6Processor::process (ProcessData& data)
 			++eventIndex;
 		}
 
-		const int32 nextBar = (barIndex < barCount)
-			? std::clamp (static_cast<int32> (barOffsets[barIndex]), position, data.numSamples)
+		const int32 nextLine = (lineIndex < lineCount)
+			? std::clamp (static_cast<int32> (gridLines[lineIndex].offset),
+			              position, data.numSamples)
 			: -1;
 
-		if (nextEvent < 0 && nextBar < 0)
+		if (nextEvent < 0 && nextLine < 0)
 			break;
 
-		// The bar line wins a tie: whatever it launches should be heard
+		// The grid line wins a tie: whatever it launches should be heard
 		// from that sample, not from the sample after an event that
 		// happens to share it.
-		const bool takeBar = (nextEvent < 0) || (nextBar >= 0 && nextBar <= nextEvent);
-		const int32 at = takeBar ? nextBar : nextEvent;
+		const bool takeLine = (nextEvent < 0) || (nextLine >= 0 && nextLine <= nextEvent);
+		const int32 at = takeLine ? nextLine : nextEvent;
 
 		renderSegment (data, position, at - position);
 		position = at;
 
-		if (takeBar)
+		if (takeLine)
 		{
-			applyBarLine ();
-			++barIndex;
+			applyGridLine (gridLines[lineIndex].step);
+			++lineIndex;
 		}
 		else
 		{
@@ -734,8 +752,9 @@ tresult PLUGIN_API Project6Processor::getState (IBStream* state)
 	// stops early must stop at a block boundary and not in the middle of
 	// something it was half way through understanding.
 	writeSlots (streamer, mSlots);
-	writeLevelBlock (streamer, &mParams[kSlotLevelBase], kSlotCount);
-	writeLevelBlock (streamer, &mParams[kRowLevelBase], kSlotRows);
+	writeValueBlock (streamer, &mParams[kSlotLevelBase], kSlotCount);
+	writeValueBlock (streamer, &mParams[kRowLevelBase], kSlotRows);
+	writeValueBlock (streamer, &mParams[kSlotDivisionBase], kSlotCount);
 
 	return kResultOk;
 }
@@ -790,10 +809,12 @@ tresult PLUGIN_API Project6Processor::setState (IBStream* state)
 	// case and is not an error. The CONTROLLER reads the identical block,
 	// through the identical function.
 	readSlots (streamer, mSlots);
-	readLevelBlock (streamer, &mParams[kSlotLevelBase], kSlotCount,
+	readValueBlock (streamer, &mParams[kSlotLevelBase], kSlotCount,
 	                slotLevelDef ().defaultNormalized ());
-	readLevelBlock (streamer, &mParams[kRowLevelBase], kSlotRows,
+	readValueBlock (streamer, &mParams[kRowLevelBase], kSlotRows,
 	                rowLevelDef ().defaultNormalized ());
+	readValueBlock (streamer, &mParams[kSlotDivisionBase], kSlotCount,
+	                slotDivisionDef ().defaultNormalized ());
 
 	// The paths are back; now read the files. setState is not the audio
 	// thread, so this is where sixty-four disk reads belong - and a slot

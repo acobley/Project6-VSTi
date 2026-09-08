@@ -58,7 +58,15 @@ CRect Project6Editor::levelCell (int column, int row) const
 {
 	const CRect pad = slotCell (column, row);
 	return CRect (pad.left, pad.bottom + kLevelGap,
-	              pad.right, pad.bottom + kLevelGap + kLevelHeight);
+	              pad.left + kLevelWidth, pad.bottom + kLevelGap + kStripHeight);
+}
+
+//------------------------------------------------------------------------
+CRect Project6Editor::divisionCell (int column, int row) const
+{
+	const CRect pad = slotCell (column, row);
+	return CRect (pad.right - kDivisionWidth, pad.bottom + kLevelGap,
+	              pad.right, pad.bottom + kLevelGap + kStripHeight);
 }
 
 //------------------------------------------------------------------------
@@ -273,6 +281,20 @@ bool PLUGIN_API Project6Editor::open (void* parent, const PlatformType& platform
 
 			mLevels[index] = level;
 			frame->addView (level);
+
+			// And the box beside it, saying which grid line this pad
+			// waits for. Its own parameter, so a host can automate a
+			// pad's quantisation like everything else here.
+			auto* division = new SpySlotDivision (
+				divisionCell (column, row), this,
+				static_cast<int32_t> (slotDivisionParam (index)), index);
+
+			mControls[slotDivisionParam (index)] = division;
+			if (mController)
+				showValue (division,
+				           mController->getParamNormalized (slotDivisionParam (index)));
+
+			frame->addView (division);
 		}
 	}
 

@@ -19,14 +19,90 @@
 
 namespace Project6 {
 
-/** How many bar lines one block can launch on.
+//------------------------------------------------------------------------
+// The launch grid
+//
+// A slot does not have to wait for a whole bar. Each one picks how finely
+// it is quantised, and the choices are FRACTIONS OF A BAR:
+//
+//     1/1  the bar line          1/4  a quarter of the bar
+//     1/2  half way through      1/8  an eighth of it
+//
+// Fractions of a bar and not note values, which matters only outside 4/4 -
+// there the two coincide, a quarter of a 4/4 bar being a quarter note. In
+// 7/8 they part company, and the fraction is the right answer: every
+// division line then still NESTS inside the bar, so a slot on 1/8 and a
+// slot on 1/1 launch together on the downbeat instead of drifting past
+// each other. A grid whose lines do not land on the bar line is not a
+// launch grid.
+//
+// Because they nest, ONE list of lines serves every slot: the clock finds
+// every eighth-of-a-bar line and says which STEP of the bar each one is,
+// and a division fires on the steps it divides.
+//------------------------------------------------------------------------
+enum class LaunchDivision
+{
+	Bar = 0,     ///< 1/1
+	HalfBar,     ///< 1/2
+	Quarter,     ///< 1/4
+	Eighth       ///< 1/8
+};
 
-    One is the normal answer and two is already exotic - a 512-sample block
-    is about 11 ms, and a bar is the best part of a second. The cap exists
-    only so a host reporting a nonsensical tempo cannot make this loop for
-    ever; overflowing it costs nothing, because every bar line does the
-    same thing and doing it once is enough. */
-constexpr int kMaxBarLinesPerBlock = 16;
+constexpr int kLaunchDivisionCount = 4;
+
+/** The finest division, and so how many steps a bar is cut into. */
+constexpr int kGridStepsPerBar = 8;
+
+/** How many of those steps make one of these. */
+constexpr int divisionSteps (LaunchDivision division)
+{
+	return (division == LaunchDivision::Bar)     ? 8
+	     : (division == LaunchDivision::HalfBar) ? 4
+	     : (division == LaunchDivision::Quarter) ? 2
+	                                             : 1;
+}
+
+/** Does a slot on this division launch on `step`?
+
+    THE WHOLE SUBDIVISION RULE, in one line. Step 0 is the bar line and
+    every division fires on it, which is what keeps a 1/8 slot and a 1/1
+    slot in phase with each other. */
+constexpr bool divisionFires (LaunchDivision division, int step)
+{
+	return step >= 0 && (step % divisionSteps (division)) == 0;
+}
+
+/** Round-trip helpers for the parameter that carries this. An out of
+    range value is a whole bar - the safe, coarsest answer. */
+constexpr LaunchDivision divisionFromIndex (int index)
+{
+	return (index == 1) ? LaunchDivision::HalfBar
+	     : (index == 2) ? LaunchDivision::Quarter
+	     : (index == 3) ? LaunchDivision::Eighth
+	                    : LaunchDivision::Bar;
+}
+
+constexpr int indexOfDivision (LaunchDivision division)
+{
+	return static_cast<int> (division);
+}
+
+/** "1/1" .. "1/8", for the panel. Never null. */
+const char* divisionShortName (LaunchDivision division);
+
+/** "Bar" .. "1/8 bar", for a host's parameter list and the tooltip. */
+const char* divisionName (LaunchDivision division);
+
+//------------------------------------------------------------------------
+/** How many grid lines one block can launch on.
+
+    One is the normal answer and two is already exotic - a 512-sample
+    block is about 11 ms, and an eighth of a bar is a good fraction of a
+    second. The cap exists only so a host reporting a nonsensical tempo
+    cannot make this loop for ever; overflowing it costs nothing, because
+    what is dropped is the finest lines of a grid nobody could hear at
+    that tempo anyway. */
+constexpr int kMaxGridLinesPerBlock = 32;
 
 //------------------------------------------------------------------------
 /** The host's transport, as much of it as this plug-in needs.
@@ -73,7 +149,18 @@ double barPhase (const TransportInfo& info);
 long long barNumber (const TransportInfo& info);
 
 //------------------------------------------------------------------------
-/** Finds the bar lines inside a block, once each.
+/** One line of the launch grid inside a block. */
+struct GridLine
+{
+	/** Where in the block, in samples. 0 means the block BEGINS on it. */
+	int offset = 0;
+	/** Which step of the bar, 0 .. kGridStepsPerBar - 1. Step 0 is the
+	    bar line. Pass it to divisionFires. */
+	int step = 0;
+};
+
+//------------------------------------------------------------------------
+/** Finds the grid lines inside a block, once each.
 
     Holds the small amount of memory that "once each" requires: which bar
     line was last fired, and where the previous block ended. Both are
@@ -86,21 +173,26 @@ class BarClock
 public:
 	void reset ();
 
-	/** Writes the sample offsets at which a bar begins, in order, and
-	    returns how many. Zero when the transport is not rolling, when the
-	    musical information is missing, or when no bar line falls inside
-	    this block - which is the usual answer.
+	/** Writes the grid lines inside this block, in order, and returns how
+	    many. Zero when the transport is not rolling, when the musical
+	    information is missing, or when no line falls inside this block -
+	    which is the usual answer.
 
-	    An offset of 0 means the block BEGINS on a bar line. That is a
-	    real case, not an edge case: it is what happens every time a host
+	    EVERY line is written, at the finest division, with its step. A
+	    caller acts on the ones its own division fires on; that is one
+	    list rather than four, and it is only possible because the
+	    divisions nest.
+
+	    An offset of 0 means the block BEGINS on a line. That is a real
+	    case, not an edge case: it is what happens every time a host
 	    starts playback from the top of a bar. */
-	int barLinesInBlock (const TransportInfo& info, int numSamples, double sampleRate,
-	                     int* offsets, int maxOffsets);
+	int gridLinesInBlock (const TransportInfo& info, int numSamples, double sampleRate,
+	                      GridLine* lines, int maxLines);
 
 private:
-	/** The musical position of the last bar line fired, so the same line
+	/** The musical position of the last line fired, so the same line
 	    cannot be fired twice by two blocks that both contain it. */
-	double mLastFiredBar = kNever;
+	double mLastFiredLine = kNever;
 	/** Where the previous block STARTED, so a jump BACKWARDS - a locate,
 	    or a cycle wrapping - can be told from ordinary forward progress
 	    and can clear the guard above. Without this a one-bar cycle fires

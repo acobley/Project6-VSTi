@@ -439,7 +439,9 @@ int main ()
 	{
 		check (kRowLevelBase == kSlotLevelEnd, "it starts where the slot levels end");
 		check (kRowLevelEnd - kRowLevelBase == kSlotRows, "one fader per row, not per slot");
-		check (kRowLevelEnd == kNumParams, "and currently runs to the end");
+		check (kRowLevelEnd < kNumParams,
+		       "and the launch divisions follow IT - every block's bound is "
+		       "load-bearing now");
 
 		bool roundTrips = true, classified = true, notOthers = true;
 		for (int row = 0; row < kSlotRows; ++row)
@@ -480,6 +482,74 @@ int main ()
 		       "a row fader is lettered like the first half of a slot's name");
 		check (std::string (paramTitle (rowLevelParam (7))) == "Row H Level",
 		       "at both ends");
+	}
+
+	//--------------------------------------------------------------------
+	section ("11. The launch division block");
+	//--------------------------------------------------------------------
+	{
+		check (kSlotDivisionBase == kRowLevelEnd, "it starts where the row levels end");
+		check (kSlotDivisionEnd - kSlotDivisionBase == kSlotCount, "one per slot");
+		check (kSlotDivisionEnd == kNumParams, "and currently runs to the end");
+
+		bool roundTrips = true, classified = true, notOthers = true;
+		for (int slot = 0; slot < kSlotCount; ++slot)
+		{
+			const ParamID id = slotDivisionParam (slot);
+			roundTrips &= (slotOfDivisionParam (id) == slot);
+			classified &= isSlotDivisionParam (id);
+			notOthers  &= ! isSlotLevelParam (id) && ! isRowLevelParam (id)
+			              && ! isSlotPlayParam (id) && ! isLiveParam (id);
+		}
+		check (roundTrips, "slot -> division id -> slot round-trips for all 64");
+		check (classified, "and all 64 are classified as launch divisions");
+		check (notOthers,
+		       "NEGATIVE CONTROL: and none of them as a level, trigger or published "
+		       "value");
+
+		// An ENUMERATED parameter, so a host's list reads the names.
+		const ParamDef& div = slotDivisionDef ();
+		check (div.type == ParamType::Enum, "it is enumerated, not a number to guess at");
+		check (div.plainMin == 0.0, "from the first choice");
+		check (static_cast<int> (div.plainMax) == kLaunchDivisionCount - 1,
+		       "to the last");
+		check (div.stepCount == kLaunchDivisionCount - 1, "with a step per choice");
+
+		// DEFAULT IS A WHOLE BAR - the coarsest choice, and what the
+		// plug-in did before there was a choice, so a project made before
+		// this parameter existed loads behaving exactly as it did.
+		check (static_cast<int> (div.plainDefault) == indexOfDivision (LaunchDivision::Bar),
+		       "and it defaults to a whole bar");
+
+		// Every choice has to survive the normalised round trip, or a
+		// panel showing 1/4 and a DSP launching on 1/2 is one rounding
+		// away.
+		bool choicesRoundTrip = true;
+		for (int i = 0; i < kLaunchDivisionCount; ++i)
+			choicesRoundTrip &= (static_cast<int> (div.toInternal (
+				div.toNormalized (static_cast<double> (i)))) == i);
+		check (choicesRoundTrip, "every choice round-trips through normalised exactly");
+
+		// The names a host shows come from ONE place - the transport
+		// header - so the panel's box and the host's list cannot disagree.
+		bool named = true;
+		for (int i = 0; i < kLaunchDivisionCount; ++i)
+			named &= (std::string (paramChoiceName (slotDivisionParam (0), i))
+			          == std::string (divisionName (divisionFromIndex (i))));
+		check (named, "the host's choice names are the transport header's own");
+
+		check (std::string (paramChoiceName (slotDivisionParam (0), 0)) == "Bar",
+		       "which read Bar");
+		check (std::string (paramChoiceName (slotDivisionParam (0), 3)) == "1/8 bar",
+		       "through to 1/8 bar");
+
+		check (std::string (paramTitle (slotDivisionParam (0)))  == "Slot A1 Launch",
+		       "a division is named for its cell");
+		check (std::string (paramTitle (slotDivisionParam (63))) == "Slot H8 Launch",
+		       "at both ends");
+		check (std::string (paramTitle (slotDivisionParam (0)))
+		           != std::string (paramTitle (slotLevelParam (0))),
+		       "and is not the same name as its level");
 	}
 
 	//--------------------------------------------------------------------

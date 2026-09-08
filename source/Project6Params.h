@@ -25,6 +25,7 @@
 
 #include "Project6Dsp.h"
 #include "Project6Slots.h"
+#include "Project6Transport.h"
 
 #include "pluginterfaces/vst/vsttypes.h"
 
@@ -108,7 +109,13 @@ enum Param : Steinberg::Vst::ParamID
 	kRowLevelBase = kSlotLevelEnd,
 	kRowLevelEnd  = kRowLevelBase + kSlotRows,
 
-	kNumParams = kRowLevelEnd
+	/** WHICH GRID LINE EACH SLOT WAITS FOR: a whole bar, a half, a
+	    quarter or an eighth of one. A setting, saved with the project,
+	    and appended after the row levels because ids are never moved. */
+	kSlotDivisionBase = kRowLevelEnd,
+	kSlotDivisionEnd  = kSlotDivisionBase + kSlotCount,
+
+	kNumParams = kSlotDivisionEnd
 };
 
 /** What kLiveTransport carries. */
@@ -177,6 +184,25 @@ constexpr bool isSlotLevelParam (Steinberg::Vst::ParamID id)
 constexpr int slotOfLevelParam (Steinberg::Vst::ParamID id)
 {
 	return static_cast<int> (id - kSlotLevelBase);
+}
+
+//------------------------------------------------------------------------
+// The launch division block
+//------------------------------------------------------------------------
+
+constexpr Steinberg::Vst::ParamID slotDivisionParam (int slot)
+{
+	return static_cast<Steinberg::Vst::ParamID> (kSlotDivisionBase + slot);
+}
+
+constexpr bool isSlotDivisionParam (Steinberg::Vst::ParamID id)
+{
+	return id >= kSlotDivisionBase && id < kSlotDivisionEnd;
+}
+
+constexpr int slotOfDivisionParam (Steinberg::Vst::ParamID id)
+{
+	return static_cast<int> (id - kSlotDivisionBase);
 }
 
 //------------------------------------------------------------------------
@@ -322,6 +348,10 @@ const ParamDef& slotLevelDef ();
     different things one level apart and a change to one should not be a
     change to the other by accident. */
 const ParamDef& rowLevelDef ();
+
+/** The definition every launch division shares: an enumerated parameter
+    with kLaunchDivisionCount choices, defaulting to a whole bar. */
+const ParamDef& slotDivisionDef ();
 
 /** The widest bar the panel will draw a grid for. Beyond it the grid is
     noise rather than information, and a host reporting something sillier

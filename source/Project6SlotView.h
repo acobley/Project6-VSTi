@@ -1,10 +1,11 @@
 //------------------------------------------------------------------------
 // Project6 - the grid's own controls
 //
-// Three of them: SpySampleSlot, one cell of the 8 x 8 bank; SpySlotLevel,
-// the level bar under it; and SpyColumnButton, the box above each column
-// that launches all of it. They are together because they are views of
-// the same grid and none means anything without the others.
+// Four of them: SpySampleSlot, one cell of the 8 x 8 bank; SpySlotLevel,
+// the level bar under it; SpySlotDivision, the box beside that bar which
+// says which grid line the pad waits for; and SpyColumnButton, above each
+// column, which launches all of it. They are together because they are
+// views of the same grid and none means anything without the others.
 //
 // One cell of the 8 x 8 grid. Drag a .wav onto it from the Finder and it
 // takes the file; click it and the file loops from the next bar line;
@@ -52,6 +53,7 @@
 
 #include "Project6Sample.h"
 #include "Project6Slots.h"
+#include "Project6Transport.h"
 
 #include "vstgui/vstgui.h"
 #include "vstgui/lib/dragging.h"
@@ -211,6 +213,47 @@ private:
 	int mIndex = 0;
 	bool mDragging = false;
 	VSTGUI::CPoint mLastPoint;
+};
+
+//------------------------------------------------------------------------
+/** The launch-division box, beside a pad's level bar.
+
+    Four states - 1/1, 1/2, 1/4, 1/8 - and it says which of them the pad
+    is on. A LEFT CLICK STEPS FORWARD and a right click steps back, which
+    is the opposite way round from SpySelector: that control preserves a
+    DXi's inverted convention deliberately, and this one has no DXi behind
+    it, so it does the thing a person expects instead.
+
+    A proper CControl with its own parameter tag, so a host can automate a
+    pad's quantisation as it can automate everything else here. It shows
+    the SHORT name; Project6Transport.h owns both names, so the panel's box
+    and a host's own list cannot come to different views about what a
+    division is called. */
+class SpySlotDivision : public VSTGUI::CControl
+{
+public:
+	SpySlotDivision (const VSTGUI::CRect& size, VSTGUI::IControlListener* listener,
+	                 int32_t tag, int index);
+
+	int index () const { return mIndex; }
+
+	void draw (VSTGUI::CDrawContext* context) override;
+
+	void onMouseDownEvent (VSTGUI::MouseDownEvent& event) override;
+	void onMouseWheelEvent (VSTGUI::MouseWheelEvent& event) override;
+
+	CLASS_METHODS (SpySlotDivision, VSTGUI::CControl)
+
+private:
+	/** The division this control is currently showing. */
+	LaunchDivision current () const;
+
+	/** Write a new one as a complete edit gesture. `delta` wraps, so the
+	    box cycles rather than sticking at either end - on a control this
+	    small, a dead click is worse than a wrap. */
+	void step (int delta);
+
+	int mIndex = 0;
 };
 
 //------------------------------------------------------------------------

@@ -132,13 +132,18 @@ private:
 	    clock can work with. */
 	TransportInfo readTransport (const Steinberg::Vst::ProcessData& data) const;
 
-	/** A bar line has arrived: whatever is armed becomes whatever plays.
+	/** A grid line has arrived at step `step` of the bar: whatever is
+	    armed on a slot whose division fires there becomes whatever plays.
+
+	    Step 0 is the bar line and EVERY division fires on it, so
+	    applyGridLine(0) is "apply everything" - which is what the
+	    degraded paths, where there is no grid to speak of, ask for.
 
 	    IDEMPOTENT, deliberately. It only acts on slots whose armed state
-	    differs from what is launched, so a bar line that arrives twice -
-	    a host repeating a block, a cycle wrapping onto the same line -
+	    differs from what is launched, so a line that arrives twice - a
+	    host repeating a block, a cycle wrapping onto the same line -
 	    cannot restart a pad that is already running. */
-	void applyBarLine ();
+	void applyGridLine (int step);
 
 	/** The transport is not rolling: silence every voice but leave the
 	    arming alone, so rolling again brings the same pads back in. */
@@ -212,6 +217,10 @@ private:
 	//--------------------------------------------------------------------
 	bool mArmed[kSlotCount] = {};
 	bool mLaunched[kSlotCount] = {};
+
+	/** Which grid line each slot is waiting for, read off its parameter
+	    once a block. */
+	LaunchDivision mDivision[kSlotCount] = {};
 
 	BarClock mBarClock;
 	bool mWasPlaying = false;

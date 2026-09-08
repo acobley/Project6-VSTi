@@ -20,6 +20,32 @@ constexpr double kEpsilon = 1.0e-9;
 } // namespace
 
 //------------------------------------------------------------------------
+const char* divisionShortName (LaunchDivision division)
+{
+	switch (division)
+	{
+		case LaunchDivision::Bar:     return "1/1";
+		case LaunchDivision::HalfBar: return "1/2";
+		case LaunchDivision::Quarter: return "1/4";
+		case LaunchDivision::Eighth:  return "1/8";
+	}
+	return "1/1";
+}
+
+//------------------------------------------------------------------------
+const char* divisionName (LaunchDivision division)
+{
+	switch (division)
+	{
+		case LaunchDivision::Bar:     return "Bar";
+		case LaunchDivision::HalfBar: return "1/2 bar";
+		case LaunchDivision::Quarter: return "1/4 bar";
+		case LaunchDivision::Eighth:  return "1/8 bar";
+	}
+	return "Bar";
+}
+
+//------------------------------------------------------------------------
 double TransportInfo::barLength () const
 {
 	if (sigNumerator <= 0 || sigDenominator <= 0)
@@ -56,16 +82,16 @@ long long barNumber (const TransportInfo& info)
 //------------------------------------------------------------------------
 void BarClock::reset ()
 {
-	mLastFiredBar     = kNever;
+	mLastFiredLine    = kNever;
 	mPreviousStartPpq = kNever;
 	mHavePrevious     = false;
 }
 
 //------------------------------------------------------------------------
-int BarClock::barLinesInBlock (const TransportInfo& info, int numSamples, double sampleRate,
-                               int* offsets, int maxOffsets)
+int BarClock::gridLinesInBlock (const TransportInfo& info, int numSamples, double sampleRate,
+                                GridLine* lines, int maxLines)
 {
-	if (offsets == nullptr || maxOffsets <= 0)
+	if (lines == nullptr || maxLines <= 0)
 		return 0;
 
 	const double bar = info.barLength ();
@@ -91,35 +117,56 @@ int BarClock::barLinesInBlock (const TransportInfo& info, int numSamples, double
 	const double end   = start + static_cast<double> (numSamples) * ppqPerSample;
 
 	// A JUMP BACKWARDS is a locate or a cycle wrapping, and it clears the
-	// guard. Without this a one-bar cycle plays its bar line once and then
-	// never again, because the same line keeps arriving and keeps being
-	// recognised as one already fired.
+	// guard. Without this a one-bar cycle plays its lines once and then
+	// never again, because the same lines keep arriving and keep being
+	// recognised as ones already fired.
 	//
 	// Against the previous block's START, not its end - see the header.
 	if (mHavePrevious && start < mPreviousStartPpq - kEpsilon)
-		mLastFiredBar = kNever;
+		mLastFiredLine = kNever;
 
-	// The first bar line at or after the start of the block. floor gives
-	// the line at or before it; one step forward if that is behind us.
-	double line = std::floor (start / bar) * bar;
+	// THE FINEST DIVISION is what the grid is made of; the coarser ones
+	// are steps of it, which is why one list serves every slot.
+	const double stepLength = bar / static_cast<double> (kGridStepsPerBar);
+
+	// The first line at or after the start of the block, and which step of
+	// the bar it is. floor gives the line at or before it; one step
+	// forward if that is behind us.
+	double whichStep = std::floor (start / stepLength);
+	double line = whichStep * stepLength;
 	while (line < start - kEpsilon)
-		line += bar;
+	{
+		line += stepLength;
+		whichStep += 1.0;
+	}
 
 	int count = 0;
-	while (line < end - kEpsilon && count < maxOffsets)
+	while (line < end - kEpsilon && count < maxLines)
 	{
-		if (line > mLastFiredBar + kEpsilon)
+		if (line > mLastFiredLine + kEpsilon)
 		{
 			// Rounded, not truncated: a line 0.9 of a sample into the
 			// block belongs to the sample it is nearest.
 			int offset = static_cast<int> (std::floor ((line - start) / ppqPerSample + 0.5));
 			offset = std::min (numSamples - 1, std::max (0, offset));
 
-			offsets[count++] = offset;
-			mLastFiredBar = line;
+			// Step WITHIN THE BAR, so step 0 is the bar line. The modulo
+			// is taken on a double because a project position runs to
+			// thousands of steps and the count must not be built up by
+			// addition, which would drift.
+			const double intoBar = whichStep
+			    - std::floor (whichStep / static_cast<double> (kGridStepsPerBar))
+			          * static_cast<double> (kGridStepsPerBar);
+
+			lines[count].offset = offset;
+			lines[count].step = static_cast<int> (intoBar + 0.5) % kGridStepsPerBar;
+			++count;
+
+			mLastFiredLine = line;
 		}
 
-		line += bar;
+		line += stepLength;
+		whichStep += 1.0;
 	}
 
 	mPreviousStartPpq = start;

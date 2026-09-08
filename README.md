@@ -4,10 +4,14 @@ A VST3 and Audio Unit **instrument** for macOS: an **8 × 8 bank of looping
 sample pads, launched on the bar**.
 
 Drag a `.wav` onto a slot from the Finder and it loads. Click the slot to arm
-it; it starts **when the transport crosses the next bar line**. Click again
-and it stops on the bar after that. Nothing sounds while the transport is
-stopped, and a pad left armed comes back in on the next bar when it rolls
-again.
+it; it starts **when the transport crosses the next grid line**. Click again
+and it stops on the line after that. Nothing sounds while the transport is
+stopped, and a pad left armed comes back in when it rolls again.
+
+**Each pad chooses its own grid**: `1/1`, `1/2`, `1/4` or `1/8` — fractions of
+a bar, so every division nests inside the bar and a 1/8 pad and a 1/1 pad
+launch together on the downbeat. The little box beside each level bar sets it;
+click to step forward, right-click to step back.
 
 **A box above each column launches the whole column** — every loaded pad in
 it, together on the next bar line, which is the only way eight loops can start

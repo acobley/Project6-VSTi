@@ -164,13 +164,14 @@ python3 tools/render-routing.py
 
 `-DRELEASE=1` is required or `fdebug.h` refuses to compile.
 
-Results, at the row-bus commit: **all five suites all-pass**, all thirteen
-translation units produced object files with no errors, all 62 undefined
-`Project6::` symbols resolved within the set, `check-editor` reported ok, and
-`render-routing` regenerated the diagram from the headers. The panel's
-dimensions are checked by `static_assert` rather than by eye — 847 × 592, with
-the grid meeting the fader column, the faders meeting the right margin, and
-the launch boxes clear of the pads.
+Results, at the launch-division commit: **all five suites all-pass**, all
+thirteen translation units produced object files with no errors, all 66
+undefined `Project6::` symbols resolved within the set, `check-editor`
+reported ok, and `render-routing` regenerated the diagram from the headers.
+The panel's dimensions are checked by `static_assert` rather than by eye —
+847 × 624, with the grid meeting the fader column, the faders meeting the
+right margin, the launch boxes clear of the pads, and the level bar and
+division box filling a cell's width exactly.
 
 Re-run all six before every commit. Adding a source file also means re-running
 `./setup-xcode.sh --no-open` before the next Xcode build, or the project
@@ -536,6 +537,37 @@ Two details worth keeping:
 * `BarClock::reset()` is called whenever the transport is not rolling. Without
   it, rewinding to the bar you just played and pressing play launches nothing,
   because that line is remembered as already fired.
+
+### Each pad picks its own grid line
+
+`1/1`, `1/2`, `1/4`, `1/8` — **fractions of a bar**, not note values. Outside
+4/4 the two part company, and the fraction is the right answer: a quarter of a
+7/8 bar is 0.875 quarter notes, and *every division line then still nests
+inside the bar*. Quarter notes in 7/8 would drift against the bar and a "1/4"
+pad would sometimes launch off the downbeat, which is not a launch grid. In
+4/4 the two readings coincide, which is why this only shows up in the odd
+meters.
+
+Because they nest, **one list of lines serves all sixty-four slots**: the clock
+finds every eighth-of-a-bar line and says which *step* of the bar each one is,
+and `divisionFires(division, step)` is the whole rule —
+
+```cpp
+return step >= 0 && (step % divisionSteps (division)) == 0;
+```
+
+Step 0 is the bar line and every division fires on it. That single fact is what
+keeps a 1/8 pad and a 1/1 pad in phase instead of drifting past each other, and
+it is what lets the degraded paths below say `applyGridLine(0)` and mean "apply
+everything".
+
+The default is a **whole bar** — the coarsest choice, and what the plug-in did
+before there was a choice, so a project saved before this parameter existed
+loads behaving exactly as it did.
+
+`TransportTests` §7 pins the nesting down: a coarser division's steps are a
+subset of a finer one's, a bar slot fires once a bar and an eighth slot eight
+times, and a bar slot does **not** fire half way through.
 
 ### The three levels of knowledge, degrading separately
 

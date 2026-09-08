@@ -5,6 +5,7 @@
 #include "Project6SlotView.h"
 
 #include "Project6Controls.h"
+#include "Project6Params.h"
 
 #include <algorithm>
 #include <cmath>
@@ -538,6 +539,101 @@ void SpySlotLevel::onMouseWheelEvent (MouseWheelEvent& event)
 	endEdit ();
 	invalid ();
 	event.consumed = true;
+}
+
+//------------------------------------------------------------------------
+// SpySlotDivision
+//------------------------------------------------------------------------
+
+SpySlotDivision::SpySlotDivision (const CRect& size, IControlListener* listener,
+                                  int32_t tag, int index)
+: CControl (size, listener, tag)
+, mIndex (index)
+{
+	setMouseEnabled (true);
+	setMin (0.f);
+	setMax (1.f);
+
+	// A fixed tooltip: the VALUE is on the face of the control, so the
+	// tip only has to say what the control is and how to work it.
+	setTooltipText ("Launch quantise — click to step, right-click to step back");
+}
+
+//------------------------------------------------------------------------
+LaunchDivision SpySlotDivision::current () const
+{
+	// Through the parameter's own definition, so the control and the host
+	// agree about which normalised value is which division.
+	return divisionFromIndex (static_cast<int> (
+		slotDivisionDef ().toInternal (getValueNormalized ())));
+}
+
+//------------------------------------------------------------------------
+void SpySlotDivision::step (int delta)
+{
+	const int next = ((indexOfDivision (current ()) + delta) % kLaunchDivisionCount
+	                  + kLaunchDivisionCount) % kLaunchDivisionCount;
+
+	// A COMPLETE GESTURE, like every other control here: begin, set,
+	// notify, end - so a host can record and undo it.
+	beginEdit ();
+	setValueNormalized (static_cast<float> (
+		slotDivisionDef ().toNormalized (static_cast<double> (next))));
+	valueChanged ();
+	endEdit ();
+	invalid ();
+}
+
+//------------------------------------------------------------------------
+void SpySlotDivision::onMouseDownEvent (MouseDownEvent& event)
+{
+	// Ctrl counts as a right click, which is the macOS convention and a
+	// fallback for hosts that keep the right button to themselves - the
+	// same rule SpySelector follows.
+	const bool back = event.buttonState.isRight ()
+	                  || event.modifiers.has (ModifierKey::Control);
+
+	if (! event.buttonState.isLeft () && ! back)
+		return;
+
+	event.consumed = true;
+	step (back ? -1 : 1);
+}
+
+//------------------------------------------------------------------------
+void SpySlotDivision::onMouseWheelEvent (MouseWheelEvent& event)
+{
+	event.consumed = true;
+	if (event.deltaY != 0.)
+		step (event.deltaY > 0. ? 1 : -1);
+}
+
+//------------------------------------------------------------------------
+void SpySlotDivision::draw (CDrawContext* context)
+{
+	const CRect r = getViewSize ();
+
+	// A RAISED box, like the column buttons: it is something to press,
+	// not a well to drop into.
+	context->setFillColor (kWellFillFull);
+	context->drawRect (r, kDrawFilled);
+	drawWell (context, r, kWellHigh, kWellShadow);
+
+	// The short name - "1/4" - because that is all there is room for and
+	// all a reader needs. panelFontTiny is nine points; the box is
+	// thirteen pixels tall.
+	context->setFont (panelFontTiny ());
+	context->setFontColor (kSlotText);
+
+	const CCoord height = panelFontTiny ()->getSize () + 2.;
+	const CRect line (r.left,
+	                  r.top + (r.getHeight () - height) * 0.5,
+	                  r.right,
+	                  r.top + (r.getHeight () - height) * 0.5 + height);
+
+	context->drawString (divisionShortName (current ()), line, kCenterText, true);
+
+	setDirty (false);
 }
 
 //------------------------------------------------------------------------

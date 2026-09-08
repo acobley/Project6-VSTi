@@ -80,7 +80,7 @@ bool readSlots (IBStreamer& streamer, SlotBank& slots)
 }
 
 //------------------------------------------------------------------------
-bool writeLevelBlock (IBStreamer& streamer, const double* normalized, int count)
+bool writeValueBlock (IBStreamer& streamer, const double* normalized, int count)
 {
 	if (normalized == nullptr || count < 0)
 		return false;
@@ -96,7 +96,7 @@ bool writeLevelBlock (IBStreamer& streamer, const double* normalized, int count)
 }
 
 //------------------------------------------------------------------------
-bool readLevelBlock (IBStreamer& streamer, double* normalized, int count, double fallback)
+bool readValueBlock (IBStreamer& streamer, double* normalized, int count, double fallback)
 {
 	if (normalized == nullptr || count < 0)
 		return false;

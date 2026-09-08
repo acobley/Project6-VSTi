@@ -8,7 +8,7 @@
 
 #include "Project6Params.h"
 
-#include <cassert>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -59,6 +59,21 @@ const ParamDef& rowLevelDef ()
 		{ kRowLevelBase, "Row Level", "dB", ParamType::Float,
 		  kRowLevelMinDb, kRowLevelMaxDb, kRowLevelDefaultDb,
 		  kRowLevelMinDb, kRowLevelMaxDb, 0, true };
+	return def;
+}
+
+//------------------------------------------------------------------------
+const ParamDef& slotDivisionDef ()
+{
+	// An ENUMERATED parameter, so a host's own list reads "1/4 bar"
+	// rather than "0.667". The default is a whole bar - the coarsest
+	// choice, which is what the plug-in did before there was a choice.
+	static const ParamDef def =
+		{ kSlotDivisionBase, "Slot Launch", "", ParamType::Enum,
+		  0.0, static_cast<double> (kLaunchDivisionCount - 1),
+		  static_cast<double> (indexOfDivision (LaunchDivision::Bar)),
+		  0.0, static_cast<double> (kLaunchDivisionCount - 1),
+		  kLaunchDivisionCount - 1, false };
 	return def;
 }
 
@@ -119,23 +134,19 @@ std::string slotReference (int slot)
 	return std::string (1, static_cast<char> ('A' + row)) + std::to_string (column + 1);
 }
 
-/** Built once, on first use, and never touched again: ParamDef and the
-    SDK both want a const char*, so the strings have to outlive the call,
-    and sixty-four literals would be sixty-four lines differing in one
-    character. */
+/** Built once per suffix, on first use, and never touched again:
+    ParamDef and the SDK both want a const char*, so the strings have to
+    outlive the call, and sixty-four literals per block would be sixty-four
+    lines differing in one character.
+
+    Keyed on the whole suffix. An earlier version keyed on its first
+    letter, which was fine for "Play" and "Sounding" and quietly wrong the
+    moment "Level" and "Launch" both wanted L. */
 const std::vector<std::string>& slotNames (const char* suffix)
 {
-	static std::vector<std::string> play;
-	static std::vector<std::string> sounding;
-	static std::vector<std::string> level;
+	static std::map<std::string, std::vector<std::string>> cache;
 
-	// Keyed on the first letter, which is unique across the three
-	// suffixes this is ever called with. A fourth would need a real key -
-	// hence the assertion, which fires the moment one is added.
-	std::vector<std::string>& names = (suffix[0] == 'P') ? play
-	                                : (suffix[0] == 'S') ? sounding
-	                                                     : level;
-	assert (suffix[0] == 'P' || suffix[0] == 'S' || suffix[0] == 'L');
+	std::vector<std::string>& names = cache[suffix];
 	if (names.empty ())
 	{
 		names.reserve (kSlotCount);
@@ -169,10 +180,10 @@ const std::vector<std::string>& rowNames ()
 //------------------------------------------------------------------------
 static_assert (kNumTableParams == 1, "one described parameter: the output trim");
 static_assert (kNumParams == kNumTableParams + kSlotCount + 3 + kSlotCount + kSlotCount
-                                 + kSlotRows,
+                                 + kSlotRows + kSlotCount,
                "the trim, 64 triggers, the transport, the bar phase, the beats per "
-               "bar, 64 published slot states, 64 slot levels and 8 row levels is "
-               "every parameter there is");
+               "bar, 64 published slot states, 64 slot levels, 8 row levels and 64 "
+               "launch divisions is every parameter there is");
 // THE APPEND THE BOUND WAS WRITTEN FOR. The published block now sits
 // after the triggers, so isSlotPlayParam's upper bound is load-bearing
 // rather than merely careful.
@@ -188,7 +199,17 @@ static_assert (kSlotLevelEnd < kNumParams,
                "the row levels follow the slot levels, so isSlotLevelParam must be "
                "bounded by kSlotLevelEnd and never by kNumParams");
 static_assert (kRowLevelBase == kSlotLevelEnd, "the row levels start where they end");
-static_assert (kRowLevelEnd == kNumParams, "and currently run to the end");
+static_assert (kRowLevelEnd < kNumParams,
+               "the launch divisions follow the row levels, so isRowLevelParam must "
+               "be bounded by kRowLevelEnd and never by kNumParams");
+static_assert (kSlotDivisionBase == kRowLevelEnd,
+               "the launch divisions start where the row levels end");
+static_assert (kSlotDivisionEnd == kNumParams, "and currently run to the end");
+static_assert (! isRowLevelParam (slotDivisionParam (0)),
+               "a launch division is not a row level");
+static_assert (! isSlotLevelParam (slotDivisionParam (0)), "nor a slot level");
+static_assert (slotOfDivisionParam (slotDivisionParam (63)) == 63,
+               "the two directions agree");
 static_assert (kRowLevelEnd - kRowLevelBase == kSlotRows, "one fader per row");
 static_assert (! isSlotLevelParam (rowLevelParam (0)), "a row level is not a slot level");
 static_assert (rowOfLevelParam (rowLevelParam (5)) == 5, "the two directions agree");
@@ -231,6 +252,8 @@ const ParamDef& paramDef (Steinberg::Vst::ParamID id)
 		return slotLevelDef ();
 	if (isRowLevelParam (id))
 		return rowLevelDef ();
+	if (isSlotDivisionParam (id))
+		return slotDivisionDef ();
 
 	return kParams[kOutputTrim];
 }
@@ -255,6 +278,10 @@ const char* paramTitle (Steinberg::Vst::ParamID id)
 	if (isRowLevelParam (id))
 		return rowNames ()[static_cast<std::size_t> (rowOfLevelParam (id))].c_str ();
 
+	if (isSlotDivisionParam (id))
+		return slotNames ("Launch")[
+			static_cast<std::size_t> (slotOfDivisionParam (id))].c_str ();
+
 	if (id == kLiveTransport)
 		return liveTransportDef ().title;
 	if (id == kLiveBarPhase)
@@ -273,6 +300,12 @@ const char* paramChoiceName (Steinberg::Vst::ParamID id, int choice)
 {
 	if (isSlotPlayParam (id))
 		return (choice == 0) ? "Stopped" : "Playing";
+
+	// "Bar", "1/2 bar", "1/4 bar", "1/8 bar" - named once, in
+	// Project6Transport.h, so the host's list and the panel's box cannot
+	// come to different views about what a division is called.
+	if (isSlotDivisionParam (id))
+		return divisionName (divisionFromIndex (choice));
 
 	return (choice == 0) ? "Off" : "On";
 }

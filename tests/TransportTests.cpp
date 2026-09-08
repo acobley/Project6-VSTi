@@ -20,6 +20,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <string>
 
 using namespace Project6;
 
@@ -116,75 +117,106 @@ int main ()
 	}
 
 	//--------------------------------------------------------------------
-	section ("3. Finding the line inside a block");
+	section ("3. Finding the lines inside a block");
 	//--------------------------------------------------------------------
 	{
-		int offsets[kMaxBarLinesPerBlock];
+		GridLine lines[kMaxGridLinesPerBlock];
+
+		// At 120 BPM and 48 kHz a quarter note is 24000 samples, a 4/4 bar
+		// is 96000, and one step of the grid - an eighth of a bar - is
+		// 12000. Round numbers on purpose: an assertion about a sample
+		// offset should be readable.
 
 		// A BLOCK THAT BEGINS ON A BAR LINE. Not an edge case - it is what
 		// happens every time a host starts playback from the top of a bar.
 		{
 			BarClock clock;
-			const int n = clock.barLinesInBlock (rolling (4.0), 512, kRate,
-			                                     offsets, kMaxBarLinesPerBlock);
-			check (n == 1, "a block starting exactly on a bar line finds it");
-			check (n == 1 && offsets[0] == 0, "at offset 0");
+			const int n = clock.gridLinesInBlock (rolling (4.0), 512, kRate,
+			                                      lines, kMaxGridLinesPerBlock);
+			check (n == 1, "a block starting exactly on a line finds it, and only it");
+			check (n == 1 && lines[0].offset == 0, "at offset 0");
+			check (n == 1 && lines[0].step == 0, "and it is step 0 - the bar line");
 		}
 
 		// A line part way through.
 		{
 			BarClock clock;
-			// Start a quarter of a beat before bar 2: 12000 samples.
-			const int n = clock.barLinesInBlock (rolling (4.0 - 0.5), 24000, kRate,
-			                                     offsets, kMaxBarLinesPerBlock);
+			// 240 samples before the bar line at quarter note 4.
+			const int n = clock.gridLinesInBlock (rolling (4.0 - 0.01), 512, kRate,
+			                                      lines, kMaxGridLinesPerBlock);
 			check (n == 1, "a line inside the block is found");
-			check (n == 1 && offsets[0] == 12000,
+			check (n == 1 && lines[0].offset == 240,
 			       "at the sample it actually falls on, not at the block edge");
 		}
 
-		// No line at all - the usual answer.
+		// No line at all - still the usual answer, even at eight steps a
+		// bar.
 		{
 			BarClock clock;
-			const int n = clock.barLinesInBlock (rolling (1.0), 512, kRate,
-			                                     offsets, kMaxBarLinesPerBlock);
-			check (n == 0, "a block in the middle of a bar finds nothing");
+			const int n = clock.gridLinesInBlock (rolling (4.05), 512, kRate,
+			                                      lines, kMaxGridLinesPerBlock);
+			check (n == 0, "a block between two lines finds nothing");
 		}
 
 		// The line at the very END of a block belongs to the NEXT block.
 		// Firing it here would launch a pad one block early, every time.
 		{
 			BarClock clock;
-			// At 120 BPM and 48 kHz a quarter note is 24000 samples, so
-			// 12000 from 3.5 ends exactly on quarter note 4.0.
-			const int n = clock.barLinesInBlock (rolling (3.5), 12000, kRate,
-			                                     offsets, kMaxBarLinesPerBlock);
+			// 9600 samples from 3.6 ends exactly on quarter note 4.0.
+			const int n = clock.gridLinesInBlock (rolling (3.6), 9600, kRate,
+			                                      lines, kMaxGridLinesPerBlock);
 			check (n == 0, "a line exactly at the end of a block is not this block's");
 
-			const int next = clock.barLinesInBlock (rolling (4.0), 512, kRate,
-			                                        offsets, kMaxBarLinesPerBlock);
-			check (next == 1 && offsets[0] == 0, "it belongs to the next one, at offset 0");
+			const int next = clock.gridLinesInBlock (rolling (4.0), 512, kRate,
+			                                         lines, kMaxGridLinesPerBlock);
+			check (next == 1 && lines[0].offset == 0,
+			       "it belongs to the next one, at offset 0");
 		}
 
-		// Two lines in one block: a very short bar and a very fast tempo.
+		// TWO LINES IN ONE BLOCK, which the subdivided grid makes ordinary
+		// rather than exotic.
 		{
 			BarClock clock;
-			// 1/4 time at 240 BPM: a bar is one quarter note, 12000
-			// samples at 48 k. A 32000-sample block spans two lines.
-			const int n = clock.barLinesInBlock (rolling (0.0, 1, 4, 240.0), 32000, kRate,
-			                                     offsets, kMaxBarLinesPerBlock);
-			check (n == 3, "three bar lines in one long block, at this tempo");
-			check (n == 3 && offsets[0] == 0 && offsets[1] == 12000 && offsets[2] == 24000,
+			// 24000 samples from 3.99: spans the bar line at 4.0 and the
+			// 1/8 line at 4.5.
+			const int n = clock.gridLinesInBlock (rolling (3.99), 24000, kRate,
+			                                      lines, kMaxGridLinesPerBlock);
+			check (n == 2, "a block spanning two lines finds both");
+			check (n == 2 && lines[0].offset == 240 && lines[1].offset == 12240,
 			       "in order, at the right samples");
+			check (n == 2 && lines[0].step == 0 && lines[1].step == 1,
+			       "and step 0 is followed by step 1");
 		}
 
-		// Odd time signature, so the arithmetic is not silently 4/4.
+		// THE STEPS RUN 0..7 AND WRAP. Step 0 is the bar line, and it has
+		// to keep being the bar line however far into the project we are.
 		{
 			BarClock clock;
-			// 7/8 at 120 BPM: a bar is 3.5 quarter notes = 84000 samples.
-			// Start half a beat before bar 2, which is at 3.5.
-			const int n = clock.barLinesInBlock (rolling (3.0, 7, 8), 48000, kRate,
-			                                     offsets, kMaxBarLinesPerBlock);
-			check (n == 1 && offsets[0] == 12000, "7/8 puts its line at 3.5 quarter notes");
+			// Ten whole bars in, plus five steps.
+			const int n = clock.gridLinesInBlock (rolling (40.0 + 2.5 - 0.01), 512, kRate,
+			                                      lines, kMaxGridLinesPerBlock);
+			check (n == 1 && lines[0].step == 5,
+			       "a line two and a half beats into bar 11 is step 5");
+		}
+
+		// Odd time signature, so the arithmetic is not silently 4/4. A 7/8
+		// bar is 3.5 quarter notes, so a step is 0.4375 - 10500 samples.
+		{
+			BarClock clock;
+			const int n = clock.gridLinesInBlock (rolling (3.0, 7, 8), 24000, kRate,
+			                                      lines, kMaxGridLinesPerBlock);
+			check (n >= 2, "7/8 has its own step length, and finds lines by it");
+			check (n >= 2 && lines[0].offset == 1500 && lines[0].step == 7,
+			       "the last step of the bar comes first here");
+			check (n >= 2 && lines[1].offset == 12000 && lines[1].step == 0,
+			       "and the bar line at 3.5 quarter notes is step 0");
+
+			// NEGATIVE CONTROL for the whole nesting idea: the bar line of
+			// a 7/8 bar is a grid line, so a slot on 1/1 and a slot on 1/8
+			// launch together there.
+			check (n >= 2 && divisionFires (LaunchDivision::Bar, lines[1].step)
+			           && divisionFires (LaunchDivision::Eighth, lines[1].step),
+			       "NEGATIVE CONTROL: every division fires on it, even in 7/8");
 		}
 	}
 
@@ -192,29 +224,29 @@ int main ()
 	section ("4. Once each, and once again after a jump");
 	//--------------------------------------------------------------------
 	{
-		int offsets[kMaxBarLinesPerBlock];
+		GridLine lines[kMaxGridLinesPerBlock];
 
 		// THE SAME LINE MUST NOT FIRE TWICE.
 		//
 		// A repeated block - the same position handed over twice, which
 		// some hosts do while scrubbing - is not a locate, and firing on
-		// it would be wrong even though applying a bar line is idempotent
+		// it would be wrong even though applying a grid line is idempotent
 		// (see Project6Processor: it only acts on slots whose armed state
 		// differs from what is launched). This is the case that made the
 		// backwards-jump test compare against the previous block's START
 		// rather than its end.
 		{
 			BarClock clock;
-			check (clock.barLinesInBlock (rolling (4.0), 512, kRate, offsets,
-			                              kMaxBarLinesPerBlock) == 1,
+			check (clock.gridLinesInBlock (rolling (4.0), 512, kRate, lines,
+			                               kMaxGridLinesPerBlock) == 1,
 			       "the line fires on the block that contains it");
-			check (clock.barLinesInBlock (rolling (4.0), 512, kRate, offsets,
-			                              kMaxBarLinesPerBlock) == 0,
+			check (clock.gridLinesInBlock (rolling (4.0), 512, kRate, lines,
+			                               kMaxGridLinesPerBlock) == 0,
 			       "NEGATIVE CONTROL: and not again on a repeat of the same block");
 		}
 
 		// Ordinary forward progress across many blocks fires each line
-		// exactly once - a whole 4/4 bar in 512-sample blocks.
+		// exactly once.
 		{
 			BarClock clock;
 			int fired = 0;
@@ -222,41 +254,39 @@ int main ()
 			const double perBlock = 512.0 * (120.0 / 60.0) / kRate;   // quarter notes
 			for (int block = 0; block < 400; ++block)
 			{
-				fired += clock.barLinesInBlock (rolling (ppq), 512, kRate, offsets,
-				                                kMaxBarLinesPerBlock);
+				fired += clock.gridLinesInBlock (rolling (ppq), 512, kRate, lines,
+				                                 kMaxGridLinesPerBlock);
 				ppq += perBlock;
 			}
-			// 400 blocks * 512 samples = 204800 samples = 2.13 bars, from
-			// a bar line: lines at 4, 8 and 12 quarter notes.
-			check (fired == 3, "three lines in two and a bit bars, each fired once");
+			// 400 blocks * 512 samples is 8.533 quarter notes from a bar
+			// line: lines at 4.0, 4.5 ... 12.5.
+			check (fired == 18, "eighteen lines in eight and a half beats, each fired once");
 		}
 
 		// A CYCLE THAT WRAPS. One-bar loop: the same line arrives again
 		// and again, and must launch again and again. This is the case
-		// the previous-block-end memory exists for; without it a one-bar
-		// loop works exactly once.
+		// the previous-block-start memory exists for; without it a
+		// one-bar loop works exactly once.
 		{
 			BarClock clock;
 			int fired = 0;
 			for (int pass = 0; pass < 4; ++pass)
 			{
-				// The block at the top of the bar...
-				fired += clock.barLinesInBlock (rolling (4.0), 512, kRate, offsets,
-				                                kMaxBarLinesPerBlock);
-				// ...then somewhere in the middle...
-				clock.barLinesInBlock (rolling (6.0), 512, kRate, offsets,
-				                       kMaxBarLinesPerBlock);
-				// ...then the cycle jumps back.
+				fired += clock.gridLinesInBlock (rolling (4.0), 512, kRate, lines,
+				                                 kMaxGridLinesPerBlock);
+				clock.gridLinesInBlock (rolling (6.0), 512, kRate, lines,
+				                        kMaxGridLinesPerBlock);
 			}
-			check (fired == 4, "a one-bar cycle fires its line on every pass");
+			check (fired == 4, "a one-bar cycle fires its bar line on every pass");
 		}
 
 		// A LOCATE BACKWARDS to an earlier bar fires that bar again.
 		{
 			BarClock clock;
-			clock.barLinesInBlock (rolling (16.0), 512, kRate, offsets, kMaxBarLinesPerBlock);
-			const int n = clock.barLinesInBlock (rolling (8.0), 512, kRate, offsets,
-			                                     kMaxBarLinesPerBlock);
+			clock.gridLinesInBlock (rolling (16.0), 512, kRate, lines,
+			                        kMaxGridLinesPerBlock);
+			const int n = clock.gridLinesInBlock (rolling (8.0), 512, kRate, lines,
+			                                      kMaxGridLinesPerBlock);
 			check (n == 1, "locating back to an earlier bar fires it");
 		}
 
@@ -265,11 +295,11 @@ int main ()
 		// just played and pressing play launches nothing.
 		{
 			BarClock clock;
-			check (clock.barLinesInBlock (rolling (4.0), 512, kRate, offsets,
-			                              kMaxBarLinesPerBlock) == 1, "played once");
+			check (clock.gridLinesInBlock (rolling (4.0), 512, kRate, lines,
+			                               kMaxGridLinesPerBlock) == 1, "played once");
 			clock.reset ();
-			check (clock.barLinesInBlock (rolling (4.0), 512, kRate, offsets,
-			                              kMaxBarLinesPerBlock) == 1,
+			check (clock.gridLinesInBlock (rolling (4.0), 512, kRate, lines,
+			                               kMaxGridLinesPerBlock) == 1,
 			       "and again after a stop, from the same position");
 		}
 	}
@@ -278,49 +308,51 @@ int main ()
 	section ("5. When the host tells us nothing useful");
 	//--------------------------------------------------------------------
 	{
-		int offsets[kMaxBarLinesPerBlock];
+		GridLine lines[kMaxGridLinesPerBlock];
 		BarClock clock;
 
 		TransportInfo stopped = rolling (4.0);
 		stopped.playing = false;
-		check (clock.barLinesInBlock (stopped, 512, kRate, offsets, kMaxBarLinesPerBlock) == 0,
-		       "a stopped transport has no bar lines");
+		check (clock.gridLinesInBlock (stopped, 512, kRate, lines,
+		                               kMaxGridLinesPerBlock) == 0,
+		       "a stopped transport has no grid lines");
 
 		TransportInfo unmusical = rolling (4.0);
 		unmusical.musical = false;
-		check (clock.barLinesInBlock (unmusical, 512, kRate, offsets, kMaxBarLinesPerBlock) == 0,
+		check (clock.gridLinesInBlock (unmusical, 512, kRate, lines,
+		                               kMaxGridLinesPerBlock) == 0,
 		       "and neither has one with no tempo or signature");
 
-		check (clock.barLinesInBlock (rolling (4.0), 0, kRate, offsets,
-		                              kMaxBarLinesPerBlock) == 0,
+		check (clock.gridLinesInBlock (rolling (4.0), 0, kRate, lines,
+		                               kMaxGridLinesPerBlock) == 0,
 		       "a zero-length block finds nothing");
-		check (clock.barLinesInBlock (rolling (4.0), -8, kRate, offsets,
-		                              kMaxBarLinesPerBlock) == 0,
+		check (clock.gridLinesInBlock (rolling (4.0), -8, kRate, lines,
+		                               kMaxGridLinesPerBlock) == 0,
 		       "nor a negative one");
-		check (clock.barLinesInBlock (rolling (4.0), 512, 0.0, offsets,
-		                              kMaxBarLinesPerBlock) == 0,
+		check (clock.gridLinesInBlock (rolling (4.0), 512, 0.0, lines,
+		                               kMaxGridLinesPerBlock) == 0,
 		       "nor a zero sample rate");
 
-		check (clock.barLinesInBlock (rolling (4.0, 0, 4), 512, kRate, offsets,
-		                              kMaxBarLinesPerBlock) == 0,
+		check (clock.gridLinesInBlock (rolling (4.0, 0, 4), 512, kRate, lines,
+		                               kMaxGridLinesPerBlock) == 0,
 		       "nor a nonsense time signature");
-		check (clock.barLinesInBlock (rolling (4.0, 4, 4, 0.0), 512, kRate, offsets,
-		                              kMaxBarLinesPerBlock) == 0,
+		check (clock.gridLinesInBlock (rolling (4.0, 4, 4, 0.0), 512, kRate, lines,
+		                               kMaxGridLinesPerBlock) == 0,
 		       "nor a tempo of zero");
-		check (clock.barLinesInBlock (rolling (4.0, 4, 4, -120.0), 512, kRate, offsets,
-		                              kMaxBarLinesPerBlock) == 0,
+		check (clock.gridLinesInBlock (rolling (4.0, 4, 4, -120.0), 512, kRate, lines,
+		                               kMaxGridLinesPerBlock) == 0,
 		       "nor a negative one");
 
-		check (clock.barLinesInBlock (rolling (4.0), 512, kRate, nullptr,
-		                              kMaxBarLinesPerBlock) == 0,
+		check (clock.gridLinesInBlock (rolling (4.0), 512, kRate, nullptr,
+		                               kMaxGridLinesPerBlock) == 0,
 		       "and a null buffer is refused rather than written to");
-		check (clock.barLinesInBlock (rolling (4.0), 512, kRate, offsets, 0) == 0,
+		check (clock.gridLinesInBlock (rolling (4.0), 512, kRate, lines, 0) == 0,
 		       "as is a buffer with no room");
 
 		// A gap in the musical information must not leave the guard
 		// measuring against a position from before it.
-		check (clock.barLinesInBlock (rolling (4.0), 512, kRate, offsets,
-		                              kMaxBarLinesPerBlock) == 1,
+		check (clock.gridLinesInBlock (rolling (4.0), 512, kRate, lines,
+		                               kMaxGridLinesPerBlock) == 1,
 		       "and the clock still works once the host makes sense again");
 	}
 
@@ -328,24 +360,114 @@ int main ()
 	section ("6. The cap, which nothing normal reaches");
 	//--------------------------------------------------------------------
 	{
-		int offsets[kMaxBarLinesPerBlock];
+		GridLine lines[kMaxGridLinesPerBlock];
 		BarClock clock;
 
 		// 1/4 at 999 BPM over a huge block: far more lines than the cap.
-		// Overflowing must return the cap and stop, not run off the end -
-		// and every line does the same thing anyway, so the ones dropped
-		// cost nothing.
-		const int n = clock.barLinesInBlock (rolling (0.0, 1, 4, 999.0), 48000, kRate,
-		                                     offsets, kMaxBarLinesPerBlock);
-		check (n == kMaxBarLinesPerBlock, "an absurd tempo fills the buffer and stops");
-		bool ordered = true;
-		for (int i = 1; i < n; ++i)
-			ordered &= (offsets[i] > offsets[i - 1]);
-		check (ordered, "and what it wrote is still in order");
-		bool inRange = true;
+		// Overflowing must return the cap and stop, not run off the end.
+		const int n = clock.gridLinesInBlock (rolling (0.0, 1, 4, 999.0), 48000, kRate,
+		                                      lines, kMaxGridLinesPerBlock);
+		check (n == kMaxGridLinesPerBlock, "an absurd tempo fills the buffer and stops");
+		bool ordered = true, inRange = true, stepped = true;
 		for (int i = 0; i < n; ++i)
-			inRange &= (offsets[i] >= 0 && offsets[i] < 48000);
+		{
+			if (i > 0)
+				ordered &= (lines[i].offset >= lines[i - 1].offset);
+			inRange &= (lines[i].offset >= 0 && lines[i].offset < 48000);
+			stepped &= (lines[i].step >= 0 && lines[i].step < kGridStepsPerBar);
+		}
+		check (ordered, "and what it wrote is still in order");
 		check (inRange, "and inside the block");
+		check (stepped, "with every step inside the bar");
+	}
+
+	//--------------------------------------------------------------------
+	section ("7. The divisions, and how they nest");
+	//--------------------------------------------------------------------
+	{
+		check (kGridStepsPerBar == 8, "the grid is eight steps to the bar");
+		check (kLaunchDivisionCount == 4, "and there are four divisions to choose from");
+
+		check (divisionSteps (LaunchDivision::Bar)     == 8, "a bar is eight steps");
+		check (divisionSteps (LaunchDivision::HalfBar) == 4, "a half bar is four");
+		check (divisionSteps (LaunchDivision::Quarter) == 2, "a quarter is two");
+		check (divisionSteps (LaunchDivision::Eighth)  == 1, "and an eighth is one");
+
+		// EVERY DIVISION FIRES ON STEP 0. That is what keeps a slot on
+		// 1/8 and a slot on 1/1 in phase with each other instead of
+		// drifting apart, and it is the reason one list of lines serves
+		// them all.
+		bool allOnDownbeat = true;
+		for (int i = 0; i < kLaunchDivisionCount; ++i)
+			allOnDownbeat &= divisionFires (divisionFromIndex (i), 0);
+		check (allOnDownbeat, "every division fires on the bar line");
+
+		// And they NEST: anything a coarser division fires on, a finer one
+		// fires on too.
+		bool nests = true;
+		for (int step = 0; step < kGridStepsPerBar; ++step)
+		{
+			if (divisionFires (LaunchDivision::Bar, step))
+				nests &= divisionFires (LaunchDivision::HalfBar, step);
+			if (divisionFires (LaunchDivision::HalfBar, step))
+				nests &= divisionFires (LaunchDivision::Quarter, step);
+			if (divisionFires (LaunchDivision::Quarter, step))
+				nests &= divisionFires (LaunchDivision::Eighth, step);
+		}
+		check (nests, "and a finer division fires everywhere a coarser one does");
+
+		// The exact steps, spelt out - this is the behaviour, not an
+		// implementation detail.
+		int barCount = 0, halfCount = 0, quarterCount = 0, eighthCount = 0;
+		for (int step = 0; step < kGridStepsPerBar; ++step)
+		{
+			barCount     += divisionFires (LaunchDivision::Bar, step)     ? 1 : 0;
+			halfCount    += divisionFires (LaunchDivision::HalfBar, step) ? 1 : 0;
+			quarterCount += divisionFires (LaunchDivision::Quarter, step) ? 1 : 0;
+			eighthCount  += divisionFires (LaunchDivision::Eighth, step)  ? 1 : 0;
+		}
+		check (barCount == 1,     "a bar slot launches once a bar");
+		check (halfCount == 2,    "a half-bar slot twice");
+		check (quarterCount == 4, "a quarter four times");
+		check (eighthCount == 8,  "and an eighth eight times");
+
+		check (! divisionFires (LaunchDivision::Bar, 4),
+		       "NEGATIVE CONTROL: a bar slot does NOT launch half way through");
+		check (divisionFires (LaunchDivision::HalfBar, 4),
+		       "but a half-bar slot does");
+		check (! divisionFires (LaunchDivision::HalfBar, 2),
+		       "and a half-bar slot does not launch on the quarter");
+
+		check (! divisionFires (LaunchDivision::Eighth, -1),
+		       "a negative step fires nothing");
+
+		// Round-tripping, and what an out-of-range value means.
+		bool roundTrips = true;
+		for (int i = 0; i < kLaunchDivisionCount; ++i)
+			roundTrips &= (indexOfDivision (divisionFromIndex (i)) == i);
+		check (roundTrips, "index -> division -> index round-trips");
+		check (divisionFromIndex (-1) == LaunchDivision::Bar,
+		       "a nonsense index is a whole bar - the coarsest, safest answer");
+		check (divisionFromIndex (99) == LaunchDivision::Bar, "at either end");
+
+		// Names, which the panel and the host both show.
+		check (std::string (divisionShortName (LaunchDivision::Bar)) == "1/1",
+		       "the panel reads 1/1");
+		check (std::string (divisionShortName (LaunchDivision::Eighth)) == "1/8",
+		       "through to 1/8");
+		check (std::string (divisionName (LaunchDivision::Bar)) == "Bar",
+		       "and a host reads Bar");
+		check (std::string (divisionName (LaunchDivision::HalfBar)) == "1/2 bar",
+		       "through to 1/2 bar");
+
+		bool named = true;
+		for (int i = 0; i < kLaunchDivisionCount; ++i)
+		{
+			const LaunchDivision d = divisionFromIndex (i);
+			named &= (divisionShortName (d) != nullptr && divisionShortName (d)[0] != '\0');
+			named &= (divisionName (d) != nullptr && divisionName (d)[0] != '\0');
+		}
+		check (named, "and every division has both names");
 	}
 
 	//--------------------------------------------------------------------
