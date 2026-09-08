@@ -80,50 +80,50 @@ bool readSlots (IBStreamer& streamer, SlotBank& slots)
 }
 
 //------------------------------------------------------------------------
-bool writeSlotLevels (IBStreamer& streamer, const double* normalized)
+bool writeLevelBlock (IBStreamer& streamer, const double* normalized, int count)
 {
-	if (normalized == nullptr)
+	if (normalized == nullptr || count < 0)
 		return false;
 
-	if (!streamer.writeInt32 (static_cast<int32> (kSlotCount)))
+	if (!streamer.writeInt32 (static_cast<int32> (count)))
 		return false;
 
-	for (int slot = 0; slot < kSlotCount; ++slot)
-		if (!streamer.writeDouble (normalized[slot]))
+	for (int i = 0; i < count; ++i)
+		if (!streamer.writeDouble (normalized[i]))
 			return false;
 
 	return true;
 }
 
 //------------------------------------------------------------------------
-bool readSlotLevels (IBStreamer& streamer, double* normalized)
+bool readLevelBlock (IBStreamer& streamer, double* normalized, int count, double fallback)
 {
-	if (normalized == nullptr)
+	if (normalized == nullptr || count < 0)
 		return false;
 
 	// DEFAULTED FIRST, unconditionally - see readSlots. A project saved
-	// before the levels existed loads at unity rather than inheriting the
-	// balance of whatever was open before it.
-	const double fallback = slotLevelDef ().defaultNormalized ();
-	for (int slot = 0; slot < kSlotCount; ++slot)
-		normalized[slot] = fallback;
+	// before this block existed loads at its default rather than
+	// inheriting the balance of whatever was open before it.
+	for (int i = 0; i < count; ++i)
+		normalized[i] = fallback;
 
-	int32 count = 0;
-	if (!streamer.readInt32 (count))
-		return false;                       // a version 1 or 2 stream
+	int32 stored = 0;
+	if (!streamer.readInt32 (stored))
+		return false;                       // an older stream
 
-	if (count < 0 || count > kSlotCount * 16)
+	if (stored < 0 || stored > kSlotCount * 16)
 		return false;                       // nonsense: stop rather than loop on it
 
-	for (int32 i = 0; i < count; ++i)
+	for (int32 i = 0; i < stored; ++i)
 	{
 		double value = 0.0;
 		if (!streamer.readDouble (value))
 			return false;
 
-		// A stream from a build with MORE slots is read to the end - the
-		// bytes have to be consumed either way - and the extras dropped.
-		if (i < kSlotCount)
+		// A stream from a build with MORE of these is read to the end -
+		// the bytes have to be consumed either way, or everything after
+		// the block is misread - and the extras dropped.
+		if (i < count)
 			normalized[i] = std::min (1.0, std::max (0.0, value));
 	}
 

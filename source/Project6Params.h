@@ -102,7 +102,13 @@ enum Param : Steinberg::Vst::ParamID
 	kSlotLevelBase = kLiveSlotEnd,
 	kSlotLevelEnd  = kSlotLevelBase + kSlotCount,
 
-	kNumParams = kSlotLevelEnd
+	/** A level per ROW, on the sum of that row's eight pads. Settings,
+	    like the slot levels, and appended after them for the same
+	    reason - ids are never moved. */
+	kRowLevelBase = kSlotLevelEnd,
+	kRowLevelEnd  = kRowLevelBase + kSlotRows,
+
+	kNumParams = kRowLevelEnd
 };
 
 /** What kLiveTransport carries. */
@@ -171,6 +177,25 @@ constexpr bool isSlotLevelParam (Steinberg::Vst::ParamID id)
 constexpr int slotOfLevelParam (Steinberg::Vst::ParamID id)
 {
 	return static_cast<int> (id - kSlotLevelBase);
+}
+
+//------------------------------------------------------------------------
+// The row level block
+//------------------------------------------------------------------------
+
+constexpr Steinberg::Vst::ParamID rowLevelParam (int row)
+{
+	return static_cast<Steinberg::Vst::ParamID> (kRowLevelBase + row);
+}
+
+constexpr bool isRowLevelParam (Steinberg::Vst::ParamID id)
+{
+	return id >= kRowLevelBase && id < kRowLevelEnd;
+}
+
+constexpr int rowOfLevelParam (Steinberg::Vst::ParamID id)
+{
+	return static_cast<int> (id - kRowLevelBase);
 }
 
 /** Is this slot actually making a sound? */
@@ -291,6 +316,12 @@ const ParamDef& liveSlotDef ();
 
 /** The definition every slot level shares. */
 const ParamDef& slotLevelDef ();
+
+/** And every row level. Separate from the slot levels' definition even
+    though the two currently carry the same range, because they are
+    different things one level apart and a change to one should not be a
+    change to the other by accident. */
+const ParamDef& rowLevelDef ();
 
 /** The widest bar the panel will draw a grid for. Beyond it the grid is
     noise rather than information, and a host reporting something sillier

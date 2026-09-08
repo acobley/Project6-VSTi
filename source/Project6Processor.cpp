@@ -240,6 +240,11 @@ tresult PLUGIN_API Project6Processor::setupProcessing (ProcessSetup& setup)
 	// ALLOCATION BELONGS HERE, not in process(). Both the SpaceDub and the
 	// ForTran DXis reallocated from inside their processing loops.
 	mDsp.setSampleRate (mSampleRate);
+
+	// The row buses need a scratch of their own, and this is the only
+	// place the host tells anyone how big a block to expect.
+	mDsp.setMaxBlockSize (setup.maxSamplesPerBlock);
+
 	mScratch.assign (static_cast<size_t> (setup.maxSamplesPerBlock) * kChannelCount, 0.f);
 
 	// setSampleRate resets the DSP, so nothing is playing any more and
@@ -564,6 +569,10 @@ tresult PLUGIN_API Project6Processor::process (ProcessData& data)
 			slot, slotLevelDef ().toInternal (mParams[slotLevelParam (slot)]));
 	}
 
+	// And the eight row buses, the same way.
+	for (int row = 0; row < kSlotRows; ++row)
+		mDsp.setRowLevelDb (row, rowLevelDef ().toInternal (mParams[rowLevelParam (row)]));
+
 	const TransportInfo transport = readTransport (data);
 
 	//--------------------------------------------------------------------
@@ -725,7 +734,8 @@ tresult PLUGIN_API Project6Processor::getState (IBStream* state)
 	// stops early must stop at a block boundary and not in the middle of
 	// something it was half way through understanding.
 	writeSlots (streamer, mSlots);
-	writeSlotLevels (streamer, &mParams[kSlotLevelBase]);
+	writeLevelBlock (streamer, &mParams[kSlotLevelBase], kSlotCount);
+	writeLevelBlock (streamer, &mParams[kRowLevelBase], kSlotRows);
 
 	return kResultOk;
 }
@@ -780,7 +790,10 @@ tresult PLUGIN_API Project6Processor::setState (IBStream* state)
 	// case and is not an error. The CONTROLLER reads the identical block,
 	// through the identical function.
 	readSlots (streamer, mSlots);
-	readSlotLevels (streamer, &mParams[kSlotLevelBase]);
+	readLevelBlock (streamer, &mParams[kSlotLevelBase], kSlotCount,
+	                slotLevelDef ().defaultNormalized ());
+	readLevelBlock (streamer, &mParams[kRowLevelBase], kSlotRows,
+	                rowLevelDef ().defaultNormalized ());
 
 	// The paths are back; now read the files. setState is not the audio
 	// thread, so this is where sixty-four disk reads belong - and a slot

@@ -70,6 +70,15 @@ CRect Project6Editor::columnCell (int column) const
 }
 
 //------------------------------------------------------------------------
+CRect Project6Editor::rowFaderCell (int row) const
+{
+	const CRect cell = slotCell (0, row);
+	const CCoord top = cell.top + (kCellHeight - kSliderHeight) * 0.5;
+	return CRect (kRowFaderLeft, top,
+	              kRowFaderLeft + kRowFaderWidth, top + kSliderHeight);
+}
+
+//------------------------------------------------------------------------
 void Project6Editor::setParameter (ParamID tag, double plain)
 {
 	if (mController == nullptr)
@@ -177,6 +186,20 @@ bool PLUGIN_API Project6Editor::open (void* parent, const PlatformType& platform
 	}
 
 	//--------------------------------------------------------------------
+	// A fader per row, on the sum of that row's eight pads. Ordinary
+	// sliders through the same addSlider the output trim uses, so they
+	// label themselves, read out in decibels from the same table the host
+	// formats from, and follow automation with nothing added.
+	//--------------------------------------------------------------------
+	for (int row = 0; row < kSlotRows; ++row)
+	{
+		static const char* const kRowLabels[kSlotRows] =
+			{ "Row A", "Row B", "Row C", "Row D", "Row E", "Row F", "Row G", "Row H" };
+
+		addSlider (rowLevelParam (row), kRowLabels[row], rowFaderCell (row));
+	}
+
+	//--------------------------------------------------------------------
 	// The display, filling the space to the right.
 	//--------------------------------------------------------------------
 	mDisplay = new SpyDisplay (
@@ -194,7 +217,11 @@ bool PLUGIN_API Project6Editor::open (void* parent, const PlatformType& platform
 	// view, that the controller and the state stream speak in.
 	//--------------------------------------------------------------------
 	addHeading ("Samples  -  drag .wav files onto the slots; a click launches on the next bar",
-	            CRect (kMargin, kSlotHeadingTop, kEditorWidth - kMargin,
+	            CRect (kMargin, kSlotHeadingTop, kMargin + kSlotGridWidth,
+	                   kSlotHeadingTop + kHeadingHeight));
+
+	addHeading ("Row levels",
+	            CRect (kRowFaderLeft, kSlotHeadingTop, kEditorWidth - kMargin,
 	                   kSlotHeadingTop + kHeadingHeight));
 
 	// The column launch boxes, above the pads they launch. Added FIRST so

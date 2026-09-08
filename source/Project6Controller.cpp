@@ -188,9 +188,15 @@ tresult PLUGIN_API Project6Controller::setComponentState (IBStream* state)
 	// stream, so they arrive here rather than in the loop above.
 	{
 		double levels[kSlotCount] = {};
-		readSlotLevels (streamer, levels);
+		readLevelBlock (streamer, levels, kSlotCount,
+		                slotLevelDef ().defaultNormalized ());
 		for (int slot = 0; slot < kSlotCount; ++slot)
 			setParamNormalized (slotLevelParam (slot), levels[slot]);
+
+		double rows[kSlotRows] = {};
+		readLevelBlock (streamer, rows, kSlotRows, rowLevelDef ().defaultNormalized ());
+		for (int row = 0; row < kSlotRows; ++row)
+			setParamNormalized (rowLevelParam (row), rows[row]);
 	}
 
 	// The processor is reading the files right now and will report each

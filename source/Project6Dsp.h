@@ -17,8 +17,24 @@
 //     first of them, and the response display already calls it rather
 //     than converting decibels itself.
 //
-// What it does: sixty-four looping sample voices, one per slot, mixed and
-// passed through the output trim.
+// What it does, in order:
+//
+//     one voice per slot   ->  the slot's own level
+//                          ->  summed with the seven others on its ROW
+//                          ->  the row's level
+//                          ->  summed with the seven other rows
+//                          ->  the output trim
+//                          ->  out
+//
+// docs/routing.png is that drawn out, and tools/render-routing.py draws
+// it FROM THE HEADERS - so a diagram that disagrees with this comment is
+// a diagram that has not been regenerated, not a diagram that is lying.
+//
+// The row buses are why renderVoices works a row at a time through one
+// reused scratch buffer rather than adding every voice straight into the
+// output: a row's level has to scale the SUM of its pads, and eight
+// separate row buffers would be eight allocations this class must not
+// make.
 //
 // THE SAMPLES ARE NOT OWNED HERE. Project6Processor loads a file on the UI
 // thread, keeps the buffer alive, and publishes a bare pointer through
@@ -35,6 +51,7 @@
 #include "Project6Slots.h"
 
 #include <atomic>
+#include <vector>
 
 namespace Project6 {
 
@@ -66,6 +83,20 @@ constexpr double kTrimDefaultDb =   0.0;
 constexpr double kSlotLevelMinDb     = -40.0;
 constexpr double kSlotLevelMaxDb     =  12.0;
 constexpr double kSlotLevelDefaultDb =   0.0;
+
+/** A ROW's level, on the sum of its eight pads. The same law and the same
+    range as a slot's, because it is the same kind of thing one level up -
+    a submix inside a mix, which may need lifting, sitting in front of the
+    one stage that may not. */
+constexpr double kRowLevelMinDb     = kSlotLevelMinDb;
+constexpr double kRowLevelMaxDb     = kSlotLevelMaxDb;
+constexpr double kRowLevelDefaultDb = kSlotLevelDefaultDb;
+
+/** How much row scratch to keep when nobody has said how big a block will
+    be. Hosts say so in setupProcessing; the tests do not, and a DSP that
+    allocated on its first render would be a DSP that allocates on the
+    audio thread. */
+constexpr int kDefaultMaxBlockFrames = 4096;
 
 /** Interleaved stereo throughout, as every one of these ports has been. */
 constexpr int kChannelCount = 2;
@@ -152,6 +183,21 @@ public:
 	    the tests. */
 	double slotLevelGain (int index) const;
 
+	/** A ROW's level, in decibels, on the sum of its eight pads.
+
+	    Smoothed like a slot's - but SNAPPED whenever the row is silent,
+	    which is cheaper than ramping a gain nobody can hear and means a
+	    fader moved while a row is quiet is already in place when a pad on
+	    it starts. */
+	void setRowLevelDb (int row, double decibels);
+	double rowLevelGain (int row) const;
+
+	/** How large a block the host will ask for. Sizes the row scratch, so
+	    that renderVoices never allocates. Call it from setupProcessing;
+	    setSampleRate leaves a workable default behind for anything that
+	    does not. */
+	void setMaxBlockSize (int frames);
+
 	/** Start or stop a slot's loop.
 
 	    Called from the audio thread, once per block, with the slot's
@@ -216,10 +262,33 @@ private:
 	};
 
 	/** Mix every sounding voice into `out`, which is expected to be
-	    silent on the way in. */
+	    silent on the way in. Splits the block into chunks the row scratch
+	    can hold - which in practice it always can, the host having said
+	    so in setupProcessing. */
 	void renderVoices (float* out, int numSamples);
 
+	/** One chunk: each row summed into the scratch, scaled by the row's
+	    level, and added to `out`. */
+	void renderChunk (float* out, int numSamples);
+
+	/** One voice, ADDED into `dest` - which is the row's scratch, not the
+	    output. */
+	void renderVoice (Voice& voice, float* dest, int numSamples);
+
+	/** One row's bus. Only a gain: the summing is the scratch buffer's
+	    job and happens before this is applied. */
+	struct RowBus
+	{
+		double target = 1.0;
+		double gain   = -1.0;    ///< -1 means "not started"; snaps
+	};
+
 	Voice mVoices[kSlotCount];
+	RowBus mRows[kSlotRows];
+
+	/** ONE row's worth of interleaved stereo, reused for all eight. Sized
+	    off the audio thread and never grown on it. */
+	std::vector<float> mRowScratch;
 
 	/** How far the declick envelope moves in one sample. */
 	double mDeclickStep = 1.0;

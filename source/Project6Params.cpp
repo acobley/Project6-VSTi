@@ -53,6 +53,16 @@ const ParamDef& slotLevelDef ()
 }
 
 //------------------------------------------------------------------------
+const ParamDef& rowLevelDef ()
+{
+	static const ParamDef def =
+		{ kRowLevelBase, "Row Level", "dB", ParamType::Float,
+		  kRowLevelMinDb, kRowLevelMaxDb, kRowLevelDefaultDb,
+		  kRowLevelMinDb, kRowLevelMaxDb, 0, true };
+	return def;
+}
+
+//------------------------------------------------------------------------
 const ParamDef& liveTransportDef ()
 {
 	// An integer rather than an enumerated parameter: it is hidden, so no
@@ -135,6 +145,21 @@ const std::vector<std::string>& slotNames (const char* suffix)
 	return names;
 }
 
+/** "Row A Level" .. "Row H Level", lettered to match the first half of a
+    slot's own name: slot C6 is on row C, and this is that row's fader. */
+const std::vector<std::string>& rowNames ()
+{
+	static std::vector<std::string> names;
+	if (names.empty ())
+	{
+		names.reserve (kSlotRows);
+		for (int row = 0; row < kSlotRows; ++row)
+			names.push_back (std::string ("Row ")
+			                 + static_cast<char> ('A' + row) + " Level");
+	}
+	return names;
+}
+
 } // namespace
 
 //------------------------------------------------------------------------
@@ -143,10 +168,11 @@ const std::vector<std::string>& slotNames (const char* suffix)
 // this is cheap to find.
 //------------------------------------------------------------------------
 static_assert (kNumTableParams == 1, "one described parameter: the output trim");
-static_assert (kNumParams == kNumTableParams + kSlotCount + 3 + kSlotCount + kSlotCount,
+static_assert (kNumParams == kNumTableParams + kSlotCount + 3 + kSlotCount + kSlotCount
+                                 + kSlotRows,
                "the trim, 64 triggers, the transport, the bar phase, the beats per "
-               "bar, 64 published slot states and 64 slot levels is every parameter "
-               "there is");
+               "bar, 64 published slot states, 64 slot levels and 8 row levels is "
+               "every parameter there is");
 // THE APPEND THE BOUND WAS WRITTEN FOR. The published block now sits
 // after the triggers, so isSlotPlayParam's upper bound is load-bearing
 // rather than merely careful.
@@ -158,7 +184,14 @@ static_assert (kLiveEnd < kNumParams,
                "the level block follows the published one, so isLiveParam must be "
                "bounded by kLiveEnd and never by kNumParams");
 static_assert (kSlotLevelBase == kLiveEnd, "the levels start where the published block ends");
-static_assert (kSlotLevelEnd == kNumParams, "and currently run to the end");
+static_assert (kSlotLevelEnd < kNumParams,
+               "the row levels follow the slot levels, so isSlotLevelParam must be "
+               "bounded by kSlotLevelEnd and never by kNumParams");
+static_assert (kRowLevelBase == kSlotLevelEnd, "the row levels start where they end");
+static_assert (kRowLevelEnd == kNumParams, "and currently run to the end");
+static_assert (kRowLevelEnd - kRowLevelBase == kSlotRows, "one fader per row");
+static_assert (! isSlotLevelParam (rowLevelParam (0)), "a row level is not a slot level");
+static_assert (rowOfLevelParam (rowLevelParam (5)) == 5, "the two directions agree");
 static_assert (! isLiveParam (slotLevelParam (0)), "a level is not a published value");
 static_assert (! isSlotPlayParam (slotLevelParam (0)), "nor a trigger");
 static_assert (slotOfLevelParam (slotLevelParam (7)) == 7, "the two directions agree");
@@ -196,6 +229,8 @@ const ParamDef& paramDef (Steinberg::Vst::ParamID id)
 		return liveSlotDef ();
 	if (isSlotLevelParam (id))
 		return slotLevelDef ();
+	if (isRowLevelParam (id))
+		return rowLevelDef ();
 
 	return kParams[kOutputTrim];
 }
@@ -216,6 +251,9 @@ const char* paramTitle (Steinberg::Vst::ParamID id)
 
 	if (isSlotLevelParam (id))
 		return slotNames ("Level")[static_cast<std::size_t> (slotOfLevelParam (id))].c_str ();
+
+	if (isRowLevelParam (id))
+		return rowNames ()[static_cast<std::size_t> (rowOfLevelParam (id))].c_str ();
 
 	if (id == kLiveTransport)
 		return liveTransportDef ().title;

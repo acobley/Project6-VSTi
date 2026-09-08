@@ -374,7 +374,8 @@ int main ()
 	{
 		check (kSlotLevelBase == kLiveEnd, "it starts where the published block ends");
 		check (kSlotLevelEnd - kSlotLevelBase == kSlotCount, "one level per slot");
-		check (kSlotLevelEnd == kNumParams, "and currently runs to the end");
+		check (kSlotLevelEnd < kNumParams,
+		       "and the row levels follow IT - so isSlotLevelParam's bound matters too");
 
 		bool roundTrips = true, classified = true, notOthers = true;
 		for (int slot = 0; slot < kSlotCount; ++slot)
@@ -430,6 +431,55 @@ int main ()
 		check (std::string (paramTitle (slotLevelParam (0)))
 		           != std::string (paramTitle (liveSlotParam (0))),
 		       "nor as its published state");
+	}
+
+	//--------------------------------------------------------------------
+	section ("10. The row level block");
+	//--------------------------------------------------------------------
+	{
+		check (kRowLevelBase == kSlotLevelEnd, "it starts where the slot levels end");
+		check (kRowLevelEnd - kRowLevelBase == kSlotRows, "one fader per row, not per slot");
+		check (kRowLevelEnd == kNumParams, "and currently runs to the end");
+
+		bool roundTrips = true, classified = true, notOthers = true;
+		for (int row = 0; row < kSlotRows; ++row)
+		{
+			const ParamID id = rowLevelParam (row);
+			roundTrips &= (rowOfLevelParam (id) == row);
+			classified &= isRowLevelParam (id);
+			notOthers  &= ! isSlotLevelParam (id) && ! isSlotPlayParam (id)
+			              && ! isLiveParam (id);
+		}
+		check (roundTrips, "row -> level id -> row round-trips for all 8");
+		check (classified, "and all 8 are classified as row levels");
+		check (notOthers,
+		       "NEGATIVE CONTROL: and none of them as a slot level, trigger or "
+		       "published value");
+
+		check (! isRowLevelParam (slotLevelParam (kSlotCount - 1)),
+		       "the last slot level is not a row level");
+		check (! isRowLevelParam (kNumParams), "nor is one past the end");
+
+		// SAME LAW as a slot's, one level up - a submix inside a mix,
+		// which may lift, in front of the one stage that may not.
+		const ParamDef& row = rowLevelDef ();
+		check (row.plainMin == kRowLevelMinDb, "its range is the DSP's");
+		check (row.plainMax == kRowLevelMaxDb, "at both ends");
+		check (row.plainDefault == kRowLevelDefaultDb, "and so is its default");
+		check (close (dbToLinear (row.plainDefault, kRowLevelMinDb), 1.0, 0.0),
+		       "the default is exactly unity, so a row is transparent until moved");
+		check (row.smoothed, "and it is marked smoothed - it is, in the DSP");
+
+		// A SEPARATE DEFINITION from the slot levels even though the two
+		// currently agree, so that changing one is not changing the other
+		// by accident.
+		check (&rowLevelDef () != &slotLevelDef (),
+		       "a row level is described separately from a slot level");
+
+		check (std::string (paramTitle (rowLevelParam (0))) == "Row A Level",
+		       "a row fader is lettered like the first half of a slot's name");
+		check (std::string (paramTitle (rowLevelParam (7))) == "Row H Level",
+		       "at both ends");
 	}
 
 	//--------------------------------------------------------------------

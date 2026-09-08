@@ -113,8 +113,22 @@ public:
 
 	static constexpr int kGridTop = kHeadingTop + kHeadingHeight + 3;
 
-	/** The panel is exactly as wide as eight slots and two margins. */
-	static constexpr int kEditorWidth = kMargin + kSlotGridWidth + kMargin;
+	//--------------------------------------------------------------------
+	// The row faders, down the right of the grid.
+	//
+	// One per row, on the SUM of that row's eight pads - so they sit
+	// beside the rows they control and the eye follows a row across into
+	// its own fader. They are ordinary SpySliders, the same control the
+	// output trim uses, because that is what they are: a labelled level
+	// with a decibel readout.
+	//--------------------------------------------------------------------
+	static constexpr int kRowFaderGap   = 16;
+	static constexpr int kRowFaderWidth = kSliderWidth;
+	static constexpr int kRowFaderLeft  = kMargin + kSlotGridWidth + kRowFaderGap;
+
+	/** The panel is eight slots, the fader column, and two margins. */
+	static constexpr int kEditorWidth =
+		kRowFaderLeft + kRowFaderWidth + kMargin;
 
 	/** The display, to the RIGHT of the parameter controls. Its width is
 	    DERIVED - whatever is left between the controls and the right
@@ -143,13 +157,14 @@ public:
 
 	static_assert (kDisplayWidth > 0, "the slot grid must be wider than the controls");
 
-	// The grid has to FILL its margins, at both ends. Every position on
-	// the panel is derived, so a change to kSlotWidth or kSlotGap that
-	// leaves a ragged right edge or a row hanging off the bottom is
-	// arithmetic rather than something to notice in a screenshot.
+	// Every position on the panel is derived, so a change to kSlotWidth or
+	// kSlotGap that leaves a ragged edge or a row hanging off the bottom
+	// is arithmetic rather than something to notice in a screenshot.
 	static_assert (kMargin + (kSlotColumns - 1) * (kSlotWidth + kSlotGap) + kSlotWidth
-	                   == kEditorWidth - kMargin,
-	               "the slot grid does not meet the right margin");
+	                   == kMargin + kSlotGridWidth,
+	               "the slot grid is not its own width");
+	static_assert (kRowFaderLeft + kRowFaderWidth == kEditorWidth - kMargin,
+	               "the row faders do not meet the right margin");
 	static_assert (kSlotGridTop + (kSlotRows - 1) * (kCellHeight + kSlotGap) + kCellHeight
 	                   == kEditorHeight - kMargin,
 	               "the slot grid does not meet the bottom margin");
@@ -182,6 +197,11 @@ private:
 
 	/** The level bar under one pad, the same width and directly below. */
 	VSTGUI::CRect levelCell (int column, int row) const;
+
+	/** One row's fader, beside its row and vertically centred on the
+	    cell so it lines up with the pad rather than with the level bar
+	    beneath it. */
+	VSTGUI::CRect rowFaderCell (int row) const;
 
 	/** Put a slot's level, in decibels, on the pad above its bar - and
 	    take it off again. There is no room for a number on a nine-pixel

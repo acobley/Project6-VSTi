@@ -47,6 +47,13 @@ void Project6Dsp::setSampleRate (double sampleRate)
 	// that gets there rather than one that stalls a voice mid-fade.
 	mDeclickStep = 1.0 / std::max (1.0, kVoiceDeclickSeconds * mSampleRate);
 
+	// A workable default so that anything which never calls
+	// setMaxBlockSize - the tests, mostly - still renders without the
+	// audio thread having to allocate. A host overrides it in
+	// setupProcessing with the size it actually intends to ask for.
+	if (mRowScratch.empty ())
+		setMaxBlockSize (kDefaultMaxBlockFrames);
+
 	reset ();
 }
 
@@ -68,6 +75,38 @@ void Project6Dsp::reset ()
 		voice.gain     = 0.0;
 		voice.levelGain = -1.0;      // snap on the next start
 	}
+
+	for (RowBus& bus : mRows)
+		bus.gain = -1.0;
+}
+
+//------------------------------------------------------------------------
+void Project6Dsp::setMaxBlockSize (int frames)
+{
+	// OFF THE AUDIO THREAD. renderVoices chunks to whatever this leaves
+	// behind rather than growing it, so a host that lies about its
+	// maximum costs a second pass and not an allocation.
+	mRowScratch.assign (static_cast<size_t> (std::max (1, frames)) * kChannelCount, 0.f);
+}
+
+//------------------------------------------------------------------------
+void Project6Dsp::setRowLevelDb (int row, double decibels)
+{
+	if (!isRowIndex (row))
+		return;
+
+	mRows[row].target = dbToLinear (
+		std::min (kRowLevelMaxDb, std::max (kRowLevelMinDb, decibels)), kRowLevelMinDb);
+}
+
+//------------------------------------------------------------------------
+double Project6Dsp::rowLevelGain (int row) const
+{
+	if (!isRowIndex (row))
+		return 0.0;
+
+	const RowBus& bus = mRows[row];
+	return (bus.gain < 0.0) ? bus.target : bus.gain;
 }
 
 //------------------------------------------------------------------------
@@ -183,111 +222,6 @@ double Project6Dsp::slotPosition (int index) const
 }
 
 //------------------------------------------------------------------------
-void Project6Dsp::renderVoices (float* out, int numSamples)
-{
-	for (Voice& voice : mVoices)
-	{
-		if (!voice.sounding)
-			continue;
-
-		const SampleBuffer* sample = voice.sample.load (std::memory_order_acquire);
-
-		// The slot was emptied, or its file failed to load, while the
-		// voice was running. Stop rather than reading a null pointer -
-		// and stop DEAD, because there is nothing left to fade out of.
-		if (sample == nullptr || sample->frameCount <= 0
-		    || sample->samples.size ()
-		           < static_cast<size_t> (sample->frameCount) * kSampleChannels)
-		{
-			voice.sounding = false;
-			voice.stopping = false;
-			voice.gain     = 0.0;
-			continue;
-		}
-
-		const int frames = sample->frameCount;
-		const float* source = sample->samples.data ();
-
-		// PLAY AT THE FILE'S OWN PITCH. A 48 k file in a 44.1 k session
-		// has to advance 1.088 source frames per output frame or it plays
-		// flat, and the sample rate is the host's to choose.
-		//
-		// Linear interpolation, which is what a sampler of this shape can
-		// justify: it is a gentle low-pass on the way up and aliases on
-		// the way down, both mildly at the ratios real files produce.
-		// Anything better is a resampler, and a resampler is a decision
-		// about latency and cost that belongs with the rest of the DSP.
-		const double step = (mSampleRate > 0.0) ? sample->sourceRate / mSampleRate : 1.0;
-
-		for (int i = 0; i < numSamples; ++i)
-		{
-			// The envelope first, so a voice that reaches zero this
-			// sample contributes nothing further.
-			// The slot's own level, smoothed with the same one-pole the
-			// output trim uses. Snapped on the first sample of a voice -
-			// see setSlotPlaying - and ramped from then on, so a bar
-			// dragged while a pad is running does not zipper.
-			if (voice.levelGain < 0.0)
-				voice.levelGain = voice.levelTarget;
-			else
-				voice.levelGain += (voice.levelTarget - voice.levelGain) * mCoeff;
-
-			if (voice.stopping)
-			{
-				voice.gain -= mDeclickStep;
-				if (voice.gain <= 0.0)
-				{
-					voice.gain     = 0.0;
-					voice.sounding = false;
-					voice.stopping = false;
-					break;
-				}
-			}
-			else if (voice.gain < 1.0)
-			{
-				voice.gain = std::min (1.0, voice.gain + mDeclickStep);
-			}
-
-			int first = static_cast<int> (voice.position);
-			if (first < 0 || first >= frames)
-				first = 0;                  // belt and braces against a rounding edge
-			const double fraction = voice.position - static_cast<double> (first);
-
-			// THE SECOND TAP WRAPS TO FRAME 0, so the interpolation is
-			// continuous across the loop point instead of fading into the
-			// last frame and jumping.
-			const int second = (first + 1 < frames) ? first + 1 : 0;
-
-			const size_t a = static_cast<size_t> (first) * kSampleChannels;
-			const size_t b = static_cast<size_t> (second) * kSampleChannels;
-
-			const double left  = source[a]     + (source[b]     - source[a])     * fraction;
-			const double right = source[a + 1] + (source[b + 1] - source[a + 1]) * fraction;
-
-			// The declick envelope and the slot's level, in that order
-			// and both before the mix. At the default level of 0 dB the
-			// multiply is by exactly 1.0, so a pad at full envelope is
-			// still bit-identical to its file - which DspTests checks.
-			const double voiceGain = voice.gain * voice.levelGain;
-
-			out[static_cast<size_t> (i) * kChannelCount]
-				+= static_cast<float> (left * voiceGain);
-			out[static_cast<size_t> (i) * kChannelCount + 1]
-				+= static_cast<float> (right * voiceGain);
-
-			voice.position += step;
-			if (voice.position >= frames)
-			{
-				// fmod rather than a subtraction: a one-frame sample at a
-				// large rate ratio can pass the end several times over in
-				// a single output sample.
-				voice.position = std::fmod (voice.position, static_cast<double> (frames));
-			}
-		}
-	}
-}
-
-//------------------------------------------------------------------------
 void Project6Dsp::setOutputTrimDb (double decibels)
 {
 	mTrimDb  = std::min (kTrimMaxDb, std::max (kTrimMinDb, decibels));
@@ -313,6 +247,175 @@ void Project6Dsp::applyOutputTrim (float* interleaved, int numSamples)
 }
 
 //------------------------------------------------------------------------
+void Project6Dsp::renderVoices (float* out, int numSamples)
+{
+	const int capacity = static_cast<int> (mRowScratch.size () / kChannelCount);
+	if (capacity <= 0)
+		return;                     // setSampleRate has not been called
+
+	// Chunked only because the scratch might be smaller than the block -
+	// which it is not, in a host that told us its maximum. Growing it
+	// here instead would be an allocation on the audio thread.
+	int done = 0;
+	while (done < numSamples)
+	{
+		const int chunk = std::min (numSamples - done, capacity);
+		renderChunk (out + static_cast<size_t> (done) * kChannelCount, chunk);
+		done += chunk;
+	}
+}
+
+//------------------------------------------------------------------------
+void Project6Dsp::renderChunk (float* out, int numSamples)
+{
+	const size_t samples = static_cast<size_t> (numSamples) * kChannelCount;
+
+	for (int row = 0; row < kSlotRows; ++row)
+	{
+		RowBus& bus = mRows[row];
+
+		// IS ANYTHING ON THIS ROW SOUNDING? Seven rows out of eight
+		// usually are not, and the cost of the answer is eight bools.
+		bool anySounding = false;
+		for (int column = 0; column < kSlotColumns; ++column)
+			anySounding |= mVoices[slotIndex (column, row)].sounding;
+
+		if (!anySounding)
+		{
+			// SNAPPED, not ramped. Nothing can hear this row, so there is
+			// nothing to smooth - and a fader moved while a row is silent
+			// is then already in place when a pad on it starts, instead
+			// of sliding into position over the first ten milliseconds.
+			bus.gain = bus.target;
+			continue;
+		}
+
+		std::fill_n (mRowScratch.begin (), samples, 0.f);
+
+		// The row's eight pads, each through its own level, summed.
+		for (int column = 0; column < kSlotColumns; ++column)
+		{
+			Voice& voice = mVoices[slotIndex (column, row)];
+			if (voice.sounding)
+				renderVoice (voice, mRowScratch.data (), numSamples);
+		}
+
+		// The row's level on that sum, and the result added to the mix.
+		// Smoothed per sample, like every other gain here.
+		if (bus.gain < 0.0)
+			bus.gain = bus.target;
+
+		for (int i = 0; i < numSamples; ++i)
+		{
+			bus.gain += (bus.target - bus.gain) * mCoeff;
+
+			const size_t at = static_cast<size_t> (i) * kChannelCount;
+			out[at]     += static_cast<float> (mRowScratch[at]     * bus.gain);
+			out[at + 1] += static_cast<float> (mRowScratch[at + 1] * bus.gain);
+		}
+	}
+}
+
+//------------------------------------------------------------------------
+void Project6Dsp::renderVoice (Voice& voice, float* dest, int numSamples)
+{
+	const SampleBuffer* sample = voice.sample.load (std::memory_order_acquire);
+
+	// The slot was emptied, or its file failed to load, while the voice
+	// was running. Stop rather than reading a null pointer - and stop
+	// DEAD, because there is nothing left to fade out of.
+	if (sample == nullptr || sample->frameCount <= 0
+	    || sample->samples.size ()
+	           < static_cast<size_t> (sample->frameCount) * kSampleChannels)
+	{
+		voice.sounding = false;
+		voice.stopping = false;
+		voice.gain     = 0.0;
+		return;
+	}
+
+	const int frames = sample->frameCount;
+	const float* source = sample->samples.data ();
+
+	// PLAY AT THE FILE'S OWN PITCH. A 48 k file in a 44.1 k session has to
+	// advance 1.088 source frames per output frame or it plays flat, and
+	// the sample rate is the host's to choose.
+	//
+	// Linear interpolation, which is what a sampler of this shape can
+	// justify: it is a gentle low-pass on the way up and aliases on the
+	// way down, both mildly at the ratios real files produce. Anything
+	// better is a resampler, and a resampler is a decision about latency
+	// and cost that belongs with the rest of the DSP.
+	const double step = (mSampleRate > 0.0) ? sample->sourceRate / mSampleRate : 1.0;
+
+	for (int i = 0; i < numSamples; ++i)
+	{
+		// The slot's own level, smoothed with the same one-pole the
+		// output trim uses. Snapped on the first sample of a voice - see
+		// setSlotPlaying - and ramped from then on, so a bar dragged
+		// while a pad is running does not zipper.
+		if (voice.levelGain < 0.0)
+			voice.levelGain = voice.levelTarget;
+		else
+			voice.levelGain += (voice.levelTarget - voice.levelGain) * mCoeff;
+
+		// The envelope next, so a voice that reaches zero this sample
+		// contributes nothing further.
+		if (voice.stopping)
+		{
+			voice.gain -= mDeclickStep;
+			if (voice.gain <= 0.0)
+			{
+				voice.gain     = 0.0;
+				voice.sounding = false;
+				voice.stopping = false;
+				break;
+			}
+		}
+		else if (voice.gain < 1.0)
+		{
+			voice.gain = std::min (1.0, voice.gain + mDeclickStep);
+		}
+
+		int first = static_cast<int> (voice.position);
+		if (first < 0 || first >= frames)
+			first = 0;                  // belt and braces against a rounding edge
+		const double fraction = voice.position - static_cast<double> (first);
+
+		// THE SECOND TAP WRAPS TO FRAME 0, so the interpolation is
+		// continuous across the loop point instead of fading into the
+		// last frame and jumping.
+		const int second = (first + 1 < frames) ? first + 1 : 0;
+
+		const size_t a = static_cast<size_t> (first) * kSampleChannels;
+		const size_t b = static_cast<size_t> (second) * kSampleChannels;
+
+		const double left  = source[a]     + (source[b]     - source[a])     * fraction;
+		const double right = source[a + 1] + (source[b + 1] - source[a + 1]) * fraction;
+
+		// The declick envelope and the slot's level, in that order and
+		// both before the row bus. At the default level of 0 dB the
+		// multiply is by exactly 1.0, so a pad at full envelope is still
+		// bit-identical to its file - which DspTests checks.
+		const double voiceGain = voice.gain * voice.levelGain;
+
+		dest[static_cast<size_t> (i) * kChannelCount]
+			+= static_cast<float> (left * voiceGain);
+		dest[static_cast<size_t> (i) * kChannelCount + 1]
+			+= static_cast<float> (right * voiceGain);
+
+		voice.position += step;
+		if (voice.position >= frames)
+		{
+			// fmod rather than a subtraction: a one-frame sample at a
+			// large rate ratio can pass the end several times over in a
+			// single output sample.
+			voice.position = std::fmod (voice.position, static_cast<double> (frames));
+		}
+	}
+}
+
+//------------------------------------------------------------------------
 void Project6Dsp::render (float* out, int numSamples)
 {
 	if (out == nullptr || numSamples <= 0)
@@ -321,6 +424,7 @@ void Project6Dsp::render (float* out, int numSamples)
 	// Silence first: renderVoices ADDS, so the mix has to start empty.
 	std::fill_n (out, static_cast<size_t> (numSamples) * kChannelCount, 0.f);
 
+	// Pads -> slot levels -> row buses -> row levels -> here.
 	renderVoices (out, numSamples);
 
 	// The trim is the last stage, over the whole mix, and stays there.

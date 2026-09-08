@@ -79,6 +79,25 @@ int main ()
 
 		check (! isSlotIndex (-1),        "-1 is not a slot");
 		check (! isSlotIndex (kSlotCount), "and neither is one past the end");
+
+		// The inverses. A slot's ROW decides which bus it sums into, so
+		// an off-by-one here is a pad appearing on the wrong fader.
+		bool inverses = true;
+		for (int row = 0; row < kSlotRows; ++row)
+			for (int column = 0; column < kSlotColumns; ++column)
+			{
+				const int index = slotIndex (column, row);
+				inverses &= (rowOfSlot (index) == row);
+				inverses &= (columnOfSlot (index) == column);
+			}
+		check (inverses, "row and column can be read back off every one of the 64");
+
+		check (rowOfSlot (0) == 0 && rowOfSlot (7) == 0, "the first row is slots 0..7");
+		check (rowOfSlot (8) == 1, "and the second starts at 8");
+		check (rowOfSlot (63) == kSlotRows - 1, "and the last slot is on the last row");
+
+		check (isRowIndex (0) && isRowIndex (kSlotRows - 1), "the rows are 0..7");
+		check (! isRowIndex (-1) && ! isRowIndex (kSlotRows), "and nothing else is a row");
 	}
 
 	//--------------------------------------------------------------------

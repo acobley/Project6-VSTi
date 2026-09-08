@@ -157,16 +157,20 @@ nm -C /tmp/*.o | grep " U " | grep "Project6::"
 
 # 4. The editor invariant no runtime test can reach.
 python3 tools/check-editor.py
+
+# 5. And the diagram, which reads the headers and fails rather than guessing.
+python3 tools/render-routing.py
 ```
 
 `-DRELEASE=1` is required or `fdebug.h` refuses to compile.
 
-Results, at the slot-level commit: **all five suites all-pass**, all thirteen
-translation units produced object files with no errors, all 59 undefined
-`Project6::` symbols resolved within the set, and `check-editor` reported ok.
-The panel's dimensions are checked by `static_assert` rather than by eye —
-735 × 592, with the grid meeting both margins exactly and the launch boxes
-clear of the pads.
+Results, at the row-bus commit: **all five suites all-pass**, all thirteen
+translation units produced object files with no errors, all 62 undefined
+`Project6::` symbols resolved within the set, `check-editor` reported ok, and
+`render-routing` regenerated the diagram from the headers. The panel's
+dimensions are checked by `static_assert` rather than by eye — 847 × 592, with
+the grid meeting the fader column, the faders meeting the right margin, and
+the launch boxes clear of the pads.
 
 Re-run all six before every commit. Adding a source file also means re-running
 `./setup-xcode.sh --no-open` before the next Xcode build, or the project
@@ -651,6 +655,64 @@ say what it is set to.
 The grid's row pitch is now a **cell** — pad plus bar — so a bar belongs
 visually to the pad above it rather than floating between two. The panel is
 735 × 592.
+
+### Row buses
+
+The eight pads of a row sum, pass that **row's** level, and the eight rows sum
+into the output trim:
+
+```
+pad → slot level → Σ row bus → row level → Σ mix → output trim → out
+```
+
+`docs/routing.png` is that drawn out, and `tools/render-routing.py` draws it
+**from the headers** — every range, default and count on it is parsed out of
+`Project6Dsp.h` and `Project6Slots.h` and the script fails loudly rather than
+guessing. A diagram that disagrees with the code is a diagram that has not
+been regenerated. Re-run it whenever a gain moves.
+
+The row levels take the same range and law as the slot levels, one level up: a
+submix inside a mix, which may lift, sitting in front of the one stage that
+may not.
+
+#### Why renderVoices works a row at a time
+
+A row's level scales **the sum** of its pads, so the pads have to be summed
+before it is applied. Adding every voice straight into the output, as before,
+would leave nothing to scale.
+
+Eight row buffers would be eight allocations this class must not make, so
+there is **one row scratch, reused for all eight rows**. It is sized in
+`setupProcessing`, where the host says how large a block will be, and
+`renderVoices` chunks a block that is somehow larger rather than growing it —
+because growing it would be an allocation on the audio thread. `DspTests` §6
+renders the same material with a scratch of 7 frames and with one big enough
+and asserts the two are **bit-identical**, so the fallback is proved rather
+than assumed.
+
+A row with nothing sounding **snaps** its gain to its target instead of
+ramping: nothing can hear it, so there is nothing to smooth, and a fader moved
+while a row is silent is then already in place when a pad on it starts rather
+than sliding into position over the first ten milliseconds. That behaviour is
+asserted, because "it sounds fine" would not have caught it.
+
+At the default 0 dB a row's gain is exactly 1.0, so the existing bit-identical
+checks still pass unchanged — which is the evidence that inserting a whole bus
+stage cost no precision.
+
+#### The row faders
+
+Eight ordinary `SpySlider`s down the right of the grid, through the same
+`addSlider` the output trim uses — so they label themselves, read out in
+decibels from the same table the host formats from, and follow automation with
+nothing added. They are lettered `Row A`…`Row H` to match the first half of a
+slot's own name: slot C6 is on row C, and that is C's fader.
+
+They are the **second** block appended past `kNumStoredParams`, and they share
+the slot levels' stream mechanism rather than adding a third: `writeSlotLevels`
+became `writeLevelBlock(streamer, values, count)` and is called twice. Stream
+version 4. Two near-identical blocks would have been two chances to get the
+same twenty lines wrong.
 
 ### Launching a whole column
 

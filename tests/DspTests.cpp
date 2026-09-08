@@ -31,6 +31,7 @@
 //------------------------------------------------------------------------
 
 #include "Project6Dsp.h"
+#include "Project6Slots.h"
 
 #include <algorithm>
 #include <cmath>
@@ -692,6 +693,149 @@ int main ()
 			       "a level above the travel is clamped to the top of it");
 			dsp.setSlotLevelDb (0, -1000.0);
 			check (dsp.slotLevelGain (0) == 0.0, "and one below it is silence");
+		}
+
+		//----------------------------------------------------------------
+		// The row buses
+		//----------------------------------------------------------------
+		{
+			// Two pads on DIFFERENT rows, so a row level that leaked into
+			// the wrong bus shows up as a wrong number rather than as a
+			// wrong level everywhere.
+			Project6Dsp dsp;
+			dsp.setSampleRate (1000.0);
+			dsp.setOutputTrimDb (kTrimMaxDb);
+
+			const int onRowZero = slotIndex (0, 0);
+			const int onRowOne  = slotIndex (0, 1);
+			check (rowOfSlot (onRowZero) == 0 && rowOfSlot (onRowOne) == 1,
+			       "the two test pads really are on different rows");
+
+			dsp.setSlotSample (onRowZero, &loop);
+			dsp.setSlotSample (onRowOne, &loop);
+			dsp.setSlotPlaying (onRowZero, true);
+			dsp.setSlotPlaying (onRowOne, true);
+
+			// Both rows at unity: the two pads simply sum.
+			std::vector<float> out (16 * kChannelCount, 0.f);
+			dsp.render (out.data (), 16);
+			check (close (out[static_cast<size_t> (8) * 2], 2.0 * kLeft[0], 1e-6),
+			       "at unity the rows just sum, as before");
+
+			// Now pull row 0 down. Row 1 must not move.
+			dsp.setRowLevelDb (0, -20.0);                 // one tenth
+			std::vector<float> settled (4096 * kChannelCount, 0.f);
+			dsp.render (settled.data (), 4096);
+
+			check (close (dsp.rowLevelGain (0), 0.1, 1e-6), "row 0 arrived at its level");
+			check (close (dsp.rowLevelGain (1), 1.0, 1e-9), "and row 1 did not move");
+
+			std::vector<float> after (16 * kChannelCount, 0.f);
+			dsp.render (after.data (), 16);
+
+			// 0.1 of one pad plus 1.0 of the other.
+			const double expected = kLeft[0] * 0.1 + kLeft[0] * 1.0;
+			check (close (after[static_cast<size_t> (8) * 2], expected, 1e-5),
+			       "a row's level scales that row and leaves the others alone");
+
+			// NEGATIVE CONTROL: which is not the same as scaling everything.
+			check (! close (after[static_cast<size_t> (8) * 2], 2.0 * kLeft[0] * 0.1, 1e-5),
+			       "NEGATIVE CONTROL: it is not a master gain in disguise");
+		}
+
+		{
+			// TWO PADS ON ONE ROW go through ONE row level - the level is
+			// on the SUM, which is the whole point of a bus.
+			Project6Dsp dsp;
+			dsp.setSampleRate (1000.0);
+			dsp.setOutputTrimDb (kTrimMaxDb);
+
+			dsp.setSlotSample (slotIndex (2, 3), &loop);
+			dsp.setSlotSample (slotIndex (5, 3), &loop);
+			dsp.setSlotLevelDb (slotIndex (2, 3), kSlotLevelDefaultDb);
+			dsp.setSlotLevelDb (slotIndex (5, 3), kSlotLevelDefaultDb);
+			dsp.setRowLevelDb (3, -20.0);           // set BEFORE anything starts
+
+			dsp.setSlotPlaying (slotIndex (2, 3), true);
+			dsp.setSlotPlaying (slotIndex (5, 3), true);
+
+			std::vector<float> out (16 * kChannelCount, 0.f);
+			dsp.render (out.data (), 16);
+
+			// SNAPPED, not ramped: the row was silent when the fader was
+			// moved, so it was already in place when the pads started.
+			check (close (out[static_cast<size_t> (8) * 2], 2.0 * kLeft[0] * 0.1, 1e-5),
+			       "a row level set while the row is silent is in place at the start");
+			check (close (dsp.rowLevelGain (3), 0.1, 1e-9),
+			       "the row gain snapped rather than ramping");
+		}
+
+		{
+			// The ends of the travel, and a bad row.
+			Project6Dsp dsp;
+			dsp.setSampleRate (1000.0);
+
+			check (close (dbToLinear (kRowLevelDefaultDb, kRowLevelMinDb), 1.0, 0.0),
+			       "a row's default level is exactly unity");
+			check (dbToLinear (kRowLevelMinDb, kRowLevelMinDb) == 0.0,
+			       "and the bottom of its travel is exactly zero");
+
+			dsp.setRowLevelDb (0, 1000.0);
+			check (close (dsp.rowLevelGain (0),
+			              dbToLinear (kRowLevelMaxDb, kRowLevelMinDb), 1e-9),
+			       "a row level above the travel is clamped to the top of it");
+
+			dsp.setRowLevelDb (-1, 0.0);
+			dsp.setRowLevelDb (kSlotRows, 0.0);
+			check (dsp.rowLevelGain (kSlotRows) == 0.0, "a bad row index has no level");
+		}
+
+		{
+			// THE CHUNKING FALLBACK. renderVoices splits a block that is
+			// bigger than the row scratch, because growing the scratch
+			// would be an allocation on the audio thread. A host that
+			// told us its maximum never takes this path - so it is worth
+			// proving it produces the same audio when it does.
+			const SampleBuffer real = makeLoop (1000.0);
+			const int frames = 300;
+
+			Project6Dsp whole;
+			whole.setSampleRate (1000.0);
+			whole.setOutputTrimDb (kTrimMaxDb);
+			whole.setMaxBlockSize (frames);
+			whole.setSlotSample (0, &real);
+			whole.setSlotSample (40, &real);
+			whole.setRowLevelDb (5, -6.0);
+			whole.setSlotPlaying (0, true);
+			whole.setSlotPlaying (40, true);
+
+			Project6Dsp chunked;
+			chunked.setSampleRate (1000.0);
+			chunked.setOutputTrimDb (kTrimMaxDb);
+			chunked.setMaxBlockSize (7);            // absurdly small on purpose
+			chunked.setSlotSample (0, &real);
+			chunked.setSlotSample (40, &real);
+			chunked.setRowLevelDb (5, -6.0);
+			chunked.setSlotPlaying (0, true);
+			chunked.setSlotPlaying (40, true);
+
+			std::vector<float> a (static_cast<size_t> (frames) * kChannelCount, 0.f);
+			std::vector<float> b (static_cast<size_t> (frames) * kChannelCount, 0.f);
+			whole.render (a.data (), frames);
+			chunked.render (b.data (), frames);
+
+			check (a == b, "a scratch far too small gives bit-identical audio");
+
+			// NEGATIVE CONTROL for that comparison: it must be capable of
+			// failing, so compare against a run that really is different.
+			Project6Dsp other;
+			other.setSampleRate (1000.0);
+			other.setOutputTrimDb (kTrimMaxDb);
+	other.setSlotSample (0, &real);
+			other.setSlotPlaying (0, true);
+			std::vector<float> c (static_cast<size_t> (frames) * kChannelCount, 0.f);
+			other.render (c.data (), frames);
+			check (! (a == c), "NEGATIVE CONTROL: and the comparison can fail");
 		}
 
 		//----------------------------------------------------------------

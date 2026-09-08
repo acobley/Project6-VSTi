@@ -15,8 +15,14 @@ in time with each other. Press it again to stop them.
 
 **A level bar under each pad** sets that slot's own volume, −40 to +12 dB.
 Drag it the way the VocalFilter sliders drag — relative, not jump-to-pointer —
-and the pad above shows the value in decibels while you do. Levels are saved
-with the project and automatable like everything else.
+and the pad above shows the value in decibels while you do.
+
+**Each row sums to a fader on the right.** The eight pads of a row go through
+their own levels, sum, pass that row's level, and the eight rows sum into the
+output trim. `docs/routing.png` is the whole path drawn out — and it is
+generated from the headers, so it cannot quietly disagree with the code.
+
+Levels are saved with the project and automatable like everything else.
 
 An armed slot glows amber while it waits and red while it plays, so the wait
 is visible rather than mysterious. A column box fills in proportion to how
@@ -122,6 +128,15 @@ c++ -std=c++17 -O2 -Isource -Iexternal/vst3sdk \
 python3 tools/check-editor.py
 ```
 
+`tools/render-routing.py` redraws `docs/routing.png`. **Every number on it is
+parsed out of `Project6Dsp.h` and `Project6Slots.h`** and the script fails
+loudly rather than guessing, so a diagram that disagrees with the code is one
+that has not been regenerated. Re-run it whenever a gain moves:
+
+```sh
+python3 tools/render-routing.py
+```
+
 ## What is where
 
 | Path | |
@@ -142,6 +157,8 @@ python3 tools/check-editor.py
 | `source/Project6Entry.cpp` | the factory |
 | `tests/` | `DspTests.cpp`, `SlotTests.cpp`, `WavTests.cpp` and `TransportTests.cpp`, SDK-free; `ParamsTests.cpp`, headers only |
 | `tools/check-editor.py` | the editor guard |
+| `tools/render-routing.py` | draws `docs/routing.png` from the headers |
+| `docs/routing.png` | the signal path: pad → slot level → row bus → row level → mix → trim |
 | `resource/au-info.plist` | the AU's four-character identity and bus layouts |
 
 ## The two rules worth repeating

@@ -28,12 +28,13 @@ namespace Project6 {
 
     1 was parameters and bypass only. 2 appended the slot paths. 3
     appended the slot levels - which are parameters, but sit past the
-    published block and so cannot ride the contiguous run from id 0. The
+    published block and so cannot ride the contiguous run from id 0. 4
+    appended the row levels, in a second block of the same shape. The
     version is INFORMATIONAL: every reader below copes with a stream that
     simply stops early, which is the rule the parameter block already
     follows. It is written so that a future format change that cannot be
     handled that way has something to test. */
-constexpr Steinberg::int32 kStateVersion = 3;
+constexpr Steinberg::int32 kStateVersion = 4;
 
 /** A sanity bound on one path, so a corrupt or hostile stream cannot ask
     for an arbitrary allocation. Longer than any real path: macOS stops
@@ -57,25 +58,28 @@ bool writeSlots (Steinberg::IBStreamer& streamer, const SlotBank& slots);
 bool readSlots (Steinberg::IBStreamer& streamer, SlotBank& slots);
 
 //------------------------------------------------------------------------
-/** The slot levels, as kSlotCount normalised doubles.
+/** A run of normalised parameter values, length-prefixed.
 
-    A SECOND BLOCK rather than an extension of the parameter run at the
-    top of the stream, because the levels are ids 132..195 and the run
-    stops at 1. Appending is the rule; moving an id is not an option.
+    BLOCKS RATHER THAN AN EXTENSION of the parameter run at the top of the
+    stream, because the levels are ids 132 onwards and that run stops at
+    1. Appending is the rule; moving an id is not an option. There are two
+    of these now - the slot levels and the row levels - and they share one
+    pair of functions rather than being the same twenty lines typed twice.
 
-    `normalized` is kSlotCount doubles - `&mParams[kSlotLevelBase]` on the
+    `normalized` is `count` doubles: a pointer into `mParams` on the
     processor's side, and a local array on the controller's, which then
     pushes them through setParamNormalized. */
-bool writeSlotLevels (Steinberg::IBStreamer& streamer, const double* normalized);
+bool writeLevelBlock (Steinberg::IBStreamer& streamer, const double* normalized, int count);
 
-/** Reads that block, having FIRST filled the array with the default -
+/** Reads one such block, having FIRST filled the array with `fallback` -
     same rule as readSlots, and for the same reason: a project saved
-    before the levels existed must load at unity rather than inheriting
-    the balance of whatever was open before.
+    before a block existed must load at that block's default rather than
+    inheriting the balance of whatever was open before.
 
-    Returns false when the block is absent, which is a version 1 or 2
-    stream and not an error. */
-bool readSlotLevels (Steinberg::IBStreamer& streamer, double* normalized);
+    Returns false when the block is absent, which is an older stream and
+    not an error. */
+bool readLevelBlock (Steinberg::IBStreamer& streamer, double* normalized, int count,
+                     double fallback);
 
 //------------------------------------------------------------------------
 } // namespace Project6

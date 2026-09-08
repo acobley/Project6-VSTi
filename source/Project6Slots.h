@@ -57,6 +57,14 @@ constexpr bool columnClickArms (int playable, int armed)
 
 constexpr bool isSlotIndex (int index) { return index >= 0 && index < kSlotCount; }
 
+/** The inverses of slotIndex, and the only place THAT arithmetic lives.
+    A slot's row decides which bus it sums into, so this is on the audio
+    path and not merely a convenience. */
+constexpr int rowOfSlot (int index)    { return index / kSlotColumns; }
+constexpr int columnOfSlot (int index) { return index % kSlotColumns; }
+
+constexpr bool isRowIndex (int row) { return row >= 0 && row < kSlotRows; }
+
 /** True for a path this plug-in will take.
 
     The list is deliberately a list, even though there is one entry in it:
