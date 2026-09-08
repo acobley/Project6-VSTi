@@ -7,9 +7,11 @@
 #pragma once
 
 #include "Project6Params.h"
+#include "Project6Slots.h"
 
 #include "public.sdk/source/vst/vsteditcontroller.h"
 
+#include <string>
 #include <vector>
 
 namespace Project6 {
@@ -47,14 +49,36 @@ public:
 	    processor says otherwise. */
 	double dspSampleRate () const { return mSampleRate; }
 
+	//--------------------------------------------------------------------
+	// The sample slots
+	//
+	// The controller's copy is the one the PANEL draws. The processor's
+	// is the one that gets saved. They are kept in step by the message
+	// sent below and by the state stream both sides read - never by one
+	// reaching into the other, which VST3 does not allow and which would
+	// not survive the two being in different processes.
+	//--------------------------------------------------------------------
+
+	const SlotBank& slots () const { return mSlots; }
+
+	/** A file was dropped on a slot, or a slot was emptied. Records it,
+	    tells the processor, and refreshes every open editor.
+
+	    THE ONE PLACE a slot's path changes. The editor calls this rather
+	    than setting its own slot's text, exactly as a control's position
+	    is only ever set from setParamNormalized. */
+	void setSlotPath (int index, const std::string& path);
+
 private:
 	void addParameters ();
+	void sendSlotToProcessor (int index, const std::string& path);
 
 	/** Every open editor. A host may open more than one - two windows on
 	    the same instance is legal - so this is a vector, not a pointer. */
 	std::vector<Project6Editor*> mEditors;
 
 	double mSampleRate = 44100.0;
+	SlotBank mSlots;
 };
 
 //------------------------------------------------------------------------

@@ -6,7 +6,8 @@ that were deliberately handled before there was any code to hide them in. It
 is the file that outlives the session that made the project.
 
 Scaffolded from `~/DXi-DEv/vst3-port-template` on 8 September 2026, following
-the `blank-vst3-plugin` skill. `PORTING-GUIDE.md` and `PORT-CHECKLIST.md` came
+the `blank-vst3-plugin` skill, and given its 8 × 8 sample slot grid the same
+day (§9). `PORTING-GUIDE.md` and `PORT-CHECKLIST.md` came
 with the template and are unchanged; read the guide before writing a real
 processing loop.
 
@@ -55,6 +56,15 @@ with GDI rectangles and text.
 | `Project6Display.{h,cpp}` | `VocalFilterDisplay.*` | Rewritten around the same skeleton: plate, caption band, decibel grid, and `drawPolyline()` with its floor-crossing interpolation kept intact. Everything vocal-tract-specific removed. It draws the output trim, which is the only thing this plug-in computes. |
 | `Project6Editor.{h,cpp}` | `VocalFilterEditor.*` | Layout rewritten for one control; the `showValue` discipline, the complete edit gesture in `setParameter`, and the pull-on-a-timer display refresh all preserved. |
 | `tools/check-editor.py` | same | Retargeted at `Project6Editor.cpp`. |
+
+`Project6SlotView.{h,cpp}` is **not** lifted — it is the first control that is
+unique to this plug-in, which is exactly why it is a file of its own rather
+than an addition to `Project6Controls.*`. That file has to stay diffable
+against the other two copies. For the same reason the slot draws its own
+recessed rectangle instead of calling `Project6Controls.cpp`'s file-local
+`draw3dRect`: a well wants the two edge colours the other way round from a
+raised bar, and exporting a helper would have meant editing a header that is
+meant to be byte-comparable.
 
 **No control uses a bitmap**, which is why `resource/` needs no artwork and the
 panel is resolution-independent. Keep it that way.
@@ -105,9 +115,12 @@ What was run, and passed:
 ```sh
 cd ~/DXi-DEv/Project6-VSTi
 
-# 1. Both test suites, from a clean build.
+# 1. All three test suites, from a clean build.
 c++ -std=c++17 -O2 -Wall -Isource \
     tests/DspTests.cpp source/Project6Dsp.cpp -o /tmp/dsptests && /tmp/dsptests
+
+c++ -std=c++17 -O2 -Wall -Isource \
+    tests/SlotTests.cpp source/Project6Slots.cpp -o /tmp/slottests && /tmp/slottests
 
 SDK=~/DXi-DEv/VocalFilter-VSTi/external/vst3sdk        # any existing checkout
 c++ -std=c++17 -O2 -Wall -Isource -I$SDK \
@@ -130,9 +143,15 @@ python3 tools/check-editor.py
 
 `-DRELEASE=1` is required or `fdebug.h` refuses to compile.
 
-Results: both suites all-pass, all eight translation units produced object
-files with no errors, all 19 undefined `Project6::` symbols resolved within the
-set, and `check-editor` reported ok.
+Results, at the slot-grid commit: **all three suites all-pass**, all eleven
+translation units produced object files with no errors, all 34 undefined
+`Project6::` symbols resolved within the set, and `check-editor` reported ok.
+The panel's dimensions are checked by `static_assert` rather than by eye —
+735 × 481, with the grid meeting both margins exactly.
+
+Re-run all four before every commit. Adding a source file also means
+re-running `./setup-xcode.sh --no-open` before the next Xcode build, or the
+project compiles the old file list.
 
 **Still to do on a Mac**, in this order:
 
@@ -177,7 +196,104 @@ Handled rather than omitted, and worth not undoing:
   `~EditorView()` is one of its callers, by which time the derived sub-object
   is gone, the cast yields null, and the entry survives as a dangling pointer.
 
-## 8. The SDK
+## 8. The sample slots
+
+Added after the scaffold, at the point where the panel needed something to
+put samples in. **Nothing is loaded from a slot yet**: dropping a `.wav` on
+one records *where the file is*, saves that with the project, and draws its
+name. Reading the audio is the next piece of work.
+
+### What a drop actually does
+
+```
+  Finder  ──drag──▶  SpySampleSlot::onDrop
+                          │  (takes the FIRST acceptable path in the package)
+                          ▼
+                     Project6Editor::slotDropped
+                          ▼
+                     Project6Controller::setSlotPath      ← the ONE place a slot changes
+                          ├──▶ its own SlotBank            (what the panel draws)
+                          ├──▶ message to the processor    (UI thread — legitimate)
+                          └──▶ refreshSlots() on EVERY open editor
+                                   ▼
+                              SpySampleSlot::setPath
+```
+
+The slot **never sets its own text**, exactly as a parameter control never
+sets its own value. A host may have two windows open on one instance; a view
+that also updated itself would be right in the window that was dropped on and
+right by luck in the other.
+
+### The decisions inside it
+
+| | |
+|---|---|
+| Grid | 8 × 8, **row-major**, so slot 0 is top-left and 63 bottom-right. The whole bank is on the panel at once, and a slot's position is how anyone remembers what is in it. `slotIndex()` is the only place that arithmetic lives. If it ever flips, every saved project transposes — `SlotTests.cpp` §1 checks all 64 cells map one-to-one, not just the corners. |
+| Accepted files | `.wav` only, case-insensitive, as a **list with one entry** — adding `.aif` is one line in `Project6Slots.cpp` and nothing anywhere else, because the view, the drop handler and the tests all ask `isAcceptedSampleFile()`. |
+| Multi-file drops | The **first** acceptable file, onto the slot it was dropped on. Spreading the rest across slots the user did not point at is a surprise, and an expensive one when it overwrites four that were already loaded. |
+| What is shown | The filename in **white** — brighter than the sliders' near-white readouts, because a slot's name has nothing to compete with and sixty-four of them have to be scannable. Shortened in order of what is worth losing: the `.wav` first (every file here has one), then a font size, then characters off the end with an ellipsis. The **full path is a tooltip**, since two takes of the same sample usually differ only in the directory. |
+| An empty slot | **Blank.** No index, no "drop a file here". Sixty-four copies of either is a wall of text with the four names that matter hidden in it. |
+| Feedback | The slot outlines itself green while an acceptable file is over it, and stays plain for one that is not — decided in `onDragEnter`, so the pointer says no *before* the button is released. |
+
+### The panel
+
+The slot grid now **sets the width of the panel**: 8 × 84 + 7 × 5 = 707, plus
+two 14-pixel margins, is 735 × 481. Everything above it is measured from that
+— the display's width is *derived*, not a constant, so widening the grid
+widens the display instead of leaving bare panel beside it. Two
+`static_assert`s in `Project6Editor.h` fail the build if the grid stops
+meeting its right or bottom margin.
+
+84 pixels is what a filename needs to be worth reading. Below about 70 the
+grid stops being a list of names and becomes a grid of ellipses.
+
+### The state stream
+
+**The layout changed, and both sides changed with it.** The stream is now:
+
+```
+int32   version              (2 — was 1)
+int32   parameter count
+double  × count
+int32   bypass
+int32   slot count           ┐
+int32   byte length          │ the slot block, appended
+bytes   UTF-8 path, no NUL   │ × slot count
+                             ┘
+```
+
+Written by `Project6Processor::getState`, read by `Project6Processor::setState`
+**and** by `Project6Controller::setComponentState` — through the *same pair of
+functions*, `writeSlots` / `readSlots` in `Project6SlotState.{h,cpp}`. The
+parameter block above it is still written twice with a comment saying the two
+must agree; this block is kept in step by the compiler instead, which is the
+better arrangement and the one to move the parameters to if they ever grow.
+
+`readSlots` **empties the bank before it reads**, so a version 1 project — or
+a truncated stream — loads with all sixty-four slots empty rather than
+inheriting the samples of whatever was open before. That is the same rule the
+parameters already follow.
+
+### The limitation worth knowing
+
+A file path is nothing a parameter can carry, so it travels to the processor
+as a **message**. If a host never connects the two components, the drop
+reaches the panel but not the saved project. That is true of every VST3
+message, and it is why anything that *can* be expressed as a number is a
+parameter instead.
+
+### Not done, deliberately
+
+* **No way to empty a slot from the panel.** Dropping a different file
+  replaces one, which is the recovery path; a clear gesture was not asked for.
+  `SlotBank::clear` and the state stream already handle it, so it is a mouse
+  override and a handler away.
+* **Nothing reads the file.** When it does: the load must happen on a
+  non-audio thread and hand `process()` a prepared buffer. `mSlots` is a
+  `SlotBank` of `std::string`, and a string assignment allocates — the audio
+  thread must never touch it.
+
+## 9. The SDK
 
 **In-tree clone**, chosen deliberately over pointing at a sibling project's
 checkout. The first `cmake` configure clones the VST3 SDK (~250 MB) into

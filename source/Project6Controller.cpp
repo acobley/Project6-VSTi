@@ -5,6 +5,7 @@
 #include "Project6Controller.h"
 #include "Project6Editor.h"
 #include "Project6IDs.h"
+#include "Project6SlotState.h"
 
 #include "base/source/fstreamer.h"
 #include "pluginterfaces/base/ustring.h"
@@ -138,7 +139,63 @@ tresult PLUGIN_API Project6Controller::setComponentState (IBStream* state)
 	if (streamer.readInt32 (bypass))
 		setParamNormalized (kBypass, bypass ? 1.0 : 0.0);
 
+	// THE IDENTICAL BLOCK the processor writes, read by the identical
+	// function - which is the whole reason writeSlots and readSlots are
+	// in a file of their own rather than being this loop typed twice.
+	// readSlots empties the bank first, so a project saved before the
+	// slots existed loads with all sixty-four empty.
+	readSlots (streamer, mSlots);
+
+	// Usually there is no editor yet at this point - the host sets state
+	// before opening a window - but "usually" is not "never", and a panel
+	// showing the previous project's samples is a bad way to find out.
+	for (auto* editor : mEditors)
+		editor->refreshSlots ();
+
 	return kResultOk;
+}
+
+//------------------------------------------------------------------------
+void Project6Controller::setSlotPath (int index, const std::string& path)
+{
+	// REFUSED, not clamped, by SlotBank itself. A drop that somehow
+	// carried a bad index must not land on a real slot.
+	if (!mSlots.setPath (index, path))
+		return;
+
+	sendSlotToProcessor (index, path);
+
+	// Every open editor, not just the one that was dropped on: a host may
+	// have two windows on this instance, and the slot has to fill in both.
+	for (auto* editor : mEditors)
+		editor->refreshSlots ();
+}
+
+//------------------------------------------------------------------------
+void Project6Controller::sendSlotToProcessor (int index, const std::string& path)
+{
+	// The controller lives on the UI thread, so a message is legitimate
+	// here - the rule that bans them is about process(), not about
+	// direction. See the note in Project6IDs.h for what happens in a host
+	// that never connects the two components.
+	auto* message = allocateMessage ();
+	if (message == nullptr)
+		return;
+
+	FReleaser releaser (message);
+	message->setMessageID (kProject6SlotMessage);
+	message->getAttributes ()->setInt (kProject6SlotIndexAttribute, index);
+
+	// An empty path sends NO path attribute at all, which is how the
+	// processor recognises a cleared slot. setBinary with a zero size is
+	// not portable across hosts and would be a second way of saying the
+	// same thing.
+	if (!path.empty ())
+		message->getAttributes ()->setBinary (kProject6SlotPathAttribute,
+		                                      path.data (),
+		                                      static_cast<uint32> (path.size ()));
+
+	sendMessage (message);
 }
 
 //------------------------------------------------------------------------

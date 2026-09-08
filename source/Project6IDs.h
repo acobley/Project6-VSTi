@@ -46,5 +46,28 @@ static const Steinberg::FUID kProject6ControllerUID (0x063D7358, 0x66DE8BEF, 0x5
 static const char* const kProject6SampleRateMessage   = "Project6SampleRate";
 static const char* const kProject6SampleRateAttribute = "SampleRate";
 
+/** Controller -> processor, from a drop on a sample slot: which slot, and
+    the path of the file now in it.
+
+    THIS DIRECTION IS THE UNUSUAL ONE, and it is legitimate for the same
+    reason the message above is - the controller lives on the UI thread.
+    It is how a file path reaches the half of the plug-in that saves the
+    project, a path being nothing a parameter could carry.
+
+    The path is sent as BINARY rather than as a string attribute: it is
+    UTF-8 bytes with an explicit length, so nothing has to convert to
+    UTF-16 and back, and a path that is not valid UTF-16 cannot be
+    mangled on the way. An ABSENT path attribute means the slot was
+    cleared.
+
+    The limitation to know about: if a host never connects the two
+    components, this message is never delivered and the drop reaches the
+    panel but not the saved project. That is true of every VST3 message
+    and is why parameters, which cannot be lost this way, carry
+    everything that can be expressed as a number. */
+static const char* const kProject6SlotMessage       = "Project6Slot";
+static const char* const kProject6SlotIndexAttribute = "Slot";
+static const char* const kProject6SlotPathAttribute  = "Path";
+
 //------------------------------------------------------------------------
 } // namespace Project6

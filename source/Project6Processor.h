@@ -32,6 +32,7 @@
 
 #include "Project6Dsp.h"
 #include "Project6Params.h"
+#include "Project6Slots.h"
 
 #include "public.sdk/source/vst/vstaudioeffect.h"
 #include "pluginterfaces/vst/ivstevents.h"
@@ -66,6 +67,9 @@ public:
 
 	Steinberg::tresult PLUGIN_API process (Steinberg::Vst::ProcessData& data) SMTG_OVERRIDE;
 
+	/** Receives a slot's file path from the controller. */
+	Steinberg::tresult PLUGIN_API notify (Steinberg::Vst::IMessage* message) SMTG_OVERRIDE;
+
 	Steinberg::tresult PLUGIN_API setState (Steinberg::IBStream* state) SMTG_OVERRIDE;
 	Steinberg::tresult PLUGIN_API getState (Steinberg::IBStream* state) SMTG_OVERRIDE;
 
@@ -85,6 +89,19 @@ private:
 	double mParams[kNumParams] = {};
 	bool   mBypass = false;
 	double mSampleRate = 44100.0;
+
+	/** THE AUTHORITATIVE COPY of the sample slots: this is the half of
+	    the plug-in the host asks for the project's state, so this is the
+	    bank that gets saved. The controller keeps its own for the panel
+	    and the two are kept in step by the message and the state stream,
+	    never by reaching across.
+
+	    Written on the UI thread, from notify(). NOTHING ON THE AUDIO
+	    THREAD READS IT YET - and when the sample loading arrives, what
+	    process() reads must be a prepared buffer handed over by a
+	    non-audio thread, never these strings: a std::string assignment
+	    allocates, and process() must not. */
+	SlotBank mSlots;
 
 	Project6Dsp mDsp;
 

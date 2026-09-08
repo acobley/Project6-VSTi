@@ -2,8 +2,14 @@
 
 A VST3 and Audio Unit **instrument** for macOS. Nothing is synthesised yet:
 this is the empty, validating shell that a real instrument goes inside —
-buses, parameter plumbing, event handling, state, an editor and two test
+buses, parameter plumbing, event handling, state, an editor and three test
 suites, with the traps already handled.
+
+The panel carries an **8 × 8 bank of sample slots**. Drag a `.wav` onto one
+from the Finder and it takes the path, shows the filename in white and saves
+it with the project. Nothing is loaded from those paths yet — that is the
+next piece of work, and `PORTING-NOTES.md` §9 says what it has to be careful
+about.
 
 * **`PORTING-NOTES.md`** — the decisions, the permanent identity values, what
   was measured, what was deliberately left out and the trap behind each. Read
@@ -53,6 +59,15 @@ c++ -std=c++17 -O2 -Isource tests/DspTests.cpp source/Project6Dsp.cpp \
     -o /tmp/dsptests && /tmp/dsptests
 ```
 
+`tests/SlotTests.cpp` is SDK-free too — it covers which paths the slots
+accept, what a slot is called on screen, and that the bank refuses a bad
+index rather than clamping it:
+
+```sh
+c++ -std=c++17 -O2 -Isource tests/SlotTests.cpp source/Project6Slots.cpp \
+    -o /tmp/slottests && /tmp/slottests
+```
+
 `tests/ParamsTests.cpp` needs the SDK's **headers** only, `vsttypes.h` being
 typedefs:
 
@@ -76,14 +91,17 @@ python3 tools/check-editor.py
 |---|---|
 | `source/Project6IDs.h` | the two class UIDs, and the message rule |
 | `source/Project6Dsp.{h,cpp}` | the audio line — **no SDK header may enter these** |
+| `source/Project6Slots.{h,cpp}` | the 8 × 8 slot bank and its path rules — **SDK-free too** |
+| `source/Project6SlotState.{h,cpp}` | the slot block of the state stream, written and read by one pair of functions |
 | `source/Project6Params.{h,cpp}` | the parameter table: normalised, plain and internal ranges |
-| `source/Project6Processor.{h,cpp}` | `AudioEffect` — buses, events, state |
-| `source/Project6Controller.{h,cpp}` | `EditControllerEx1` — the host's parameter list |
+| `source/Project6Processor.{h,cpp}` | `AudioEffect` — buses, events, state, the authoritative slot bank |
+| `source/Project6Controller.{h,cpp}` | `EditControllerEx1` — the host's parameter list, the panel's slot bank |
 | `source/Project6Controls.{h,cpp}` | the control set, lifted from VocalFilter/SpyBand |
 | `source/Project6Display.{h,cpp}` | the panel display — an empty canvas with a working grid |
+| `source/Project6SlotView.{h,cpp}` | one slot: the drop target and how it draws a filename |
 | `source/Project6Editor.{h,cpp}` | the panel |
 | `source/Project6Entry.cpp` | the factory |
-| `tests/` | `DspTests.cpp`, SDK-free; `ParamsTests.cpp`, headers only |
+| `tests/` | `DspTests.cpp` and `SlotTests.cpp`, SDK-free; `ParamsTests.cpp`, headers only |
 | `tools/check-editor.py` | the editor guard |
 | `resource/au-info.plist` | the AU's four-character identity and bus layouts |
 
@@ -91,5 +109,14 @@ python3 tools/check-editor.py
 
 1. **The DSP stays SDK-free.** Anything the editor displays that the DSP also
    computes comes from one shared function in `Project6Dsp.h` that both call.
+   The same goes for the slots: what counts as a loadable file, and what a
+   slot is called on screen, are answered in `Project6Slots.h` and nowhere
+   else.
 2. **Append parameters, never insert**, and never change a class UID or a
-   four-character code once a build has shipped.
+   four-character code once a build has shipped. The state stream is appended
+   to the same way — the slot block sits after everything a version 1 stream
+   held.
+3. **The panel never sets its own values.** A control's position comes back
+   through `setParamNormalized`, and a slot's filename comes back through the
+   controller. A view that also set its own would be right in one window and
+   right by luck in a second.

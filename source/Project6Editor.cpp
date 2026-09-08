@@ -46,6 +46,14 @@ CRect Project6Editor::cell (int column, int row) const
 }
 
 //------------------------------------------------------------------------
+CRect Project6Editor::slotCell (int column, int row) const
+{
+	const CCoord x = kMargin + column * (kSlotWidth + kSlotGap);
+	const CCoord y = kSlotGridTop + row * (kSlotHeight + kSlotGap);
+	return CRect (x, y, x + kSlotWidth, y + kSlotHeight);
+}
+
+//------------------------------------------------------------------------
 void Project6Editor::setParameter (ParamID tag, double plain)
 {
 	if (mController == nullptr)
@@ -160,6 +168,38 @@ bool PLUGIN_API Project6Editor::open (void* parent, const PlatformType& platform
 		       kDisplayLeft + kDisplayWidth, kDisplayBottom));
 	frame->addView (mDisplay);
 
+	//--------------------------------------------------------------------
+	// The sample slots: eight by eight, in reading order, each one a drop
+	// target for a .wav from the Finder.
+	//
+	// The handler captures `this` and an INDEX rather than a pointer to
+	// the slot. The slot outlives nothing here, but an index cannot be
+	// left dangling by a later refactor - and it is the index, not the
+	// view, that the controller and the state stream speak in.
+	//--------------------------------------------------------------------
+	addHeading ("Samples  -  drag .wav files onto the slots",
+	            CRect (kMargin, kSlotHeadingTop, kEditorWidth - kMargin,
+	                   kSlotHeadingTop + kHeadingHeight));
+
+	for (int row = 0; row < kSlotRows; ++row)
+	{
+		for (int column = 0; column < kSlotColumns; ++column)
+		{
+			const int index = slotIndex (column, row);
+			auto* slot = new SpySampleSlot (slotCell (column, row), index);
+			slot->setHandler ([this] (int at, const std::string& path)
+			                  { slotDropped (at, path); });
+			mSlots[index] = slot;
+			frame->addView (slot);
+		}
+	}
+
+	// The slots put their FULL PATH in a tooltip, because the name on the
+	// slot is shortened and two takes of the same sample usually differ
+	// only in the directory. Nothing else on this panel has one.
+	frame->enableTooltips (true);
+
+	refreshSlots ();
 	refreshDisplay ();
 
 	// The display follows the DSP, which can move without anything on the
@@ -180,6 +220,30 @@ void Project6Editor::refreshDisplay ()
 		return;
 
 	mDisplay->setLevel (plainOf (kOutputTrim), mController->dspSampleRate ());
+}
+
+//------------------------------------------------------------------------
+void Project6Editor::slotDropped (int index, const std::string& path)
+{
+	if (mController == nullptr || ! isSlotIndex (index))
+		return;
+
+	// Straight to the controller. It records the path, tells the
+	// processor, and calls refreshSlots on every editor it has open -
+	// including this one, which is how this slot's text actually changes.
+	mController->setSlotPath (index, path);
+}
+
+//------------------------------------------------------------------------
+void Project6Editor::refreshSlots ()
+{
+	if (frame == nullptr || mController == nullptr)
+		return;
+
+	const SlotBank& bank = mController->slots ();
+	for (int index = 0; index < kSlotCount; ++index)
+		if (mSlots[index])
+			mSlots[index]->setPath (bank.path (index));
 }
 
 //------------------------------------------------------------------------
@@ -206,6 +270,8 @@ void PLUGIN_API Project6Editor::close ()
 
 	mControls.clear ();
 	mDisplay = nullptr;
+	for (auto*& slot : mSlots)
+		slot = nullptr;
 
 	if (frame)
 	{

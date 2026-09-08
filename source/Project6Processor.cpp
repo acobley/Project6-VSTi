@@ -4,6 +4,7 @@
 
 #include "Project6Processor.h"
 #include "Project6IDs.h"
+#include "Project6SlotState.h"
 
 #include "base/source/fstreamer.h"
 #include "pluginterfaces/vst/ivstevents.h"
@@ -11,6 +12,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <string>
 
 using namespace Steinberg;
 using namespace Steinberg::Vst;
@@ -106,6 +108,39 @@ void Project6Processor::sendSampleRateToController ()
 		message->getAttributes ()->setFloat (kProject6SampleRateAttribute, mSampleRate);
 		sendMessage (message);
 	}
+}
+
+//------------------------------------------------------------------------
+tresult PLUGIN_API Project6Processor::notify (IMessage* message)
+{
+	if (message && FIDStringsEqual (message->getMessageID (), kProject6SlotMessage))
+	{
+		int64 index = -1;
+		if (message->getAttributes ()->getInt (kProject6SlotIndexAttribute, index)
+		        != kResultOk)
+			return kResultOk;
+
+		// An ABSENT path attribute is a cleared slot, not a failure - see
+		// the note in Project6IDs.h. The empty string that leaves here is
+		// what SlotBank stores for an empty slot.
+		std::string path;
+		const void* data = nullptr;
+		uint32 size = 0;
+		if (message->getAttributes ()->getBinary (kProject6SlotPathAttribute, data, size)
+		            == kResultOk
+		    && data != nullptr && size > 0)
+		{
+			path.assign (static_cast<const char*> (data), size);
+		}
+
+		// setPath range-checks the index itself and refuses a bad one
+		// rather than clamping, so a message from a future build with a
+		// bigger grid is dropped instead of overwriting slot 63.
+		mSlots.setPath (static_cast<int> (index), path);
+		return kResultOk;
+	}
+
+	return AudioEffect::notify (message);
 }
 
 //------------------------------------------------------------------------
@@ -268,11 +303,17 @@ tresult PLUGIN_API Project6Processor::getState (IBStream* state)
 
 	IBStreamer streamer (state, kLittleEndian);
 
-	streamer.writeInt32 (1);              // stream version
+	streamer.writeInt32 (kStateVersion);
 	streamer.writeInt32 (kNumStoredParams);
 	for (ParamID id = 0; id < kNumStoredParams; ++id)
 		streamer.writeDouble (mParams[id]);
 	streamer.writeInt32 (mBypass ? 1 : 0);
+
+	// APPENDED, after everything a version 1 stream held, for the same
+	// reason parameters are appended and never inserted: a reader that
+	// stops early must stop at a block boundary and not in the middle of
+	// something it was half way through understanding.
+	writeSlots (streamer, mSlots);
 
 	return kResultOk;
 }
@@ -315,6 +356,13 @@ tresult PLUGIN_API Project6Processor::setState (IBStream* state)
 	mBypass = false;
 	if (streamer.readInt32 (bypass))
 		mBypass = (bypass != 0);
+
+	// readSlots empties the bank first, so a version 1 stream - which has
+	// nothing here - leaves every slot empty rather than inheriting the
+	// samples of whatever was loaded before. Its false return is that
+	// case and is not an error. The CONTROLLER reads the identical block,
+	// through the identical function.
+	readSlots (streamer, mSlots);
 
 	return kResultOk;
 }
