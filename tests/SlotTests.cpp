@@ -247,6 +247,98 @@ int main ()
 	}
 
 	//--------------------------------------------------------------------
+	section ("6. Picking a pad up and dropping it on another");
+	//--------------------------------------------------------------------
+	{
+		// The payload a pad puts on the pasteboard, and reading it back.
+		const std::string packed = encodeSlotDrag (37, "/Users/andy/Loops/kick 01.wav");
+		check (! packed.empty (), "a loaded pad encodes to something");
+
+		int index = -1;
+		std::string path;
+		check (decodeSlotDrag (packed, &index, &path), "and it decodes again");
+		check (index == 37, "to the slot it came from");
+		check (path == "/Users/andy/Loops/kick 01.wav", "and the path it was holding");
+
+		// A SPACE IN THE NAME survives, which is the whole reason the
+		// payload is not a URL.
+		check (path.find (' ') != std::string::npos, "spaces and all");
+
+		// Nothing to drag out of an empty slot, or a slot that is not one.
+		check (encodeSlotDrag (37, "").empty (),      "an empty slot encodes to nothing");
+		check (encodeSlotDrag (-1, "/a.wav").empty (), "and neither does a bad index");
+		check (encodeSlotDrag (kSlotCount, "/a.wav").empty (), "at either end");
+
+		// TOLD APART FROM EVERY OTHER DRAG. This is the test that matters:
+		// a Finder drag must not be read as a pad being moved.
+		check (! decodeSlotDrag ("/Users/andy/kick.wav", &index, &path),
+		       "NEGATIVE CONTROL: a bare path is not one of ours");
+		check (! decodeSlotDrag ("file:///Users/andy/kick.wav", &index, &path),
+		       "nor is a file URL");
+		check (! decodeSlotDrag ("", &index, &path), "nor is nothing at all");
+
+		// Malformed payloads are REFUSED rather than half-read. These
+		// cross a platform callback, so a throw here would leave the drag
+		// machinery mid-gesture.
+		check (! decodeSlotDrag ("Project6/slot:37", nullptr, nullptr),
+		       "a payload with no path is refused");
+		check (! decodeSlotDrag ("Project6/slot:\n/a.wav", nullptr, nullptr),
+		       "and one with no index");
+		check (! decodeSlotDrag ("Project6/slot:64\n/a.wav", nullptr, nullptr),
+		       "and one naming a slot that does not exist");
+		check (! decodeSlotDrag ("Project6/slot:99999999999999\n/a.wav", nullptr, nullptr),
+		       "and one whose number would not fit in an int");
+		check (! decodeSlotDrag ("Project6/slot:3x\n/a.wav", nullptr, nullptr),
+		       "and one whose number is not a number");
+
+		// Both outputs are optional, and an untouched one stays untouched
+		// on a refusal.
+		index = 11;
+		check (! decodeSlotDrag ("nonsense", &index, nullptr), "a refusal is a refusal");
+		check (index == 11, "and leaves what it was given alone");
+
+		//----------------------------------------------------------------
+		// The other end: whatever text a drag from OUTSIDE delivered.
+		//----------------------------------------------------------------
+		check (sampleFilePathFromDragText ("/Users/andy/kick.wav") == "/Users/andy/kick.wav",
+		       "a plain path comes through unchanged");
+
+		// THE URL FORM. macOS hands a dragged file back like this, and a
+		// path with the escapes left in is a file that is not there.
+		check (sampleFilePathFromDragText ("file:///Users/andy/My%20Loops/kick%2001.wav")
+		           == "/Users/andy/My Loops/kick 01.wav",
+		       "a file URL is unescaped back into a path");
+		check (sampleFilePathFromDragText ("file:///a/b.wav") == "/a/b.wav",
+		       "and a plain one needs no unescaping");
+
+		// A LITERAL PER-CENT in a real filename is left alone, because
+		// nothing said it was a URL.
+		check (sampleFilePathFromDragText ("/Users/andy/100%.wav") == "/Users/andy/100%.wav",
+		       "a per-cent sign in a plain path is not an escape");
+		check (sampleFilePathFromDragText ("/Users/andy/50%20off.wav")
+		           == "/Users/andy/50%20off.wav",
+		       "NEGATIVE CONTROL: and neither is one that looks like one");
+
+		// Trailing newlines and several files: the first, trimmed.
+		check (sampleFilePathFromDragText ("/a/one.wav\n") == "/a/one.wav",
+		       "a trailing newline is trimmed off");
+		check (sampleFilePathFromDragText ("  /a/one.wav  ") == "/a/one.wav",
+		       "and so is surrounding space");
+		check (sampleFilePathFromDragText ("/a/one.wav\n/a/two.wav") == "/a/one.wav",
+		       "several files means the first, not all of them");
+
+		// And it still refuses what the plug-in will not take, so the
+		// caller has one question to ask rather than two.
+		check (sampleFilePathFromDragText ("/a/track.mp3").empty (), "an mp3 is refused");
+		check (sampleFilePathFromDragText ("file:///a/track.aiff").empty (),
+		       "and so is an aiff, URL or not");
+		check (sampleFilePathFromDragText ("").empty (),        "and nothing at all");
+		check (sampleFilePathFromDragText ("   \n  ").empty (), "and whitespace");
+		check (sampleFilePathFromDragText ("file://").empty (),
+		       "and a URL with no path in it");
+	}
+
+	//--------------------------------------------------------------------
 	std::printf ("\n%s  (%d failure%s)\n",
 	             gFailures == 0 ? "ALL TESTS PASSED" : "TESTS FAILED",
 	             gFailures, gFailures == 1 ? "" : "s");

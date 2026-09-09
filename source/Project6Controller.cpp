@@ -347,6 +347,87 @@ void Project6Controller::setSlotPath (int index, const std::string& path)
 }
 
 //------------------------------------------------------------------------
+void Project6Controller::writeParam (ParamID tag, double normalized)
+{
+	const double clamped = std::min (1.0, std::max (0.0, normalized));
+
+	// ONLY WHAT CHANGED. Eight gestures per drag, most of them writing a
+	// value back over itself, would fill a host's undo history and an
+	// automation lane with points that say nothing.
+	if (getParamNormalized (tag) == clamped)
+		return;
+
+	beginEdit (tag);
+	setParamNormalized (tag, clamped);
+	performEdit (tag, clamped);
+	endEdit (tag);
+}
+
+//------------------------------------------------------------------------
+void Project6Controller::exchangeSlotSettings (int from, int to, bool copy)
+{
+	// THE PAD'S OWN SETTINGS, as opposed to the file's: what it is set
+	// to, when it launches, and what it does about the tempo. The file's
+	// tempo is not here because it is read out of the file and belongs
+	// to it, not to the cell.
+	const ParamID settings[][2] = {
+		{ slotLevelParam (from),    slotLevelParam (to) },
+		{ slotDivisionParam (from), slotDivisionParam (to) },
+		{ slotFitParam (from),      slotFitParam (to) },
+	};
+
+	for (const auto& pair : settings)
+	{
+		// READ BOTH BEFORE WRITING EITHER. A swap that wrote the first
+		// value across and then read the second would read the one it had
+		// just written, and both pads would end up the same.
+		const double source = getParamNormalized (pair[0]);
+		const double target = getParamNormalized (pair[1]);
+
+		writeParam (pair[1], source);
+		if (! copy)
+			writeParam (pair[0], target);
+	}
+}
+
+//------------------------------------------------------------------------
+void Project6Controller::moveSlot (int from, int to, bool copy)
+{
+	if (!isSlotIndex (from) || !isSlotIndex (to) || from == to)
+		return;
+
+	// NOTHING TO MOVE. An empty pad cannot be picked up in the first
+	// place - the view refuses - so this is belt and braces against a
+	// drag whose source was emptied while it was in flight.
+	const std::string fromPath = mSlots.path (from);
+	if (fromPath.empty ())
+		return;
+
+	const std::string toPath = mSlots.path (to);
+
+	// STOPPED FIRST, before the file under it changes. The destination
+	// always; the source only when it is losing its file, which is to say
+	// on a move and not on a copy.
+	writeParam (slotPlayParam (to), 0.0);
+	if (! copy)
+		writeParam (slotPlayParam (from), 0.0);
+
+	// THE SETTINGS BEFORE THE PATHS, so that the path change is the LAST
+	// thing to happen and the refreshSlots it triggers sees a cell that
+	// has already finished moving. The other order leaves each pad's fit
+	// box drawn from the settings it had a moment ago until the next
+	// message arrives to correct it.
+	exchangeSlotSettings (from, to, copy);
+
+	// The paths, through the one door: setSlotPath tells the processor,
+	// refreshes every open editor, and clears the tempo the panel was
+	// showing until the processor reports the new file's own.
+	setSlotPath (to, fromPath);
+	if (! copy)
+		setSlotPath (from, toPath);        // the SWAP - may be empty, which empties it
+}
+
+//------------------------------------------------------------------------
 void Project6Controller::sendSlotToProcessor (int index, const std::string& path)
 {
 	// The controller lives on the UI thread, so a message is legitimate

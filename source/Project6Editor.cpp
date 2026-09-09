@@ -274,6 +274,13 @@ bool PLUGIN_API Project6Editor::open (void* parent, const PlatformType& platform
 			slot->setHandler ([this] (int at, const std::string& path)
 			                  { slotDropped (at, path); });
 
+			// A pad dropped on another pad. Straight to the controller,
+			// which is the one place a slot's contents change - the
+			// editor has nothing to add and two open editors must not
+			// each have their own idea of what a move is.
+			slot->setMoveHandler ([this] (int from, int to, bool copy)
+			                      { slotMoved (from, to, copy); });
+
 			mControls[slotPlayParam (index)] = slot;
 			if (mController)
 				showValue (slot, mController->getParamNormalized (slotPlayParam (index)));
@@ -402,6 +409,18 @@ void Project6Editor::slotDropped (int index, const std::string& path)
 	// processor, and calls refreshSlots on every editor it has open -
 	// including this one, which is how this slot's text actually changes.
 	mController->setSlotPath (index, path);
+}
+
+//------------------------------------------------------------------------
+void Project6Editor::slotMoved (int from, int to, bool copy)
+{
+	if (mController == nullptr)
+		return;
+
+	// Everything - the swap, the settings that travel, the pads that get
+	// stopped - is the controller's, for the same reason slotDropped's
+	// work is. See Project6Controller::moveSlot.
+	mController->moveSlot (from, to, copy);
 }
 
 //------------------------------------------------------------------------
@@ -737,6 +756,22 @@ void Project6Editor::updateControl (ParamID tag, ParamValue normalized)
 	// line, whether or not anything is sounding yet.
 	if (isSlotPlayParam (tag))
 		refreshColumns ();
+
+	// A FIT MODE MOVING CHANGES WHETHER IT IS DOING ANYTHING, and the box
+	// draws that. Without this, switching a pad from off to varispeed
+	// would put "spd" in the box and leave it dimmed - the panel saying
+	// the setting is idle at the very moment it stopped being.
+	if (isSlotFitParam (tag))
+		refreshFit (slotOfFitParam (tag));
+
+	// The tempo the panel fits against is one of the published values,
+	// and a host that changes tempo mid-project changes what every pad is
+	// doing. Cheaper to redo all sixty-four than to work out which.
+	if (tag == kLiveTempo)
+	{
+		for (int slot = 0; slot < kSlotCount; ++slot)
+			refreshFit (slot);
+	}
 
 	// The display reads parameters rather than controls, so it has to be
 	// told too - the timer would get there within 30 ms, but a control

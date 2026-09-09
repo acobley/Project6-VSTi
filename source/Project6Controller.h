@@ -126,9 +126,45 @@ public:
 	    is only ever set from setParamNormalized. */
 	void setSlotPath (int index, const std::string& path);
 
+	/** A pad was dragged onto another pad.
+
+	    `copy` false MOVES it, which is a SWAP: the two cells exchange, so
+	    a mis-aimed drag can never destroy a loaded slot - the file that
+	    was there comes back to where the drag started. `copy` true leaves
+	    the source alone and overwrites the destination, because there is
+	    nothing to swap a copy with.
+
+	    THE WHOLE CELL TRAVELS, not just the file: the level, the launch
+	    division and the tempo fit go with it, so a loop lands sounding
+	    the way it did before it was moved. A pad is what you set up, and
+	    dragging it should rearrange the bank rather than the filenames.
+
+	    THE TRIGGERS DO NOT. Every pad whose file changes is STOPPED -
+	    both of them on a move, the destination alone on a copy. A voice
+	    left running through a buffer that has been swapped underneath it
+	    is a click at best, and a pad playing a file nobody started it
+	    with is the worst thing this panel could do.
+
+	    Here rather than in the editor for the same reason setSlotPath is:
+	    it is the one place a slot's contents change, and two open editors
+	    must not each have their own idea of how. */
+	void moveSlot (int from, int to, bool copy);
+
 private:
 	void addParameters ();
 	void sendSlotToProcessor (int index, const std::string& path);
+
+	/** One parameter, as a COMPLETE EDIT GESTURE - begin, set, perform,
+	    end - so the host records it and every open editor's control
+	    follows. Does nothing when the value is already what is asked for:
+	    a move writes up to eight parameters and the ones that did not
+	    change are automation points saying nothing. */
+	void writeParam (Steinberg::Vst::ParamID tag, double normalized);
+
+	/** The three settings that belong to a PAD rather than to a file, and
+	    that travel with it when it is dragged. Named once, here, so
+	    adding a fourth is one line rather than a hunt. */
+	void exchangeSlotSettings (int from, int to, bool copy);
 
 	/** Every open editor. A host may open more than one - two windows on
 	    the same instance is legal - so this is a vector, not a pointer. */

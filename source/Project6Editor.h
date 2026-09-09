@@ -278,6 +278,10 @@ private:
 	    sets its own parameter values. */
 	void slotDropped (int index, const std::string& path);
 
+	/** A pad was dragged onto another pad. Passed straight to the
+	    controller, which owns what a move actually means. */
+	void slotMoved (int from, int to, bool copy);
+
 	/** Write one parameter as a COMPLETE EDIT GESTURE - begin, set,
 	    perform, end - so the host records it, undo works, and every open
 	    editor's control follows. */

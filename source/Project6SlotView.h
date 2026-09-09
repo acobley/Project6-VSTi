@@ -12,6 +12,14 @@
 // click it again and it stops at the one after that. Empty, it is blank -
 // just the well.
 //
+// A LOADED PAD CAN ALSO BE PICKED UP and dropped on another pad, which
+// MOVES it - the two cells exchange, so a mis-aimed drag never destroys a
+// slot - or COPIES it with Control or Alt held. The whole cell travels,
+// level and launch division and tempo fit together, because a pad is what
+// you set up and dragging it should rearrange the bank rather than the
+// filenames. Both pads are stopped on the way, since a voice running
+// through a buffer that changed underneath it is a click at best.
+//
 // THE CLICK AND THE SOUND ARE NOW TWO DIFFERENT THINGS, and the slot has
 // to show both. What was asked for is the trigger parameter - this
 // control's own value. What is happening is published back by the
@@ -131,11 +139,42 @@ public:
 	    dropped here. */
 	void setHandler (std::function<void (int, const std::string&)> handler);
 
+	/** Called with (from, to, copy) when ANOTHER PAD is dropped here.
+
+	    A separate handler rather than a flag on the one above, because it
+	    is a different operation with different consequences: the one
+	    above fills a slot, this one rearranges the bank and can empty a
+	    slot the user was not pointing at. */
+	void setMoveHandler (std::function<void (int, int, bool)> handler);
+
 	void draw (VSTGUI::CDrawContext* context) override;
 
-	/** A click toggles the loop. Firing on DOWN rather than up, as
-	    SpyToggle does: a pad should sound the instant it is hit. */
+	//--------------------------------------------------------------------
+	// A CLICK AND A DRAG START THE SAME WAY, so the pad cannot decide
+	// which it is until the button comes up or the pointer moves.
+	//
+	// This used to toggle the loop on mouse DOWN, deliberately - "a pad
+	// should sound the instant it is hit", the way SpyToggle does it.
+	// Picking a pad up to move its file has taken that away: a press that
+	// launched immediately and then turned into a drag would have already
+	// started a loop the user was only trying to move.
+	//
+	// So the launch happens on RELEASE, and only when the pointer did not
+	// travel more than kDragThreshold. Nothing is audibly later for it -
+	// a pad does not sound when it is clicked in any case, it sounds on
+	// the next grid line, and the few milliseconds between a press and
+	// its release are nothing beside a bar.
+	//--------------------------------------------------------------------
+
+	/** How far the pointer may travel before a press stops being a click.
+	    Four pixels: far enough that a hand resting on a mouse still
+	    clicks, short enough that a deliberate move is a move at once. */
+	static constexpr VSTGUI::CCoord kDragThreshold = 4.;
+
 	void onMouseDownEvent (VSTGUI::MouseDownEvent& event) override;
+	void onMouseMoveEvent (VSTGUI::MouseMoveEvent& event) override;
+	void onMouseUpEvent (VSTGUI::MouseUpEvent& event) override;
+	void onMouseCancelEvent (VSTGUI::MouseCancelEvent& event) override;
 
 	/** Deliberately inert. CControl's wheel handling would move the
 	    trigger by fractions of its one step, which on a two-state
@@ -171,6 +210,24 @@ private:
 	    overwrites four that were already loaded. */
 	static std::string firstAcceptedPath (VSTGUI::IDataPackage* package);
 
+	/** Is this drag another pad rather than a file? Fills `from` and
+	    `path` and returns true when it is. See Project6Slots.h for why
+	    the payload is text and what the alternative cost. */
+	static bool slotDrag (VSTGUI::IDataPackage* package, int& from, std::string& path);
+
+	/** Held down, this drop copies instead of moving.
+
+	    CONTROL, as asked for - and Alt as well, because macOS turns a
+	    Control-click into a right-click before the view ever sees it, and
+	    a copy that could not be asked for on the platform this ships on
+	    would be a feature that is not there. Alt is that platform's own
+	    modifier for the same idea. */
+	static bool copyRequested (const VSTGUI::Modifiers& modifiers);
+
+	/** Put this pad on the pasteboard. Called once, when a press has
+	    travelled far enough to be a drag. */
+	void beginSlotDrag ();
+
 	/** Draw the name into `band`, shortened until it fits: first by
 	    shedding the .wav - every file here has one, so it is the four
 	    characters least worth reading - then by dropping a font size, and
@@ -188,8 +245,17 @@ private:
 	std::string mTempoText;
 	SampleStatus mStatus = SampleStatus::Empty;
 	bool mSounding = false;
+
+	/** The press that has not yet decided whether it is a click or a
+	    drag, and where it started. */
+	bool mPressed = false;
+	VSTGUI::CPoint mPressPoint;
+	/** Set once a press has become a drag, so the release does not also
+	    launch the pad. */
+	bool mDragStarted = false;
 	float mProgress = 0.f;
 	std::function<void (int, const std::string&)> mHandler;
+	std::function<void (int, int, bool)> mMoveHandler;
 	bool mDragOver = false;
 };
 

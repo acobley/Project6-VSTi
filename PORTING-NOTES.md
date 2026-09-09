@@ -169,7 +169,7 @@ python3 tools/render-routing.py
 
 `-DRELEASE=1` is required or `fdebug.h` refuses to compile.
 
-Results, at the tempo-fit commit: **all six suites all-pass**, all fourteen
+Results, at the pad-drag commit: **all six suites all-pass**, all fourteen
 translation units produced object files with no errors, every undefined
 `Project6::` symbol resolved within the set, `check-editor` reported ok, and
 `render-routing` regenerated the diagram from the headers.
@@ -1020,7 +1020,101 @@ target.
 Stream **version 6**: a fourth value block, through the same
 `writeValueBlock`/`readValueBlock` the levels and divisions already use.
 
-## 12. The SDK
+## 12. Moving a pad onto another pad
+
+A loaded pad can be picked up and dropped on another one. Plain drag
+**moves** it, Control or Alt **copies** it, and the whole cell travels —
+level, launch division and tempo fit — because a pad is what you set up and
+dragging it should rearrange the bank rather than the filenames.
+
+A move is a **swap**, not an overwrite. The file that was in the destination
+comes back to where the drag started, so a mis-aimed drag across a full grid
+can never destroy a slot. A copy still overwrites: there is nothing to swap a
+copy with.
+
+Both pads whose file changes are **stopped** on the way through — both on a
+move, the destination alone on a copy. A voice left running through a buffer
+that was swapped underneath it is a click at best, and a pad playing a file
+nobody started it with is the worst thing this panel could do.
+
+### The launch moved off the mouse-down, and had to
+
+A pad used to toggle its loop on mouse **down**, deliberately — "a pad should
+sound the instant it is hit". A drag starts from that same press, so the two
+could no longer both happen: a press that launched immediately and then turned
+into a drag would have started a loop the user was only trying to move.
+
+So the launch is on **release**, and only when the pointer travelled less than
+four pixels. Nothing is audibly later for it — a pad does not sound when it is
+clicked in any case, it sounds on the next grid line, and the few milliseconds
+between a press and its release are nothing beside a bar. That is the *only*
+reason this was affordable, and it is worth knowing before anyone moves the
+launch back.
+
+### Why the drag payload is text, and one entry rather than two
+
+The obvious design is what Finder does: put the file's path on the pasteboard
+as a `kFilePath` entry and the source slot's number beside it. **It does not
+survive the round trip on macOS.**
+
+VSTGUI unpacks a dropped pasteboard item by asking `availableTypeFromArray`
+for the first of `NSPasteboardTypeString`, `…FileURL`, `…Color` that the item
+offers — and an item written from an `NSURL` offers a **string as well as** a
+file URL. String is first in that array, so a file path packed by this plug-in
+comes back reported as `kText`, holding the URL form
+`file:///Users/andy/My%20Loops/x.wav` rather than a path anything can open.
+
+Two consequences:
+
+* an internal drag carries **one text entry of its own shape** —
+  `Project6/slot:<index>\n<path>` — which is unambiguous whatever type the
+  platform decides to call it, and whose decoding is the only thing that has
+  to be right. Dragging a pad *out* into another application then yields plain
+  text naming the file, which is honest; dragging a pad out was never the
+  feature.
+* `firstAcceptedPath` **stopped trusting the type**. It reads any entry that
+  has text in it and asks `sampleFilePathFromDragText` — which handles a plain
+  POSIX path, a `file://` URL with its percent escapes, and several of either
+  separated by newlines, of which it takes the first. A reader that insisted
+  on `kFilePath` would refuse every drag there is on the platform this ships
+  on, and nothing would have caught it until the first build.
+
+Percent escapes are **only** decoded in the URL form. `100%.wav` is a legal
+filename, and decoding a plain path would turn a real file into one that is
+not there. `SlotTests` §6 has that as a negative control, along with the
+malformed payloads — a bad index, a number that would not fit in an `int`,
+no path at all — every one of which is *refused* rather than half-read,
+because these cross a platform callback and a throw there would leave the
+drag machinery mid-gesture.
+
+Both ends of this are in `Project6Slots.{h,cpp}` and therefore **SDK-free and
+tested**: it is string parsing, and string parsing is the part that can be
+checked without a host, a mouse or a platform drag package. Thirty-one
+assertions cover it, which is thirty-one more than a drop handler usually
+gets.
+
+### Two smaller things
+
+The **modifier is read at the drop**, not remembered from when the drag began
+— the platform's own rule, and it means someone can change their mind half way
+across the grid. `onDragMove` returns `Copy` or `Move` live, so the cursor's
+badge says which it will be before the button comes up.
+
+**Alt counts as Control.** Control is what was asked for, but macOS turns a
+Control-click into a right-click before the view ever sees it, and a copy that
+could not be asked for on the platform this ships on would be a feature that
+is not there. Alt is that platform's own modifier for the same idea.
+
+### A bug the wiring caught
+
+Routing fit-mode changes through `refreshFit` fixed something the previous
+commit had shipped: switching a pad from *off* to *varispeed* put "spd" in the
+box and **left it dimmed**, because `mFitted` was only recomputed when a
+status message arrived. The panel was saying the setting was idle at the exact
+moment it stopped being. `updateControl` now recomputes it whenever a fit
+parameter or the published tempo moves.
+
+## 13. The SDK
 
 **In-tree clone**, chosen deliberately over pointing at a sibling project's
 checkout. The first `cmake` configure clones the VST3 SDK (~250 MB) into

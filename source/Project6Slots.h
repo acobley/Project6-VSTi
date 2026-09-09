@@ -73,6 +73,65 @@ constexpr bool isRowIndex (int row) { return row >= 0 && row < kSlotRows; }
     rather than testing the extension themselves. */
 bool isAcceptedSampleFile (const std::string& path);
 
+//------------------------------------------------------------------------
+// DRAGGING A PAD ONTO ANOTHER PAD
+//
+// A pad can be picked up and dropped on another one: the file moves, or
+// with a modifier held it is copied. Both ends of that are here, SDK-free,
+// because both are STRING PARSING and string parsing is the part that can
+// be tested without a host, a mouse or a platform drag package.
+//
+// WHY THE PAYLOAD IS TEXT, and one entry rather than two.
+//
+// The obvious design is to put the file's own path on the pasteboard as a
+// kFilePath entry, the way Finder does, and add the source slot's number
+// beside it. It does not survive the round trip on macOS. VSTGUI unpacks a
+// dropped pasteboard item by asking availableTypeFromArray for the FIRST
+// of NSPasteboardTypeString, ...FileURL, ...Color that the item offers -
+// and an item written from an NSURL offers a string as well as a file URL,
+// so a file path packed by this plug-in comes back reported as TEXT, and
+// its bytes are the URL form ("file:///Users/andy/My%20Loops/x.wav")
+// rather than a path anything can open.
+//
+// So an internal drag carries ONE text entry of its own shape, which is
+// unambiguous whatever type the platform decides to call it, and the
+// decoding below is the only thing that has to be right. A drag that
+// leaves the plug-in is then plain text naming the file, which is honest;
+// dragging a pad out into another application was never the feature.
+//------------------------------------------------------------------------
+
+/** What marks a pasteboard entry as one of this plug-in's own. */
+extern const char* const kSlotDragPrefix;
+
+/** The text a pad puts on the pasteboard when it is picked up.
+
+    Returns an empty string for a bad index or an empty path - there is
+    nothing to drag out of an empty slot, and a drag that carried nothing
+    would still light up every pad it passed over. */
+std::string encodeSlotDrag (int index, const std::string& path);
+
+/** Reads one back. False - and neither output touched - when the text is
+    not this plug-in's, which is how a drag from Finder or a text editor
+    is told apart from a pad being moved.
+
+    Either output may be null. */
+bool decodeSlotDrag (const std::string& text, int* index, std::string* path);
+
+/** A file path out of whatever text a drag actually delivered.
+
+    Handles the three shapes that turn up: a plain POSIX path, a `file://`
+    URL with its percent escapes (which is what macOS hands back for a
+    file dragged from anywhere, see above), and several of either
+    separated by newlines - of which it takes THE FIRST, for the same
+    reason the drop handler does.
+
+    Returns an empty string unless what it found is a file this plug-in
+    would accept, so the caller has one question to ask rather than two.
+    PERCENT ESCAPES ARE ONLY DECODED IN THE URL FORM: a plain path is
+    allowed to contain a literal per-cent sign, and decoding one would
+    turn a real filename into a file that is not there. */
+std::string sampleFilePathFromDragText (const std::string& text);
+
 /** The file's own name, with its extension: "kick 01.wav".
 
     Directory separators are BOTH '/' and '\\'. A drop from Finder is a

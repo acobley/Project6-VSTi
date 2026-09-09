@@ -217,6 +217,12 @@ void SpySampleSlot::refreshTooltip ()
 		text += mTempoText;
 	}
 
+	// A pad that can be picked up SAYS SO. Nothing on the panel looks
+	// draggable, and a gesture nobody knows about is a gesture nobody
+	// uses - the tooltip is already open in front of the only people who
+	// would want it.
+	text += "\ndrag to another pad to move it, hold Ctrl or Alt to copy";
+
 	setTooltipText (text.c_str ());
 }
 
@@ -227,13 +233,71 @@ void SpySampleSlot::setHandler (std::function<void (int, const std::string&)> ha
 }
 
 //------------------------------------------------------------------------
+void SpySampleSlot::setMoveHandler (std::function<void (int, int, bool)> handler)
+{
+	mMoveHandler = std::move (handler);
+}
+
+//------------------------------------------------------------------------
 void SpySampleSlot::onMouseDownEvent (MouseDownEvent& event)
 {
 	if (! event.buttonState.isLeft ())
 		return;
 
-	// Consumed either way, so a click on an empty slot does not fall
-	// through to the frame and do something else instead.
+	// NOTHING HAPPENS YET. The press could be a click, which launches the
+	// pad, or the start of a drag, which moves its file - and there is no
+	// way to know which until the pointer moves or the button comes up.
+	// See the header for why the launch moved off the press.
+	//
+	// Consumed either way: it is what makes the frame send this view the
+	// move and up events that follow, and it stops a click on an empty
+	// slot falling through to the frame.
+	mPressed     = true;
+	mDragStarted = false;
+	mPressPoint  = event.mousePosition;
+	event.consumed = true;
+}
+
+//------------------------------------------------------------------------
+void SpySampleSlot::onMouseMoveEvent (MouseMoveEvent& event)
+{
+	if (! mPressed || mDragStarted)
+		return;
+
+	event.consumed = true;
+
+	// AN EMPTY SLOT HAS NOTHING TO PICK UP. The press stays a press, so
+	// releasing on it still does what a click on an empty slot does,
+	// which is nothing.
+	if (mPath.empty ())
+		return;
+
+	const CCoord dx = event.mousePosition.x - mPressPoint.x;
+	const CCoord dy = event.mousePosition.y - mPressPoint.y;
+	if (std::fabs (dx) < kDragThreshold && std::fabs (dy) < kDragThreshold)
+		return;
+
+	// Past the threshold: this is a drag. Clearing mPressed FIRST means
+	// the release that ends the drag cannot also be read as a click -
+	// the platform may or may not deliver one, and a pad that launched
+	// itself at the end of every move would be unusable.
+	mPressed     = false;
+	mDragStarted = true;
+	beginSlotDrag ();
+}
+
+//------------------------------------------------------------------------
+void SpySampleSlot::onMouseUpEvent (MouseUpEvent& event)
+{
+	if (! mPressed)
+	{
+		// The tail of a drag, or a release this view never saw the press
+		// for. Either way it is not a click.
+		mDragStarted = false;
+		return;
+	}
+
+	mPressed = false;
 	event.consumed = true;
 
 	// NOTHING TO PLAY. Lighting the well for a slot that cannot make a
@@ -251,6 +315,38 @@ void SpySampleSlot::onMouseDownEvent (MouseDownEvent& event)
 	valueChanged ();
 	endEdit ();
 	invalid ();
+}
+
+//------------------------------------------------------------------------
+void SpySampleSlot::onMouseCancelEvent (MouseCancelEvent&)
+{
+	// A cancelled press is not a click. Without this a pad would launch
+	// when a modal window stole the mouse mid-press.
+	mPressed     = false;
+	mDragStarted = false;
+}
+
+//------------------------------------------------------------------------
+void SpySampleSlot::beginSlotDrag ()
+{
+	const std::string payload = encodeSlotDrag (mIndex, mPath);
+	if (payload.empty ())
+		return;
+
+	// THE TERMINATOR IS INCLUDED. The macOS layer builds the pasteboard
+	// item with stringWithUTF8String, which reads to a NUL and does not
+	// take a length - a buffer without one would read off the end of the
+	// allocation and put whatever followed it on the pasteboard.
+	auto package = CDropSource::create (payload.c_str (),
+	                                    static_cast<uint32_t> (payload.size () + 1),
+	                                    IDataPackage::kText);
+	if (!package)
+		return;
+
+	// No drag bitmap: sixty-four pads all look alike at this size, and
+	// the highlight under the pointer already says where the drop will
+	// land. The cursor's own copy badge says which operation it will be.
+	doDrag (DragDescription (package));
 }
 
 //------------------------------------------------------------------------
@@ -274,9 +370,15 @@ std::string SpySampleSlot::firstAcceptedPath (IDataPackage* package)
 		IDataPackage::Type type = IDataPackage::kError;
 		const uint32_t size = package->getData (i, buffer, type);
 
-		// kText is what a drag from a text editor looks like, and kBinary
-		// is anything else. Only a real file has a path to remember.
-		if (type != IDataPackage::kFilePath || buffer == nullptr || size == 0)
+		// THE TYPE IS NOT TRUSTED, only the content. A file dragged on
+		// macOS comes back reported as kText and holding a percent-escaped
+		// file:// URL, because VSTGUI's unpacker asks the pasteboard item
+		// for a string before it asks for a file URL and an item written
+		// from an NSURL offers both - so a reader that insisted on
+		// kFilePath would refuse every drag there is. kBinary is skipped
+		// because it has no text in it to read.
+		if (type == IDataPackage::kError || type == IDataPackage::kBinary
+		    || buffer == nullptr || size == 0)
 			continue;
 
 		// UTF-8, and the size MAY OR MAY NOT include the terminator
@@ -286,9 +388,13 @@ std::string SpySampleSlot::firstAcceptedPath (IDataPackage* package)
 		// compares unequal to the same path read back out of a project
 		// file and quietly breaks every comparison downstream.
 		const char* chars = static_cast<const char*> (buffer);
-		const std::string path (chars, ::strnlen (chars, size));
+		const std::string text (chars, ::strnlen (chars, size));
 
-		if (isAcceptedSampleFile (path))
+		// One question, asked in Project6Slots.cpp where it can be
+		// tested: plain path, file:// URL, several lines, or none of the
+		// above.
+		const std::string path = sampleFilePathFromDragText (text);
+		if (!path.empty ())
 			return path;
 	}
 
@@ -296,25 +402,82 @@ std::string SpySampleSlot::firstAcceptedPath (IDataPackage* package)
 }
 
 //------------------------------------------------------------------------
+bool SpySampleSlot::slotDrag (IDataPackage* package, int& from, std::string& path)
+{
+	if (package == nullptr)
+		return false;
+
+	const uint32_t count = package->getCount ();
+	for (uint32_t i = 0; i < count; ++i)
+	{
+		const void* buffer = nullptr;
+		IDataPackage::Type type = IDataPackage::kError;
+		const uint32_t size = package->getData (i, buffer, type);
+
+		if (type == IDataPackage::kError || buffer == nullptr || size == 0)
+			continue;
+
+		const char* chars = static_cast<const char*> (buffer);
+		const std::string text (chars, ::strnlen (chars, size));
+
+		if (decodeSlotDrag (text, &from, &path))
+			return true;
+	}
+
+	return false;
+}
+
+//------------------------------------------------------------------------
+bool SpySampleSlot::copyRequested (const Modifiers& modifiers)
+{
+	return modifiers.has (ModifierKey::Control) || modifiers.has (ModifierKey::Alt);
+}
+
+//------------------------------------------------------------------------
 DragOperation SpySampleSlot::onDragEnter (DragEventData data)
 {
-	// The acceptance test runs HERE, not only on the drop, so the pointer
-	// says no before the mouse button is released. A slot that lights up
-	// for an .mp3 and then silently ignores it is worse than one that
-	// never lit up.
-	mDragOver = ! firstAcceptedPath (data.drag).empty ();
-	invalid ();
+	int from = -1;
+	std::string path;
 
-	return mDragOver ? DragOperation::Copy : DragOperation::None;
+	if (slotDrag (data.drag, from, path))
+	{
+		// A PAD DROPPED ON ITSELF IS NOT A DROP. Lighting up for it would
+		// promise something, and nothing is what should happen.
+		mDragOver = (from != mIndex);
+	}
+	else
+	{
+		// The acceptance test runs HERE, not only on the drop, so the
+		// pointer says no before the mouse button is released. A slot that
+		// lights up for an .mp3 and then silently ignores it is worse than
+		// one that never lit up.
+		mDragOver = ! firstAcceptedPath (data.drag).empty ();
+	}
+
+	invalid ();
+	return onDragMove (data);
 }
 
 //------------------------------------------------------------------------
 DragOperation SpySampleSlot::onDragMove (DragEventData data)
 {
-	// The answer cannot change while the pointer is inside one slot: the
-	// package is the same package. Recomputing it on every mouse move
-	// would re-scan the whole drag hundreds of times a second.
-	return mDragOver ? DragOperation::Copy : DragOperation::None;
+	// WHETHER it will be taken cannot change while the pointer is inside
+	// one slot - the package is the same package, and re-scanning it
+	// hundreds of times a second would cost for nothing. WHICH OPERATION
+	// it is can change, though: the modifier is read live, so letting go
+	// of Control mid-drag turns the copy back into a move and the cursor
+	// says so before the button comes up.
+	if (! mDragOver)
+		return DragOperation::None;
+
+	// A file arriving from outside is always a copy - it stays where it
+	// is on disk. Only a pad moving to another pad can be a move.
+	int from = -1;
+	std::string path;
+	if (! slotDrag (data.drag, from, path))
+		return DragOperation::Copy;
+
+	return copyRequested (data.modifiers) ? DragOperation::Copy : DragOperation::Move;
 }
 
 //------------------------------------------------------------------------
@@ -334,6 +497,24 @@ bool SpySampleSlot::onDrop (DragEventData data)
 	// to be taken off here or the slot stays lit for ever.
 	mDragOver = false;
 	invalid ();
+
+	// ANOTHER PAD, first: its payload is this plug-in's own shape and
+	// cannot be mistaken for a file, so there is nothing to disambiguate.
+	int from = -1;
+	std::string dragged;
+	if (slotDrag (data.drag, from, dragged))
+	{
+		if (from == mIndex || ! isSlotIndex (from))
+			return false;
+
+		// THE MODIFIER IS READ HERE, at the drop, and not remembered from
+		// when the drag began - which is the platform's own rule, and
+		// means someone can change their mind half way across the grid.
+		if (mMoveHandler)
+			mMoveHandler (from, mIndex, copyRequested (data.modifiers));
+
+		return true;
+	}
 
 	const std::string path = firstAcceptedPath (data.drag);
 	if (path.empty ())
