@@ -25,6 +25,7 @@
 
 #include "Project6Dsp.h"
 #include "Project6Slots.h"
+#include "Project6Stretch.h"
 #include "Project6Transport.h"
 
 #include "pluginterfaces/vst/vsttypes.h"
@@ -115,7 +116,36 @@ enum Param : Steinberg::Vst::ParamID
 	kSlotDivisionBase = kRowLevelEnd,
 	kSlotDivisionEnd  = kSlotDivisionBase + kSlotCount,
 
-	kNumParams = kSlotDivisionEnd
+	/** WHAT EACH SLOT DOES WHEN ITS FILE'S TEMPO IS NOT THE PROJECT'S:
+	    nothing, resample it, or splice it. A setting, saved with the
+	    project, and appended after the divisions because ids are never
+	    moved.
+
+	    Per slot rather than per plug-in because the right answer is
+	    material-dependent - a bass loop wants its pitch kept and a
+	    hi-hat pattern is better varispeeded - and a single global switch
+	    would force one compromise on sixty-four different files. */
+	kSlotFitBase = kSlotDivisionEnd,
+	kSlotFitEnd  = kSlotFitBase + kSlotCount,
+
+	/** THE HOST'S TEMPO, published for the panel - and the first
+	    published value that is not inside the published BLOCK, because
+	    ids are never moved and this one was needed after the block had
+	    already been followed by four thousand other ids.
+
+	    So isLiveParam below grows a second clause rather than the block
+	    being reshuffled. That is uglier than a contiguous run and it is
+	    the price of never breaking a saved project: a parameter that
+	    moved would load a host's automation lane onto the wrong control.
+
+	    The panel needs it because the tempo fit is computed in TWO
+	    places - the DSP, which has the host's context, and the pad's
+	    tooltip, which does not - and both call the same fitSpeed(). A
+	    tooltip that guessed the tempo would be a second opinion about
+	    what the user is hearing. */
+	kLiveTempo = kSlotFitEnd,
+
+	kNumParams = kLiveTempo + 1
 };
 
 /** What kLiveTransport carries. */
@@ -162,7 +192,11 @@ constexpr Steinberg::Vst::ParamID kLiveEnd  = kLiveSlotEnd;
     the panel reads them, it does not own controls for them. */
 constexpr bool isLiveParam (Steinberg::Vst::ParamID id)
 {
-	return id >= kLiveBase && id < kLiveEnd;
+	// TWO CLAUSES, not one range. kLiveTempo was appended long after this
+	// block closed - see its comment above - and a predicate that only
+	// knew about the block would have left it automatable and visible in
+	// every host's parameter list.
+	return (id >= kLiveBase && id < kLiveEnd) || id == kLiveTempo;
 }
 
 //------------------------------------------------------------------------
@@ -203,6 +237,25 @@ constexpr bool isSlotDivisionParam (Steinberg::Vst::ParamID id)
 constexpr int slotOfDivisionParam (Steinberg::Vst::ParamID id)
 {
 	return static_cast<int> (id - kSlotDivisionBase);
+}
+
+//------------------------------------------------------------------------
+// The tempo fit block
+//------------------------------------------------------------------------
+
+constexpr Steinberg::Vst::ParamID slotFitParam (int slot)
+{
+	return static_cast<Steinberg::Vst::ParamID> (kSlotFitBase + slot);
+}
+
+constexpr bool isSlotFitParam (Steinberg::Vst::ParamID id)
+{
+	return id >= kSlotFitBase && id < kSlotFitEnd;
+}
+
+constexpr int slotOfFitParam (Steinberg::Vst::ParamID id)
+{
+	return static_cast<int> (id - kSlotFitBase);
 }
 
 //------------------------------------------------------------------------
@@ -340,6 +393,11 @@ const ParamDef& liveBarPhaseDef ();
 const ParamDef& liveBeatsPerBarDef ();
 const ParamDef& liveSlotDef ();
 
+/** The host's tempo, published for the panel's tooltips. Zero means the
+    host did not say - which is a real answer and not a missing one, so
+    the range starts there rather than at some plausible minimum. */
+const ParamDef& liveTempoDef ();
+
 /** The definition every slot level shares. */
 const ParamDef& slotLevelDef ();
 
@@ -352,6 +410,10 @@ const ParamDef& rowLevelDef ();
 /** The definition every launch division shares: an enumerated parameter
     with kLaunchDivisionCount choices, defaulting to a whole bar. */
 const ParamDef& slotDivisionDef ();
+
+/** The definition every tempo fit shares: an enumerated parameter with
+    kFitModeCount choices, defaulting to kDefaultFitMode. */
+const ParamDef& slotFitDef ();
 
 /** The widest bar the panel will draw a grid for. Beyond it the grid is
     noise rather than information, and a host reporting something sillier

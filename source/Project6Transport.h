@@ -127,6 +127,16 @@ struct TransportInfo
 	    missing and the bars cannot be located, so it is one flag. */
 	bool   musical    = false;
 
+	/** The TEMPO ALONE is valid - which is a different question from
+	    `musical` and is asked by a different feature. Locating a bar
+	    needs all three facts; fitting a sample to the project's tempo
+	    needs only this one, and needs it even while the transport is
+	    stopped. `tempoBpm` below defaults to 120 so that the bar
+	    arithmetic has something workable to divide by, so a caller that
+	    must not invent a tempo has to read THIS flag and not that
+	    value. */
+	bool   tempoKnown = false;
+
 	double tempoBpm       = 120.0;
 	int    sigNumerator   = 4;
 	int    sigDenominator = 4;

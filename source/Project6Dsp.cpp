@@ -54,6 +54,12 @@ void Project6Dsp::setSampleRate (double sampleRate)
 	if (mRowScratch.empty ())
 		setMaxBlockSize (kDefaultMaxBlockFrames);
 
+	// The stretcher's hop, overlap and search are all defined in seconds,
+	// so every voice has to be told the rate or a splice would be a
+	// different length of time at 96 k than at 44.1 k.
+	for (Voice& voice : mVoices)
+		voice.stretch.setSampleRate (mSampleRate);
+
 	reset ();
 }
 
@@ -71,7 +77,7 @@ void Project6Dsp::reset ()
 	{
 		voice.sounding = false;
 		voice.stopping = false;
-		voice.position = 0.0;
+		voice.stretch.reset ();
 		voice.gain     = 0.0;
 		voice.levelGain = -1.0;      // snap on the next start
 		voice.progress.store (0.f, std::memory_order_relaxed);
@@ -171,7 +177,7 @@ void Project6Dsp::setSlotPlaying (int index, bool playing)
 			// the middle of it.
 			voice.sounding = true;
 			voice.stopping = false;
-			voice.position = 0.0;
+			voice.stretch.setPosition (0.0);
 			voice.gain     = 0.0;
 			voice.progress.store (0.f, std::memory_order_relaxed);
 
@@ -229,7 +235,62 @@ double Project6Dsp::slotPosition (int index) const
 	if (!isSlotIndex (index))
 		return 0.0;
 
-	return mVoices[index].position;
+	return mVoices[index].stretch.position ();
+}
+
+//------------------------------------------------------------------------
+void Project6Dsp::setProjectTempo (double bpm)
+{
+	// Not clamped and not defaulted. Zero means "the host did not say",
+	// and fitSpeed turns that into a speed of exactly 1.
+	mProjectTempo = (bpm > 0.0) ? bpm : 0.0;
+}
+
+//------------------------------------------------------------------------
+void Project6Dsp::setSlotFitMode (int index, FitMode mode)
+{
+	if (!isSlotIndex (index))
+		return;
+
+	// CHANGED WHILE PLAYING IS FINE. The stretcher keeps the musical
+	// position in mIdeal whichever mode is running, so switching modes
+	// mid-loop changes how the next sample is produced without moving
+	// where in the bar we are.
+	mVoices[index].fitMode = mode;
+}
+
+//------------------------------------------------------------------------
+FitMode Project6Dsp::slotFitMode (int index) const
+{
+	if (!isSlotIndex (index))
+		return FitMode::Off;
+
+	return mVoices[index].fitMode;
+}
+
+//------------------------------------------------------------------------
+double Project6Dsp::speedForVoice (const Voice& voice, const SampleBuffer* sample) const
+{
+	if (voice.fitMode == FitMode::Off || sample == nullptr)
+		return 1.0;
+
+	// fittable() is where the one-shot rule lives: a hit is never
+	// stretched, whatever the pad is set to, because its length says
+	// nothing about a tempo.
+	if (!sample->fittable ())
+		return 1.0;
+
+	return fitSpeed (sample->tempoBpm, mProjectTempo);
+}
+
+//------------------------------------------------------------------------
+double Project6Dsp::slotFitSpeed (int index) const
+{
+	if (!isSlotIndex (index))
+		return 1.0;
+
+	const Voice& voice = mVoices[index];
+	return speedForVoice (voice, voice.sample.load (std::memory_order_acquire));
 }
 
 //------------------------------------------------------------------------
@@ -388,13 +449,15 @@ void Project6Dsp::renderVoice (Voice& voice, float* dest, int numSamples)
 	// PLAY AT THE FILE'S OWN PITCH. A 48 k file in a 44.1 k session has to
 	// advance 1.088 source frames per output frame or it plays flat, and
 	// the sample rate is the host's to choose.
-	//
-	// Linear interpolation, which is what a sampler of this shape can
-	// justify: it is a gentle low-pass on the way up and aliases on the
-	// way down, both mildly at the ratios real files produce. Anything
-	// better is a resampler, and a resampler is a decision about latency
-	// and cost that belongs with the rest of the DSP.
 	const double step = (mSampleRate > 0.0) ? sample->sourceRate / mSampleRate : 1.0;
+
+	// AND THEN AT THE PROJECT'S TEMPO, which is a SEPARATE multiplier and
+	// is kept separate all the way into the stretcher: the resampling
+	// step is a fact about the file's sample rate and the fit is a fact
+	// about its tempo, and the pitch-preserving mode works precisely by
+	// applying one of them to its read head and the other to its clock.
+	const double speed = speedForVoice (voice, sample);
+	const FitMode mode = voice.fitMode;
 
 	for (int i = 0; i < numSamples; ++i)
 	{
@@ -426,21 +489,12 @@ void Project6Dsp::renderVoice (Voice& voice, float* dest, int numSamples)
 			voice.gain = std::min (1.0, voice.gain + mDeclickStep);
 		}
 
-		int first = static_cast<int> (voice.position);
-		if (first < 0 || first >= frames)
-			first = 0;                  // belt and braces against a rounding edge
-		const double fraction = voice.position - static_cast<double> (first);
-
-		// THE SECOND TAP WRAPS TO FRAME 0, so the interpolation is
-		// continuous across the loop point instead of fading into the
-		// last frame and jumping.
-		const int second = (first + 1 < frames) ? first + 1 : 0;
-
-		const size_t a = static_cast<size_t> (first) * kSampleChannels;
-		const size_t b = static_cast<size_t> (second) * kSampleChannels;
-
-		const double left  = source[a]     + (source[b]     - source[a])     * fraction;
-		const double right = source[a + 1] + (source[b + 1] - source[a + 1]) * fraction;
+		// ONE FRAME FROM THE PLAYHEAD, whichever mode it is running in.
+		// Linear interpolation with the second tap wrapping to frame 0
+		// still, so the loop point is continuous - that read now lives in
+		// the stretcher, where both modes can share it.
+		double left = 0.0, right = 0.0;
+		voice.stretch.next (source, frames, step, speed, mode, left, right);
 
 		// The declick envelope and the slot's level, in that order and
 		// both before the row bus. At the default level of 0 dB the
@@ -453,14 +507,6 @@ void Project6Dsp::renderVoice (Voice& voice, float* dest, int numSamples)
 		dest[static_cast<size_t> (i) * kChannelCount + 1]
 			+= static_cast<float> (right * voiceGain);
 
-		voice.position += step;
-		if (voice.position >= frames)
-		{
-			// fmod rather than a subtraction: a one-frame sample at a
-			// large rate ratio can pass the end several times over in a
-			// single output sample.
-			voice.position = std::fmod (voice.position, static_cast<double> (frames));
-		}
 	}
 
 	// WHERE THE PLAYHEAD ENDED UP, for the panel to draw - once a block
@@ -473,7 +519,7 @@ void Project6Dsp::renderVoice (Voice& voice, float* dest, int numSamples)
 	if (voice.sounding)
 	{
 		voice.progress.store (
-			static_cast<float> (voice.position / static_cast<double> (frames)),
+			static_cast<float> (voice.stretch.position () / static_cast<double> (frames)),
 			std::memory_order_relaxed);
 	}
 }

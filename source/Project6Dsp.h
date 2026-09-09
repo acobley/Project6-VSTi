@@ -19,7 +19,8 @@
 //
 // What it does, in order:
 //
-//     one voice per slot   ->  the slot's own level
+//     one voice per slot   ->  fitted to the project's tempo
+//                          ->  the slot's own level
 //                          ->  summed with the seven others on its ROW
 //                          ->  ============ the row's DIRECT OUT taps here
 //                          ->  the row's level
@@ -53,6 +54,7 @@
 
 #include "Project6Sample.h"
 #include "Project6Slots.h"
+#include "Project6Stretch.h"
 
 #include <atomic>
 #include <vector>
@@ -221,7 +223,38 @@ public:
 	    host. */
 	int soundingVoiceCount () const;
 
-	/** Where a slot's playhead is, in source frames. For the tests. */
+	//--------------------------------------------------------------------
+	// Fitting a pad's file to the project's tempo
+	//
+	// The two facts a fit needs arrive from opposite directions: the
+	// PROJECT's tempo comes from the host, once a block, and is the same
+	// for all sixty-four pads; the FILE's tempo travels inside the
+	// SampleBuffer, because it was read out of the file. Neither is
+	// stored twice, and the ratio between them is computed by the one
+	// shared fitSpeed() in Project6Stretch.h.
+	//--------------------------------------------------------------------
+
+	/** The host's tempo, from the process context. Zero or absent means
+	    NO FIT AT ALL - a host that sends no tempo plays every file as it
+	    arrived, rather than against an assumed 120. */
+	void setProjectTempo (double bpm);
+	double projectTempo () const { return mProjectTempo; }
+
+	/** What this pad does when its file's tempo is not the project's.
+	    Per pad, because the right answer is different for a bass loop and
+	    a hi-hat pattern. */
+	void setSlotFitMode (int index, FitMode mode);
+	FitMode slotFitMode (int index) const;
+
+	/** The speed this pad's file is actually being played at, all things
+	    considered: 1.0 when the pad is off, when either tempo is unknown,
+	    or when the file is a one-shot. For the tests and the tooltip. */
+	double slotFitSpeed (int index) const;
+
+	/** Where a slot's playhead is, in source frames. For the tests.
+
+	    THE MUSICAL POSITION, in both fit modes - where we are in the
+	    loop, not where the stretcher's read head happens to be. */
 	double slotPosition (int index) const;
 
 	/** How far through its file a slot is, 0 to 1, for the panel to draw.
@@ -281,8 +314,14 @@ private:
 
 		bool   sounding = false;   ///< mixing, fade-out included
 		bool   stopping = false;   ///< fading out, will stop when gain hits 0
-		double position = 0.0;     ///< in SOURCE frames, fractional
 		double gain     = 0.0;     ///< the declick envelope, 0..1
+
+		/** THE PLAYHEAD, and the tempo fit that moves it. It lives in the
+		    stretcher rather than here because the pitch-preserving mode
+		    needs two of them and the voice must not care which mode is
+		    on - see Project6Stretch.h. */
+		TimeStretcher stretch;
+		FitMode       fitMode = kDefaultFitMode;
 
 		/** The slot's own level. Two numbers because it is smoothed: the
 		    target is what the parameter says, the gain is where the
@@ -291,7 +330,7 @@ private:
 		double levelTarget = 1.0;
 		double levelGain   = -1.0;
 
-		/** `position` as a fraction of the file, for the panel. The ONLY
+		/** The playhead as a fraction of the file, for the panel. The ONLY
 		    field besides `sample` that crosses threads, and the only
 		    reason it is not just read off `position` directly: a double
 		    is not atomic, and a bar drawn from a half-written playhead
@@ -313,6 +352,11 @@ private:
 	    output. */
 	void renderVoice (Voice& voice, float* dest, int numSamples);
 
+	/** The speed a voice's file should play at, given its own tempo, the
+	    project's, and this pad's mode. One place, called from render and
+	    from the accessor, so the tooltip cannot disagree with the sound. */
+	double speedForVoice (const Voice& voice, const SampleBuffer* sample) const;
+
 	/** One row's bus. Only a gain: the summing is the scratch buffer's
 	    job and happens before this is applied. */
 	struct RowBus
@@ -332,6 +376,11 @@ private:
 	double mDeclickStep = 1.0;
 
 	double mSampleRate = 44100.0;
+
+	/** The host's tempo, or 0 when it has not said. ONE VALUE for all
+	    sixty-four pads, because there is one project. */
+	double mProjectTempo = 0.0;
+
 	double mTrimDb     = kTrimDefaultDb;
 	double mTarget     = 1.0;
 	/** -1 means "not started": the first block snaps to the target rather

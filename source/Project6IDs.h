@@ -83,6 +83,23 @@ static const char* const kProject6SlotPathAttribute  = "Path";
 static const char* const kProject6SlotStatusMessage    = "Project6SlotStatus";
 static const char* const kProject6SlotStatusAttribute  = "Status";
 
+/** What the reader made of the file's TEMPO, carried on that same
+    message rather than on one of its own.
+
+    The tempo is discovered at exactly the moment the status is - both
+    come out of the same parseWav call - and it is needed at exactly the
+    same moment, by the same tooltip. A second message would be a second
+    thing to keep in step, a second thing to re-send from setActive, and
+    a second chance for the panel to show a tempo for a file that failed
+    to load.
+
+    Tempo is a double and travels as a float attribute; the source is a
+    TempoSource and the one-shot flag a bool, and both travel as ints
+    because that is what the attribute list offers. */
+static const char* const kProject6SlotTempoAttribute   = "Tempo";
+static const char* const kProject6SlotTempoSrcAttribute = "TempoSource";
+static const char* const kProject6SlotOneShotAttribute = "OneShot";
+
 /** The playhead of every slot, for the progress bars on the pads.
 
     A REQUEST AND A REPLY, both on the UI thread: the controller asks on

@@ -204,14 +204,29 @@ tresult PLUGIN_API Project6Controller::setComponentState (IBStream* state)
 		                slotDivisionDef ().defaultNormalized ());
 		for (int slot = 0; slot < kSlotCount; ++slot)
 			setParamNormalized (slotDivisionParam (slot), divisions[slot]);
+
+		double fits[kSlotCount] = {};
+		readValueBlock (streamer, fits, kSlotCount, slotFitDef ().defaultNormalized ());
+		for (int slot = 0; slot < kSlotCount; ++slot)
+			setParamNormalized (slotFitParam (slot), fits[slot]);
 	}
 
 	// The processor is reading the files right now and will report each
 	// one; until it does, a restored slot is assumed good for the same
 	// reason a dropped one is.
 	for (int index = 0; index < kSlotCount; ++index)
+	{
 		mSlotStatus[index] = mSlots.loaded (index) ? SampleStatus::Loaded
 		                                           : SampleStatus::Empty;
+
+		// NO TEMPO UNTIL THE PROCESSOR REPORTS ONE. Assuming a file is
+		// good is safe - the status message corrects it in a moment -
+		// but assuming a TEMPO would put a number in the tooltip that
+		// was read from some other file.
+		mSlotTempo[index]       = 0.0;
+		mSlotTempoSource[index] = TempoSource::None;
+		mSlotOneShot[index]     = false;
+	}
 
 	// Usually there is no editor yet at this point - the host sets state
 	// before opening a window - but "usually" is not "never", and a panel
@@ -238,6 +253,51 @@ float Project6Controller::slotProgress (int index) const
 		return 0.f;
 
 	return mSlotProgress[index];
+}
+
+//------------------------------------------------------------------------
+double Project6Controller::slotTempo (int index) const
+{
+	if (!isSlotIndex (index))
+		return 0.0;
+
+	return mSlotTempo[index];
+}
+
+//------------------------------------------------------------------------
+TempoSource Project6Controller::slotTempoSource (int index) const
+{
+	if (!isSlotIndex (index))
+		return TempoSource::None;
+
+	return mSlotTempoSource[index];
+}
+
+//------------------------------------------------------------------------
+bool Project6Controller::slotOneShot (int index) const
+{
+	if (!isSlotIndex (index))
+		return false;
+
+	return mSlotOneShot[index];
+}
+
+//------------------------------------------------------------------------
+double Project6Controller::slotFitSpeed (int index, double projectBpm)
+{
+	if (!isSlotIndex (index))
+		return 1.0;
+
+	// THE SAME THREE RULES the DSP applies, through the same shared
+	// function: the mode, the one-shot flag, and fitSpeed's own handling
+	// of an unknown tempo at either end.
+	const FitMode mode = fitModeFromIndex (static_cast<int> (
+		slotFitDef ().toInternal (getParamNormalized (slotFitParam (index)))));
+
+	if (mode == FitMode::Off || mSlotOneShot[index])
+		return 1.0;
+
+	return fitSpeed (mSlotTempo[index], projectBpm);
 }
 
 //------------------------------------------------------------------------
@@ -269,6 +329,14 @@ void Project6Controller::setSlotPath (int index, const std::string& path)
 	// that has only just arrived and about which nothing is yet known,
 	// which is a lie about a different file.
 	mSlotStatus[index] = path.empty () ? SampleStatus::Empty : SampleStatus::Loaded;
+
+	// The tempo, though, is NOT guessed at optimistically. The previous
+	// file's tempo against the new file's name would be worse than no
+	// tempo at all, so the tooltip says nothing until the processor has
+	// actually read the file.
+	mSlotTempo[index]       = 0.0;
+	mSlotTempoSource[index] = TempoSource::None;
+	mSlotOneShot[index]     = false;
 
 	sendSlotToProcessor (index, path);
 
@@ -341,6 +409,21 @@ tresult PLUGIN_API Project6Controller::notify (IMessage* message)
 		    && isSlotIndex (static_cast<int> (index)))
 		{
 			mSlotStatus[index] = static_cast<SampleStatus> (status);
+
+			// The tempo rides along. Absent attributes leave the defaults
+			// in place rather than failing the whole message: an older
+			// processor - or a build mid-upgrade - should still get its
+			// status through.
+			double tempo = 0.0;
+			int64  source = static_cast<int64> (TempoSource::None);
+			int64  oneShot = 0;
+			message->getAttributes ()->getFloat (kProject6SlotTempoAttribute, tempo);
+			message->getAttributes ()->getInt (kProject6SlotTempoSrcAttribute, source);
+			message->getAttributes ()->getInt (kProject6SlotOneShotAttribute, oneShot);
+
+			mSlotTempo[index]       = (tempo > 0.0) ? tempo : 0.0;
+			mSlotTempoSource[index] = static_cast<TempoSource> (source);
+			mSlotOneShot[index]     = (oneShot != 0);
 
 			for (auto* editor : mEditors)
 				editor->refreshSlots ();

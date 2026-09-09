@@ -64,8 +64,18 @@ CRect Project6Editor::levelCell (int column, int row) const
 //------------------------------------------------------------------------
 CRect Project6Editor::divisionCell (int column, int row) const
 {
+	// In the MIDDLE of the strip now: the bar, this, then the fit box.
 	const CRect pad = slotCell (column, row);
-	return CRect (pad.right - kDivisionWidth, pad.bottom + kLevelGap,
+	const CCoord left = pad.left + kLevelWidth + kStripGap;
+	return CRect (left, pad.bottom + kLevelGap,
+	              left + kDivisionWidth, pad.bottom + kLevelGap + kStripHeight);
+}
+
+//------------------------------------------------------------------------
+CRect Project6Editor::fitCell (int column, int row) const
+{
+	const CRect pad = slotCell (column, row);
+	return CRect (pad.right - kFitWidth, pad.bottom + kLevelGap,
 	              pad.right, pad.bottom + kLevelGap + kStripHeight);
 }
 
@@ -298,6 +308,21 @@ bool PLUGIN_API Project6Editor::open (void* parent, const PlatformType& platform
 				           mController->getParamNormalized (slotDivisionParam (index)));
 
 			frame->addView (division);
+
+			// And the box beside THAT, saying what this pad does when its
+			// file's tempo is not the project's. Its own parameter for
+			// the same reason again - it is a setting, and every setting
+			// on this panel is automatable.
+			auto* fit = new SpySlotFit (
+				fitCell (column, row), this,
+				static_cast<int32_t> (slotFitParam (index)), index);
+
+			mControls[slotFitParam (index)] = fit;
+			if (mController)
+				showValue (fit, mController->getParamNormalized (slotFitParam (index)));
+
+			mFits[index] = fit;
+			frame->addView (fit);
 		}
 	}
 
@@ -482,11 +507,71 @@ void Project6Editor::refreshSlots ()
 			mController->getParamNormalized (
 				mController->hasLiveValues () ? liveSlotParam (index)
 				                              : slotPlayParam (index)) >= 0.5);
+
+		refreshFit (index);
 	}
 
 	// The column boxes summarise the slots, so they follow every change
 	// to one - a file arriving, a status coming back, a pad starting.
 	refreshColumns ();
+}
+
+//------------------------------------------------------------------------
+double Project6Editor::projectTempo () const
+{
+	// THE HOST'S TEMPO, as the panel knows it - which is only through the
+	// published bar phase and beats per bar, neither of which is a tempo.
+	//
+	// So it comes from the controller's own copy, published for exactly
+	// this: see kLiveTempo. Zero means the host has not said, and
+	// fitSpeed turns that into no fit, which is the same answer the DSP
+	// reaches from the same function.
+	if (mController == nullptr)
+		return 0.0;
+
+	return paramDef (kLiveTempo).toInternal (
+		mController->getParamNormalized (kLiveTempo));
+}
+
+//------------------------------------------------------------------------
+void Project6Editor::refreshFit (int index)
+{
+	if (!isSlotIndex (index) || mFits[index] == nullptr || mController == nullptr)
+		return;
+
+	const double fileBpm = mController->slotTempo (index);
+	const double speed   = mController->slotFitSpeed (index, projectTempo ());
+
+	// FITTED means the pad's audio is actually being altered. A mode of
+	// Off, an undetected tempo, a one-shot, or a file that is already at
+	// the project's tempo all come out as a speed of exactly 1 - and in
+	// every one of those cases the box has to say so rather than imply
+	// that something is happening.
+	mFits[index]->setFitted (std::fabs (speed - 1.0) > 1e-9);
+
+	// And the tooltip says WHICH of those it was, because they need
+	// different things done about them.
+	std::string text;
+	if (mController->slotStatus (index) == SampleStatus::Empty)
+		text.clear ();
+	else if (mController->slotOneShot (index))
+		text = "one-shot — never fitted";
+	else if (fileBpm <= 0.0)
+		text = "no tempo found in this file";
+	else
+	{
+		char line[128] = {};
+		std::snprintf (line, sizeof (line), "%.1f BPM (%s), playing at %.3fx",
+		               fileBpm, tempoSourceText (mController->slotTempoSource (index)),
+		               speed);
+		text = line;
+	}
+
+	mFits[index]->setTempoText (text);
+
+	// The same line on the pad above, which is the bigger target.
+	if (mSlots[index])
+		mSlots[index]->setTempoText (text);
 }
 
 //------------------------------------------------------------------------

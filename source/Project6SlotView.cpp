@@ -46,6 +46,11 @@ const CColor kSlotText     (255, 255, 255, 255);
     is something wrong with this one" rather than as an empty slot or a
     working one. The tooltip says what. */
 const CColor kSlotTextBad  (208, 132, 132, 255);
+/** A SETTING THAT IS NOT DOING ANYTHING: the fit mode on a pad whose file
+    has no tempo, or is a one-shot, or matches the project already. Still
+    legible - it is a real setting and it will apply the moment a file
+    with a tempo lands here - but visibly not in force. */
+const CColor kSlotTextIdle (140, 140, 140, 255);
 
 /** The border while the loop is running. The DXi's own lamp red. */
 const CColor kLiveBorder   (255,  70,  70, 255);
@@ -147,6 +152,16 @@ void SpySampleSlot::setStatus (SampleStatus status)
 }
 
 //------------------------------------------------------------------------
+void SpySampleSlot::setTempoText (const std::string& text)
+{
+	if (text == mTempoText)
+		return;
+
+	mTempoText = text;
+	refreshTooltip ();
+}
+
+//------------------------------------------------------------------------
 void SpySampleSlot::setSounding (bool sounding)
 {
 	if (sounding == mSounding)
@@ -193,6 +208,13 @@ void SpySampleSlot::refreshTooltip ()
 	{
 		text += "\n";
 		text += sampleStatusText (mStatus);
+	}
+	else if (!mTempoText.empty ())
+	{
+		// Only on a file that actually loaded: a tempo beside "not a WAV
+		// file" would be a number about a file that was never read.
+		text += "\n";
+		text += mTempoText;
 	}
 
 	setTooltipText (text.c_str ());
@@ -688,6 +710,127 @@ void SpySlotDivision::draw (CDrawContext* context)
 	                  r.top + (r.getHeight () - height) * 0.5 + height);
 
 	context->drawString (divisionShortName (current ()), line, kCenterText, true);
+
+	setDirty (false);
+}
+
+//------------------------------------------------------------------------
+// SpySlotFit
+//------------------------------------------------------------------------
+
+SpySlotFit::SpySlotFit (const CRect& size, IControlListener* listener,
+                        int32_t tag, int index)
+: CControl (size, listener, tag)
+, mIndex (index)
+{
+	setMouseEnabled (true);
+	setMin (0.f);
+	setMax (1.f);
+	refreshTooltip ();
+}
+
+//------------------------------------------------------------------------
+FitMode SpySlotFit::current () const
+{
+	// Through the parameter's own definition, like every other control
+	// here, so the box and the host agree about which value is which.
+	return fitModeFromIndex (static_cast<int> (
+		slotFitDef ().toInternal (getValueNormalized ())));
+}
+
+//------------------------------------------------------------------------
+void SpySlotFit::step (int delta)
+{
+	const int next = ((indexOfFitMode (current ()) + delta) % kFitModeCount
+	                  + kFitModeCount) % kFitModeCount;
+
+	beginEdit ();
+	setValueNormalized (static_cast<float> (
+		slotFitDef ().toNormalized (static_cast<double> (next))));
+	valueChanged ();
+	endEdit ();
+	refreshTooltip ();
+	invalid ();
+}
+
+//------------------------------------------------------------------------
+void SpySlotFit::setFitted (bool fitted)
+{
+	if (fitted == mFitted)
+		return;
+
+	mFitted = fitted;
+	refreshTooltip ();
+	invalid ();
+}
+
+//------------------------------------------------------------------------
+void SpySlotFit::setTempoText (const std::string& text)
+{
+	if (text == mTempoText)
+		return;
+
+	mTempoText = text;
+	refreshTooltip ();
+}
+
+//------------------------------------------------------------------------
+void SpySlotFit::refreshTooltip ()
+{
+	std::string text = "Tempo fit — click to step, right-click to step back";
+	if (!mTempoText.empty ())
+	{
+		text += "\n";
+		text += mTempoText;
+	}
+	setTooltipText (text.c_str ());
+}
+
+//------------------------------------------------------------------------
+void SpySlotFit::onMouseDownEvent (MouseDownEvent& event)
+{
+	const bool back = event.buttonState.isRight ()
+	                  || event.modifiers.has (ModifierKey::Control);
+
+	if (! event.buttonState.isLeft () && ! back)
+		return;
+
+	event.consumed = true;
+	step (back ? -1 : 1);
+}
+
+//------------------------------------------------------------------------
+void SpySlotFit::onMouseWheelEvent (MouseWheelEvent& event)
+{
+	event.consumed = true;
+	if (event.deltaY != 0.)
+		step (event.deltaY > 0. ? 1 : -1);
+}
+
+//------------------------------------------------------------------------
+void SpySlotFit::draw (CDrawContext* context)
+{
+	const CRect r = getViewSize ();
+
+	context->setFillColor (kWellFillFull);
+	context->drawRect (r, kDrawFilled);
+	drawWell (context, r, kWellHigh, kWellShadow);
+
+	context->setFont (panelFontTiny ());
+
+	// DIMMED WHEN NOTHING IS BEING FITTED. The mode is still readable -
+	// it is a setting, and it will apply the moment a file with a tempo
+	// arrives - but a bright "spd" against a pad that is playing its file
+	// untouched would be the panel telling a lie about the sound.
+	context->setFontColor (mFitted ? kSlotText : kSlotTextIdle);
+
+	const CCoord height = panelFontTiny ()->getSize () + 2.;
+	const CRect line (r.left,
+	                  r.top + (r.getHeight () - height) * 0.5,
+	                  r.right,
+	                  r.top + (r.getHeight () - height) * 0.5 + height);
+
+	context->drawString (fitModeShortName (current ()), line, kCenterText, true);
 
 	setDirty (false);
 }

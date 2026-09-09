@@ -34,6 +34,14 @@ uint32_t readU32 (const unsigned char* p)
 	       | (static_cast<uint32_t> (p[2]) << 16) | (static_cast<uint32_t> (p[3]) << 24);
 }
 
+float readF32 (const unsigned char* p)
+{
+	const uint32_t bits = readU32 (p);
+	float value = 0.f;
+	std::memcpy (&value, &bits, sizeof (value));
+	return value;
+}
+
 bool tagIs (const unsigned char* p, const char* tag)
 {
 	return p[0] == static_cast<unsigned char> (tag[0])
@@ -46,6 +54,36 @@ bool tagIs (const unsigned char* p, const char* tag)
 constexpr uint16_t kFormatPcm        = 0x0001;
 constexpr uint16_t kFormatFloat      = 0x0003;
 constexpr uint16_t kFormatExtensible = 0xFFFE;
+
+//------------------------------------------------------------------------
+// The "acid" chunk, as Sonic Foundry left it and every loop library since
+// has copied it. Twenty-four bytes, little-endian, and no version field -
+// which is why every offset below is a constant and the chunk is only
+// read when it is at least that long.
+//
+//    0  u32  flags        bit 0 set = ONE SHOT (a hit, not a loop)
+//    4  u16  root note
+//    6  u16  unknown      (always 0x8000)
+//    8  f32  unknown      (always 0)
+//   12  u32  number of beats
+//   16  u16  meter denominator
+//   18  u16  meter numerator
+//   20  f32  tempo, in BPM
+//
+// The fields this cares about are the flag, the beat count and the tempo.
+// The root note is for pitched one-shots and the meter is for the host's
+// own display; neither changes how a loop is fitted.
+//------------------------------------------------------------------------
+constexpr std::size_t kAcidChunkBytes  = 24;
+constexpr uint32_t    kAcidOneShotFlag = 0x01u;
+constexpr std::size_t kAcidFlagsOffset = 0;
+constexpr std::size_t kAcidBeatsOffset = 12;
+constexpr std::size_t kAcidTempoOffset = 20;
+
+bool believableTempo (double bpm)
+{
+	return bpm >= kMinBelievableBpm && bpm <= kMaxBelievableBpm;
+}
 
 //------------------------------------------------------------------------
 /** One sample, converted to -1..1.
@@ -122,7 +160,65 @@ const char* sampleStatusText (SampleStatus status)
 }
 
 //------------------------------------------------------------------------
-SampleStatus parseWav (const unsigned char* data, std::size_t size, SampleBuffer& out)
+const char* tempoSourceText (TempoSource source)
+{
+	switch (source)
+	{
+		case TempoSource::None:      return "no tempo";
+		case TempoSource::AcidTempo: return "ACID chunk";
+		case TempoSource::AcidBeats: return "ACID beat count";
+		case TempoSource::Inferred:  return "inferred from length";
+	}
+	return "unknown";
+}
+
+//------------------------------------------------------------------------
+double inferTempoFromLength (double seconds, double referenceBpm, int* beatsOut)
+{
+	if (beatsOut != nullptr)
+		*beatsOut = 0;
+
+	if (!(seconds > 0.0))
+		return 0.0;
+
+	const double reference = believableTempo (referenceBpm) ? referenceBpm : kReferenceBpm;
+
+	// The lengths loops are actually cut to: powers of two, and the
+	// triple-time counts that a 3/4 or a shuffle bar comes in. A count
+	// that is not on this list - seven beats, say - is not guessed at,
+	// because the file that is really seven beats long is rarer than the
+	// file that is four beats at a tempo outside the window.
+	static const int kCandidateBeats[] = { 1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64, 96, 128 };
+
+	double bestBpm      = 0.0;
+	int    bestBeats    = 0;
+	double bestDistance = 0.0;
+
+	for (const int beats : kCandidateBeats)
+	{
+		const double bpm = beats * 60.0 / seconds;
+		if (bpm < kMinInferredBpm || bpm > kMaxInferredBpm)
+			continue;
+
+		// LOG SPACE. Half tempo and double tempo are the same mistake,
+		// and a linear distance would call 180 nearer to 120 than 80 is.
+		const double distance = std::fabs (std::log (bpm / reference));
+		if (bestBeats == 0 || distance < bestDistance)
+		{
+			bestBpm      = bpm;
+			bestBeats    = beats;
+			bestDistance = distance;
+		}
+	}
+
+	if (beatsOut != nullptr)
+		*beatsOut = bestBeats;
+	return bestBpm;
+}
+
+//------------------------------------------------------------------------
+SampleStatus parseWav (const unsigned char* data, std::size_t size, SampleBuffer& out,
+                       double referenceBpm)
 {
 	out = SampleBuffer ();
 
@@ -144,6 +240,11 @@ SampleStatus parseWav (const unsigned char* data, std::size_t size, SampleBuffer
 
 	const unsigned char* audio = nullptr;
 	std::size_t audioBytes = 0;
+
+	bool     haveAcid  = false;
+	uint32_t acidFlags = 0;
+	uint32_t acidBeats = 0;
+	float    acidTempo = 0.f;
 
 	std::size_t offset = 12;
 	while (offset + 8 <= size)
@@ -179,6 +280,13 @@ SampleStatus parseWav (const unsigned char* data, std::size_t size, SampleBuffer
 		{
 			audio = data + body;
 			audioBytes = usable;
+		}
+		else if (tagIs (id, "acid") && usable >= kAcidChunkBytes)
+		{
+			acidFlags = readU32 (data + body + kAcidFlagsOffset);
+			acidBeats = readU32 (data + body + kAcidBeatsOffset);
+			acidTempo = readF32 (data + body + kAcidTempoOffset);
+			haveAcid  = true;
 		}
 
 		// Chunks are WORD-ALIGNED: an odd-length chunk is followed by a
@@ -247,11 +355,59 @@ SampleStatus parseWav (const unsigned char* data, std::size_t size, SampleBuffer
 	}
 
 	out.peak = peak;
+
+	//--------------------------------------------------------------------
+	// THE TEMPO, in order of trust. Each step only runs if the one before
+	// it found nothing, and the whole thing is allowed to find nothing.
+	//--------------------------------------------------------------------
+	const double durationSeconds = out.seconds ();
+
+	if (haveAcid)
+	{
+		out.oneShot = (acidFlags & kAcidOneShotFlag) != 0u;
+
+		if (believableTempo (static_cast<double> (acidTempo)))
+		{
+			out.tempoBpm    = static_cast<double> (acidTempo);
+			out.tempoSource = TempoSource::AcidTempo;
+			if (acidBeats > 0)
+				out.beats = static_cast<int> (acidBeats);
+		}
+		else if (acidBeats > 0 && durationSeconds > 0.0)
+		{
+			// A chunk with a beat count and no usable tempo is still
+			// worth having: the beat count is the musical fact, and the
+			// tempo it implies is arithmetic rather than a guess.
+			const double bpm = acidBeats * 60.0 / durationSeconds;
+			if (believableTempo (bpm))
+			{
+				out.tempoBpm    = bpm;
+				out.beats       = static_cast<int> (acidBeats);
+				out.tempoSource = TempoSource::AcidBeats;
+			}
+		}
+	}
+
+	// A ONE-SHOT IS NEVER INFERRED AT. The file said it is a hit; the
+	// length of a hit says nothing about a tempo, and a tempo attached to
+	// it here would be a licence to stretch it later.
+	if (out.tempoBpm <= 0.0 && !out.oneShot)
+	{
+		int inferredBeats = 0;
+		const double bpm = inferTempoFromLength (durationSeconds, referenceBpm, &inferredBeats);
+		if (bpm > 0.0)
+		{
+			out.tempoBpm    = bpm;
+			out.beats       = inferredBeats;
+			out.tempoSource = TempoSource::Inferred;
+		}
+	}
+
 	return SampleStatus::Loaded;
 }
 
 //------------------------------------------------------------------------
-SampleStatus loadWavFile (const std::string& path, SampleBuffer& out)
+SampleStatus loadWavFile (const std::string& path, SampleBuffer& out, double referenceBpm)
 {
 	out = SampleBuffer ();
 
@@ -281,7 +437,7 @@ SampleStatus loadWavFile (const std::string& path, SampleBuffer& out)
 	if (!file.read (reinterpret_cast<char*> (bytes.data ()), length))
 		return SampleStatus::Unreadable;
 
-	return parseWav (bytes.data (), bytes.size (), out);
+	return parseWav (bytes.data (), bytes.size (), out, referenceBpm);
 }
 
 //------------------------------------------------------------------------

@@ -39,6 +39,70 @@ constexpr int kSampleChannels = 2;
 constexpr double kMaxSampleSeconds = 60.0;
 
 //------------------------------------------------------------------------
+// TEMPO DETECTION
+//
+// A loop dropped on a pad is only useful at the project's tempo, so the
+// file has to admit what tempo it was recorded at. Two sources, in order
+// of how much they can be trusted:
+//
+//   1. the "acid" chunk, which most loop libraries embed. It carries a
+//      beat count, a tempo and - the part that matters most - a ONE-SHOT
+//      FLAG saying "this is a hit, not a loop, do not stretch it".
+//   2. failing that, the file's LENGTH, on the assumption that a loop is
+//      a whole number of beats. That is a guess, so it is bounded: a beat
+//      count is only accepted if the tempo it implies lands in a
+//      plausible range, and the candidate closest to a reference tempo
+//      wins.
+//
+// When neither works the tempo is left at zero and the file is played
+// exactly as it arrived. A wrong guess would stretch a sample that was
+// already right; leaving it alone is the failure that can be heard and
+// corrected.
+//------------------------------------------------------------------------
+
+/** The window an INFERRED tempo has to land in to be believed.
+
+    Nothing about a file's length says which of the many beat counts that
+    divide it was intended - two bars at 90 and four bars at 180 are the
+    same number of seconds. The range is what makes the guess decidable
+    at all, and it is deliberately narrow: dance-music loops live inside
+    it, and a file whose only plausible reading is 45 or 240 BPM is far
+    likelier to be a one-shot or a bar of silence than a loop. */
+constexpr double kMinInferredBpm = 70.0;
+constexpr double kMaxInferredBpm = 180.0;
+
+/** The tempo an inferred candidate is measured against when the caller
+    does not say. Every candidate is inside the window above, so the
+    reference is what breaks the tie between them; the project's own
+    tempo is the right answer and this is the stand-in for "no project". */
+constexpr double kReferenceBpm = 120.0;
+
+/** A tempo outside this is not a tempo, whoever claims it. Applied to the
+    "acid" chunk too, because a library that writes a zero or a 6000 into
+    that field is not to be followed off a cliff. */
+constexpr double kMinBelievableBpm = 20.0;
+constexpr double kMaxBelievableBpm = 400.0;
+
+//------------------------------------------------------------------------
+/** Where a sample's tempo came from - or that it has none.
+
+    Recorded rather than discarded because the panel says it out loud.
+    "90 BPM (ACID chunk)" and "90 BPM (inferred)" mean very different
+    things to someone wondering why a pad sounds wrong, and the second one
+    is a hint to go and look at the file. */
+enum class TempoSource
+{
+	None,       ///< no tempo known; the file plays exactly as it arrived
+	AcidTempo,  ///< the "acid" chunk stated a tempo
+	AcidBeats,  ///< the "acid" chunk stated a beat count; tempo from length
+	Inferred    ///< guessed from the file's length and a plausible beat count
+};
+
+/** One short phrase, for tooltips. Never null. */
+const char* tempoSourceText (TempoSource source);
+
+
+//------------------------------------------------------------------------
 /** What happened when a slot's file was read.
 
     A slot that will not play has to be able to SAY SO. The alternative -
@@ -77,7 +141,25 @@ struct SampleBuffer
 	    tests print and for anything that later wants to normalise. */
 	float  peak = 0.f;
 
+	/** The tempo this file was recorded at, or 0 when it is not known.
+	    Never a fallback value: zero means "do not fit this", and a
+	    plausible-looking default here would silently stretch every file
+	    whose tempo could not be read. */
+	double tempoBpm = 0.0;
+	/** How many beats long the file was taken to be, when that is known.
+	    Zero otherwise. Carried because it is what makes a detected tempo
+	    checkable by eye - four beats at 120 is a two-second file. */
+	int    beats = 0;
+	/** The "acid" chunk's one-shot flag. A one-shot is a hit, not a loop:
+	    fitting it to the project tempo would change the length of a snare
+	    for no reason, so it is NEVER fitted whatever the pad is set to. */
+	bool   oneShot = false;
+	TempoSource tempoSource = TempoSource::None;
+
 	int channels () const { return kSampleChannels; }
+	/** True when this file may be stretched to the project's tempo: we
+	    know what tempo it is, and it is not a one-shot. */
+	bool fittable () const { return tempoBpm > 0.0 && !oneShot; }
 	bool empty () const { return frameCount <= 0 || samples.empty (); }
 	double seconds () const { return (sourceRate > 0.0) ? frameCount / sourceRate : 0.0; }
 };
@@ -92,14 +174,36 @@ struct SampleBuffer
     including the odd-length ones that carry a pad byte the size field
     does not mention.
 
+    `referenceBpm` only affects the INFERRED case - it is the tempo an
+    ambiguous file is assumed to be nearest, and should be the project's
+    own tempo when there is one. Pass 0 for kReferenceBpm.
+
     `out` is left empty unless the return is SampleStatus::Loaded. */
-SampleStatus parseWav (const unsigned char* data, std::size_t size, SampleBuffer& out);
+SampleStatus parseWav (const unsigned char* data, std::size_t size, SampleBuffer& out,
+                       double referenceBpm = 0.0);
 
 /** Read a file from disk and parse it.
 
     ON THE UI THREAD ONLY. It opens a file, allocates and decodes; none of
     those things may happen on the audio thread. */
-SampleStatus loadWavFile (const std::string& path, SampleBuffer& out);
+SampleStatus loadWavFile (const std::string& path, SampleBuffer& out,
+                          double referenceBpm = 0.0);
+
+//------------------------------------------------------------------------
+/** Guess a tempo from a duration, by assuming a whole number of beats.
+
+    Exposed separately from parseWav because it is the part that is a
+    GUESS, and a guess deserves its own tests. Returns 0 when no candidate
+    beat count puts the tempo inside [kMinInferredBpm, kMaxInferredBpm];
+    otherwise returns that tempo and, if `beatsOut` is not null, the beat
+    count it came from.
+
+    Candidates are the musical lengths a loop actually comes in - powers
+    of two and their triple-time neighbours. Ties are broken by closeness
+    to `referenceBpm` IN LOG SPACE, because tempo is a ratio: 60 and 240
+    are equally far from 120, and measuring the distance linearly would
+    make the faster half of the window win every time. */
+double inferTempoFromLength (double seconds, double referenceBpm, int* beatsOut = nullptr);
 
 //------------------------------------------------------------------------
 } // namespace Project6

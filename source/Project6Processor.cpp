@@ -118,7 +118,10 @@ TransportInfo Project6Processor::readTransport (const ProcessData& data) const
 	info.musical = haveTempo && haveSig && havePos;
 
 	if (haveTempo)
-		info.tempoBpm = context->tempo;
+	{
+		info.tempoBpm   = context->tempo;
+		info.tempoKnown = true;
+	}
 	if (haveSig)
 	{
 		info.sigNumerator   = context->timeSigNumerator;
@@ -215,6 +218,17 @@ void Project6Processor::publishLiveValues (ProcessData& data)
 		: 4;
 	publishOne (changes, kLiveBeatsPerBar,
 	            liveBeatsPerBarDef ().toNormalized (static_cast<double> (beats)));
+
+	// THE TEMPO, for the pads' tooltips. Zero when the host has not said,
+	// which is what makes the panel's fitSpeed() agree with the DSP's -
+	// they are the same function given the same number.
+	//
+	// publishOne only sends what MOVED, so a fixed-tempo project pays for
+	// this once and not once a block.
+	publishOne (changes, kLiveTempo,
+	            liveTempoDef ().toNormalized (
+	                info.tempoKnown ? std::min (999.0, std::max (0.0, info.tempoBpm))
+	                                : 0.0));
 
 	for (int slot = 0; slot < kSlotCount; ++slot)
 		publishOne (changes, liveSlotParam (slot), mDsp.slotSounding (slot) ? 1.0 : 0.0);
@@ -491,6 +505,23 @@ void Project6Processor::sendSlotStatusToController (int index)
 		message->getAttributes ()->setInt (kProject6SlotIndexAttribute, index);
 		message->getAttributes ()->setInt (kProject6SlotStatusAttribute,
 		                                   static_cast<int64> (mStatus[index]));
+
+		// WHAT WAS READ OUT OF THE FILE, on the same message. Zero and
+		// TempoSource::None for an empty slot or one whose file failed,
+		// so a pad that will not play never shows a tempo.
+		double tempo = 0.0;
+		int64  source = static_cast<int64> (TempoSource::None);
+		int64  oneShot = 0;
+		if (const auto& sample = mSamples[index])
+		{
+			tempo   = sample->tempoBpm;
+			source  = static_cast<int64> (sample->tempoSource);
+			oneShot = sample->oneShot ? 1 : 0;
+		}
+		message->getAttributes ()->setFloat (kProject6SlotTempoAttribute, tempo);
+		message->getAttributes ()->setInt (kProject6SlotTempoSrcAttribute, source);
+		message->getAttributes ()->setInt (kProject6SlotOneShotAttribute, oneShot);
+
 		sendMessage (message);
 	}
 }
@@ -667,6 +698,11 @@ tresult PLUGIN_API Project6Processor::process (ProcessData& data)
 		// copy would be one more thing to get out of step.
 		mDivision[slot] = divisionFromIndex (static_cast<int> (
 			slotDivisionDef ().toInternal (mParams[slotDivisionParam (slot)])));
+
+		// And what this pad does about the project's tempo. Read every
+		// block for the same reason: it is a conversion, not a state.
+		mDsp.setSlotFitMode (slot, fitModeFromIndex (static_cast<int> (
+			slotFitDef ().toInternal (mParams[slotFitParam (slot)]))));
 	}
 
 	// And the eight row buses, the same way.
@@ -674,6 +710,13 @@ tresult PLUGIN_API Project6Processor::process (ProcessData& data)
 		mDsp.setRowLevelDb (row, rowLevelDef ().toInternal (mParams[rowLevelParam (row)]));
 
 	const TransportInfo transport = readTransport (data);
+
+	// THE PROJECT'S TEMPO, for the pads that are fitted to it. Gated on
+	// tempoKnown and not on `musical`: a stopped transport still has a
+	// tempo, and a host that reports a tempo without a position can
+	// still say what 90 BPM is. A host that reports NO tempo sends zero,
+	// which fitSpeed turns into no fit at all rather than a guess.
+	mDsp.setProjectTempo (transport.tempoKnown ? transport.tempoBpm : 0.0);
 
 	//--------------------------------------------------------------------
 	// The three levels of knowledge, degrading separately.
@@ -861,6 +904,7 @@ tresult PLUGIN_API Project6Processor::getState (IBStream* state)
 	writeValueBlock (streamer, &mParams[kSlotLevelBase], kSlotCount);
 	writeValueBlock (streamer, &mParams[kRowLevelBase], kSlotRows);
 	writeValueBlock (streamer, &mParams[kSlotDivisionBase], kSlotCount);
+	writeValueBlock (streamer, &mParams[kSlotFitBase], kSlotCount);
 
 	return kResultOk;
 }
@@ -921,6 +965,8 @@ tresult PLUGIN_API Project6Processor::setState (IBStream* state)
 	                rowLevelDef ().defaultNormalized ());
 	readValueBlock (streamer, &mParams[kSlotDivisionBase], kSlotCount,
 	                slotDivisionDef ().defaultNormalized ());
+	readValueBlock (streamer, &mParams[kSlotFitBase], kSlotCount,
+	                slotFitDef ().defaultNormalized ());
 
 	// The paths are back; now read the files. setState is not the audio
 	// thread, so this is where sixty-four disk reads belong - and a slot

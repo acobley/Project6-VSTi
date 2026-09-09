@@ -1059,6 +1059,142 @@ int main ()
 	}
 
 	//--------------------------------------------------------------------
+	section ("7. Fitting a pad's file to the project's tempo");
+	//--------------------------------------------------------------------
+	{
+		// A file that KNOWS its own tempo. Sixteen frames at 1000 Hz is
+		// 16 ms of audio; the numbers below only care about the ratio.
+		auto makeTimed = [] (double tempoBpm, bool oneShot)
+		{
+			SampleBuffer buffer;
+			buffer.frameCount = 16;
+			buffer.sourceRate = 1000.0;
+			buffer.samples.assign (16 * kSampleChannels, 0.f);
+			for (int f = 0; f < 16; ++f)
+				buffer.samples[static_cast<size_t> (f) * 2] = 0.1f * (f + 1);
+			buffer.tempoBpm = tempoBpm;
+			buffer.oneShot  = oneShot;
+			buffer.tempoSource = TempoSource::AcidTempo;
+			return buffer;
+		};
+
+		const SampleBuffer at100 = makeTimed (100.0, false);
+		const SampleBuffer hit   = makeTimed (100.0, true);
+		const SampleBuffer noTempo = makeTimed (0.0, false);
+
+		//----------------------------------------------------------------
+		// The speed the pad ends up at, which is what everything else
+		// hangs off.
+		//----------------------------------------------------------------
+		{
+			Project6Dsp dsp;
+			dsp.setSampleRate (1000.0);
+			dsp.setSlotSample (5, &at100);
+
+			// No project tempo yet: NOTHING is fitted, whatever the mode.
+			dsp.setSlotFitMode (5, FitMode::Varispeed);
+			check (close (dsp.slotFitSpeed (5), 1.0, 1e-12),
+			       "with no project tempo nothing is fitted");
+
+			// The example from the request: a 100 BPM file, a 90 BPM
+			// project, and the file plays at 0.9.
+			dsp.setProjectTempo (90.0);
+			check (close (dsp.projectTempo (), 90.0, 1e-12), "the project tempo is kept");
+			check (close (dsp.slotFitSpeed (5), 0.9, 1e-12),
+			       "a 100 BPM file in a 90 BPM project plays at 0.9x");
+
+			// OFF means off, and it is per pad.
+			dsp.setSlotFitMode (5, FitMode::Off);
+			check (dsp.slotFitMode (5) == FitMode::Off, "the mode is remembered");
+			check (close (dsp.slotFitSpeed (5), 1.0, 1e-12), "and Off is not fitted");
+
+			dsp.setSlotFitMode (5, FitMode::PitchPreserved);
+			check (close (dsp.slotFitSpeed (5), 0.9, 1e-12),
+			       "the pitch-preserving mode asks for the same speed");
+
+			// A ONE-SHOT is never fitted. This is the rule that keeps a
+			// snare from being stretched by a bar of arithmetic.
+			dsp.setSlotSample (5, &hit);
+			check (close (dsp.slotFitSpeed (5), 1.0, 1e-12), "a one-shot is never fitted");
+			check (! close (dsp.slotFitSpeed (5), 0.9, 1e-12),
+			       "NEGATIVE CONTROL: and the same file without the flag would have been");
+
+			// Neither is a file whose tempo could not be read.
+			dsp.setSlotSample (5, &noTempo);
+			check (close (dsp.slotFitSpeed (5), 1.0, 1e-12),
+			       "a file with no detected tempo plays as it arrived");
+
+			// An empty slot and a bad index answer 1.0 rather than
+			// dividing by something that is not there.
+			dsp.setSlotSample (5, nullptr);
+			check (close (dsp.slotFitSpeed (5), 1.0, 1e-12), "an empty slot is 1.0");
+			check (close (dsp.slotFitSpeed (-1), 1.0, 1e-12), "and so is a bad index");
+			check (dsp.slotFitMode (kSlotCount) == FitMode::Off, "at either end");
+		}
+
+		//----------------------------------------------------------------
+		// And that speed actually moves the playhead. A speed reported
+		// but not applied is the failure this whole project keeps coming
+		// back to - a control that looks live and is not.
+		//----------------------------------------------------------------
+		{
+			Project6Dsp dsp;
+			dsp.setSampleRate (1000.0);          // so the step is exactly 1
+			dsp.setOutputTrimDb (kTrimMaxDb);
+			dsp.setSlotSample (6, &at100);
+			dsp.setProjectTempo (90.0);
+			dsp.setSlotFitMode (6, FitMode::Varispeed);
+			dsp.setSlotPlaying (6, true);
+
+			std::vector<float> out (8 * kChannelCount, 0.f);
+			dsp.render (out.data (), 8);
+
+			// Eight output samples at 0.9x is 7.2 source frames.
+			check (close (dsp.slotPosition (6), 7.2, 1e-9),
+			       "eight samples at 0.9x is 7.2 frames in");
+			check (! close (dsp.slotPosition (6), 8.0, 1e-9),
+			       "NEGATIVE CONTROL: it is not still playing at 1.0x");
+
+			// The PROGRESS the panel draws is that same musical position.
+			check (close (dsp.slotProgress (6), 7.2 / 16.0, 1e-6),
+			       "and the progress bar reads the same position");
+
+			// A tempo change mid-loop is picked up on the next block,
+			// because the speed is computed per block and never cached.
+			// Three samples only, so the answer does not wrap round the
+			// sixteen-frame file and land back where it started - which
+			// would be a test that passed whether or not it worked.
+			dsp.setProjectTempo (200.0);
+			dsp.render (out.data (), 3);
+			check (close (dsp.slotPosition (6), 7.2 + 3 * 2.0, 1e-9),
+			       "a tempo change takes effect on the next block");
+			check (! close (dsp.slotPosition (6), 7.2 + 3 * 0.9, 1e-9),
+			       "NEGATIVE CONTROL: the old speed is not cached anywhere");
+		}
+
+		//----------------------------------------------------------------
+		// Switching modes must not move the music.
+		//----------------------------------------------------------------
+		{
+			Project6Dsp dsp;
+			dsp.setSampleRate (1000.0);
+			dsp.setSlotSample (2, &at100);
+			dsp.setProjectTempo (90.0);
+			dsp.setSlotFitMode (2, FitMode::Varispeed);
+			dsp.setSlotPlaying (2, true);
+
+			std::vector<float> out (4 * kChannelCount, 0.f);
+			dsp.render (out.data (), 4);
+			const double before = dsp.slotPosition (2);
+
+			dsp.setSlotFitMode (2, FitMode::PitchPreserved);
+			check (close (dsp.slotPosition (2), before, 1e-12),
+			       "changing mode does not move the playhead");
+			check (before > 0.0, "NEGATIVE CONTROL: and it had moved in the first place");
+		}
+	}
+
+	//--------------------------------------------------------------------
 	std::printf ("\n%s  (%d failure%s)\n",
 	             gFailures == 0 ? "ALL TESTS PASSED" : "TESTS FAILED",
 	             gFailures, gFailures == 1 ? "" : "s");

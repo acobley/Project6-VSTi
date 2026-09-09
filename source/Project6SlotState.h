@@ -35,7 +35,7 @@ namespace Project6 {
     simply stops early, which is the rule the parameter block already
     follows. It is written so that a future format change that cannot be
     handled that way has something to test. */
-constexpr Steinberg::int32 kStateVersion = 5;
+constexpr Steinberg::int32 kStateVersion = 6;
 
 /** A sanity bound on one path, so a corrupt or hostile stream cannot ask
     for an arbitrary allocation. Longer than any real path: macOS stops

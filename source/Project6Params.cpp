@@ -78,6 +78,36 @@ const ParamDef& slotDivisionDef ()
 }
 
 //------------------------------------------------------------------------
+const ParamDef& liveTempoDef ()
+{
+	// 0 to 999 BPM. The top is absurd on purpose: this is REPORTING what
+	// a host said, not deciding what is reasonable, and a tempo clamped
+	// on the way to the panel would make the tooltip disagree with the
+	// DSP, which is handed the host's figure untouched.
+	static const ParamDef def =
+		{ kLiveTempo, "Tempo", "BPM", ParamType::Float,
+		  0.0, 999.0, 0.0, 0.0, 999.0, 0, false };
+	return def;
+}
+
+//------------------------------------------------------------------------
+const ParamDef& slotFitDef ()
+{
+	// Enumerated, so a host's own list reads "Varispeed" rather than
+	// "0.5". The default is kDefaultFitMode - varispeed - and the reason
+	// it is not Off is written where the constant is: a pad that is not
+	// fitted plays a loop at the wrong tempo, which is the one thing this
+	// feature exists to stop.
+	static const ParamDef def =
+		{ kSlotFitBase, "Slot Fit", "", ParamType::Enum,
+		  0.0, static_cast<double> (kFitModeCount - 1),
+		  static_cast<double> (indexOfFitMode (kDefaultFitMode)),
+		  0.0, static_cast<double> (kFitModeCount - 1),
+		  kFitModeCount - 1, false };
+	return def;
+}
+
+//------------------------------------------------------------------------
 const ParamDef& liveTransportDef ()
 {
 	// An integer rather than an enumerated parameter: it is hidden, so no
@@ -180,10 +210,11 @@ const std::vector<std::string>& rowNames ()
 //------------------------------------------------------------------------
 static_assert (kNumTableParams == 1, "one described parameter: the output trim");
 static_assert (kNumParams == kNumTableParams + kSlotCount + 3 + kSlotCount + kSlotCount
-                                 + kSlotRows + kSlotCount,
+                                 + kSlotRows + kSlotCount + kSlotCount + 1,
                "the trim, 64 triggers, the transport, the bar phase, the beats per "
-               "bar, 64 published slot states, 64 slot levels, 8 row levels and 64 "
-               "launch divisions is every parameter there is");
+               "bar, 64 published slot states, 64 slot levels, 8 row levels, 64 "
+               "launch divisions, 64 tempo fits and the published tempo is every "
+               "parameter there is");
 // THE APPEND THE BOUND WAS WRITTEN FOR. The published block now sits
 // after the triggers, so isSlotPlayParam's upper bound is load-bearing
 // rather than merely careful.
@@ -204,7 +235,29 @@ static_assert (kRowLevelEnd < kNumParams,
                "be bounded by kRowLevelEnd and never by kNumParams");
 static_assert (kSlotDivisionBase == kRowLevelEnd,
                "the launch divisions start where the row levels end");
-static_assert (kSlotDivisionEnd == kNumParams, "and currently run to the end");
+static_assert (kSlotDivisionEnd < kNumParams,
+               "the tempo fits follow the launch divisions, so isSlotDivisionParam "
+               "must be bounded by kSlotDivisionEnd and never by kNumParams");
+static_assert (kSlotFitBase == kSlotDivisionEnd,
+               "the tempo fits start where the launch divisions end");
+static_assert (kSlotFitEnd < kNumParams, "and something follows them");
+static_assert (kLiveTempo == kSlotFitEnd, "the published tempo is what follows them");
+static_assert (kLiveTempo + 1 == kNumParams, "and it is currently the last id");
+// THE SECOND CLAUSE, asserted. A published value outside the published
+// block is exactly the thing that would be silently automatable if
+// isLiveParam were left as one range.
+static_assert (isLiveParam (kLiveTempo), "the published tempo is a published value");
+static_assert (! isSlotFitParam (kLiveTempo), "and is not a tempo fit");
+static_assert (! isLiveParam (slotFitParam (kSlotCount - 1)),
+               "NEGATIVE CONTROL: and the id before it is not published");
+static_assert (! isSlotDivisionParam (slotFitParam (0)),
+               "a tempo fit is not a launch division");
+static_assert (! isRowLevelParam (slotFitParam (0)), "nor a row level");
+static_assert (! isSlotLevelParam (slotFitParam (0)), "nor a slot level");
+static_assert (! isLiveParam (slotFitParam (0)), "nor a published value");
+static_assert (slotOfFitParam (slotFitParam (63)) == 63, "the two directions agree");
+static_assert (isSlotFitParam (slotFitParam (kSlotCount - 1)),
+               "the last one is in the block");
 static_assert (! isRowLevelParam (slotDivisionParam (0)),
                "a launch division is not a row level");
 static_assert (! isSlotLevelParam (slotDivisionParam (0)), "nor a slot level");
@@ -254,6 +307,10 @@ const ParamDef& paramDef (Steinberg::Vst::ParamID id)
 		return rowLevelDef ();
 	if (isSlotDivisionParam (id))
 		return slotDivisionDef ();
+	if (isSlotFitParam (id))
+		return slotFitDef ();
+	if (id == kLiveTempo)
+		return liveTempoDef ();
 
 	return kParams[kOutputTrim];
 }
@@ -282,12 +339,18 @@ const char* paramTitle (Steinberg::Vst::ParamID id)
 		return slotNames ("Launch")[
 			static_cast<std::size_t> (slotOfDivisionParam (id))].c_str ();
 
+	if (isSlotFitParam (id))
+		return slotNames ("Fit")[
+			static_cast<std::size_t> (slotOfFitParam (id))].c_str ();
+
 	if (id == kLiveTransport)
 		return liveTransportDef ().title;
 	if (id == kLiveBarPhase)
 		return liveBarPhaseDef ().title;
 	if (id == kLiveBeatsPerBar)
 		return liveBeatsPerBarDef ().title;
+	if (id == kLiveTempo)
+		return liveTempoDef ().title;
 
 	if (id == kBypass)
 		return "Bypass";
@@ -306,6 +369,11 @@ const char* paramChoiceName (Steinberg::Vst::ParamID id, int choice)
 	// come to different views about what a division is called.
 	if (isSlotDivisionParam (id))
 		return divisionName (divisionFromIndex (choice));
+
+	// "Off", "Varispeed", "Keep pitch" - named once, in
+	// Project6Stretch.h, for the same reason.
+	if (isSlotFitParam (id))
+		return fitModeName (fitModeFromIndex (choice));
 
 	return (choice == 0) ? "Off" : "On";
 }

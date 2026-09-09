@@ -126,9 +126,10 @@ What was run, and passed:
 ```sh
 cd ~/DXi-DEv/Project6-VSTi
 
-# 1. All five test suites, from a clean build.
+# 1. All six test suites, from a clean build.
 c++ -std=c++17 -O2 -Wall -Isource tests/DspTests.cpp \
     source/Project6Dsp.cpp source/Project6Sample.cpp \
+    source/Project6Slots.cpp source/Project6Stretch.cpp \
     -o /tmp/dsptests && /tmp/dsptests
 
 c++ -std=c++17 -O2 -Wall -Isource \
@@ -140,10 +141,14 @@ c++ -std=c++17 -O2 -Wall -Isource \
 c++ -std=c++17 -O2 -Wall -Isource tests/TransportTests.cpp \
     source/Project6Transport.cpp -o /tmp/transporttests && /tmp/transporttests
 
+c++ -std=c++17 -O2 -Wall -Isource tests/StretchTests.cpp \
+    source/Project6Stretch.cpp -o /tmp/stretchtests && /tmp/stretchtests
+
 SDK=~/DXi-DEv/VocalFilter-VSTi/external/vst3sdk        # any existing checkout
 c++ -std=c++17 -O2 -Wall -Isource -I$SDK \
     tests/ParamsTests.cpp source/Project6Params.cpp source/Project6Dsp.cpp \
-    source/Project6Sample.cpp -o /tmp/paramstests && /tmp/paramstests
+    source/Project6Sample.cpp source/Project6Transport.cpp \
+    source/Project6Stretch.cpp -o /tmp/paramstests && /tmp/paramstests
 
 # 2. Every source compiled to an OBJECT FILE - not -fsyntax-only, which
 #    passes a header that declares a function nobody defined.
@@ -164,16 +169,16 @@ python3 tools/render-routing.py
 
 `-DRELEASE=1` is required or `fdebug.h` refuses to compile.
 
-Results, at the playhead commit: **all five suites all-pass**, all thirteen
-translation units produced object files with no errors, all 72 undefined
-`Project6::` symbols resolved within the set, `check-editor` reported ok, and
+Results, at the tempo-fit commit: **all six suites all-pass**, all fourteen
+translation units produced object files with no errors, every undefined
+`Project6::` symbol resolved within the set, `check-editor` reported ok, and
 `render-routing` regenerated the diagram from the headers.
 The panel's dimensions are checked by `static_assert` rather than by eye —
-847 × 624, with the grid meeting the fader column, the faders meeting the
-right margin, the launch boxes clear of the pads, and the level bar and
-division box filling a cell's width exactly.
+943 × 624, with the grid meeting the fader column, the faders meeting the
+right margin, the launch boxes clear of the pads, and the level bar, the
+division box and the fit box filling a cell's width exactly.
 
-Re-run all six before every commit. Adding a source file also means re-running
+Re-run all seven before every commit. Adding a source file also means re-running
 `./setup-xcode.sh --no-open` before the next Xcode build, or the project
 compiles the old file list.
 
@@ -189,7 +194,8 @@ one is the first thing to check in a real DAW: if the display reads
 
 Everything the tests *do* reach — every WAV format, the loop wrap, the rate
 conversion, the envelope, the bar arithmetic in five time signatures, the
-parameter blocks' bounds — is asserted rather than assumed.
+parameter blocks' bounds, and the *measured pitch* out of both fit modes — is
+asserted rather than assumed.
 
 **Still to do on a Mac**, in this order:
 
@@ -866,7 +872,155 @@ Two smaller things:
   while anything under it is waiting for the bar. A lamp could only have said
   "some".
 
-## 11. The SDK
+## 11. Fitting a file to the project's tempo
+
+A loop recorded at 100 BPM in a 90 BPM project has to be made 90 BPM. There
+are only two honest ways to do it, they sound completely different, and
+neither is better — so **the pad chooses**, and what is *not* offered is a
+third option that pretends to be free.
+
+* **Varispeed** — read the file at a different rate. Slower means longer *and
+  lower*, the way a tape machine slowed down is lower. Perfect quality, wrong
+  pitch. It is what a hardware sampler does and what most people mean.
+* **Keep pitch** — WSOLA: hold the reading rate and repeatedly splice the
+  playhead forward or back so the file takes a different amount of time to get
+  through. Right pitch, and the splices are audible on some material.
+
+The **default is varispeed**, and the reason is not quality. A pad whose tempo
+detection was wrong sounds *obviously* wrong varispeeded — it is in the wrong
+key, somebody hears it and switches it off. The same wrong detection in
+keep-pitch mode sounds like a slightly ragged loop, which is far easier to
+leave in a finished track by mistake.
+
+### Where the file's tempo comes from
+
+`Project6Sample` now reads the **`acid` chunk** most loop libraries embed —
+twenty-four bytes carrying a beat count, a tempo, and the field that matters
+most, a **one-shot flag**. A one-shot is a hit, not a loop; its length says
+nothing about a tempo, and it is **never fitted whatever the pad is set to**.
+
+Failing that, the tempo is **inferred from the file's length**, assuming a
+whole number of beats. That is a guess, so it is bounded three ways: only the
+beat counts a loop is actually cut to are tried (powers of two and their
+triple-time neighbours), the implied tempo has to land between 70 and 180 BPM,
+and the winner is the candidate nearest a reference — the *project's* tempo
+when there is one — measured **in log space**, because tempo is a ratio and a
+linear distance would call 180 nearer to 120 than 80 is.
+
+If neither works, `tempoBpm` stays **zero and the file plays exactly as it
+arrived**. Zero is not a missing value here, it is an answer: a wrong guess
+would stretch a sample that was already right, and *that* is the failure
+nobody notices.
+
+Which of the three it was is recorded and shown — "100.0 BPM (ACID chunk)"
+against "90.0 BPM (inferred from length)" mean very different things to
+somebody wondering why a pad sounds wrong.
+
+### The stretcher
+
+`Project6Stretch.{h,cpp}` — SDK-free like the rest of the audio line, and
+**it owns the playhead for both modes**. That is the point of the class: the
+DSP asks for one output frame at a time and never has to know which mode
+produced it, and the pad's progress bar reads the same number either way,
+because that number is the **musical** position — where we are in the loop —
+and not where either of the stretcher's two read heads is sitting.
+
+Keep-pitch keeps two positions:
+
+| | advances by | is |
+|---|---|---|
+| `mIdeal` | `step × speed` | where the music should be; what `position()` reports |
+| `mRead` | `step` | where the file is actually read; why the pitch survives |
+
+They drift apart at exactly the rate the tempo differs by. Every hop (~34 ms)
+the read head jumps towards the ideal head, and the jump is placed at the
+offset — within a ±6 ms search — where the waveform *after* it best continues
+the waveform *before* it, by normalised cross-correlation. The correlation is
+**normalised by the candidate's own energy** or every splice lands on the
+loudest moment in the window instead of the best-matching one, which is how a
+stretcher turns a drum loop into a stutter on the kick. The two heads are
+cross-faded over 12 ms — **linearly**, not equal-power, because WSOLA has
+already put them in phase and an equal-power curve would bulge at every join.
+
+Because the jump is measured from the *live* drift, the timing
+**self-corrects**: a hop that had to settle for a poor offset is made up by
+the next one.
+
+Two fallbacks, both to varispeed: a file shorter than two overlaps has nowhere
+to put a splice, and a speed of exactly 1.0 never drifts, so no splice ever
+fires and the output is **bit-identical** to the file. `DspTests` still passes
+its unity assertions unchanged, which is the evidence.
+
+The costs are bounded rather than fixed: 64 correlation taps and at most 257
+candidate offsets **whatever the sample rate**, because a hop that quadrupled
+its work at 192 k would be a deadline missed on a thread that has one.
+
+### What the tests actually measure
+
+`tests/StretchTests.cpp` **measures the pitch**, by counting zero crossings of
+a sine that went in at 441 Hz:
+
+> varispeed at 0.9× comes out at 396.9 Hz; keep-pitch at 0.9× comes out at
+> 441 Hz; **both** end up nine tenths of the way through the file.
+
+That contrast is the negative control of the whole feature. Trusting the
+mode's name would let a stretcher that had been quietly switched off pass
+every other assertion in the file.
+
+### The wiring, and the two things it needed
+
+The fit is applied **at playback, not baked in at load**, so it tracks a tempo
+change live and costs nothing at drop time. The speed is
+`projectBpm / fileBpm`, clamped to 0.25–4.0× — two octaves either way is
+already absurd for a *tempo*, and anything past it is a detection failure, not
+a tempo difference.
+
+Two facts are kept **separate all the way into the stretcher**: the resampling
+step (a fact about the file's sample rate) and the fit speed (a fact about its
+tempo). Multiplying them together earlier would make it impossible to keep the
+pitch while changing the length, which is exactly what one of the two modes
+does.
+
+`fitSpeed()` is **the shared function** — the DSP multiplies its read step by
+it and the pad's tooltip reports it. A second copy in the editor would be a
+second opinion about what the user is hearing.
+
+Getting it there needed two small things:
+
+* **`TransportInfo::tempoKnown`**, separate from `musical`. Locating a bar
+  needs the tempo *and* the position *and* the signature; fitting a sample
+  needs only the tempo, and needs it **while the transport is stopped**.
+  `tempoBpm` defaults to 120 so the bar arithmetic has something to divide by,
+  so a caller that must not invent a tempo has to read the flag and not the
+  value.
+* **`kLiveTempo`**, and the ugly part of this commit. It is a *published*
+  value that sits **outside the published block**, because ids are never moved
+  and it was needed long after that block closed. So `isLiveParam` grew a
+  second clause. That is uglier than a contiguous run, and it is the price of
+  never breaking a saved project — a parameter that moved would load a host's
+  automation lane onto the wrong control. `ParamsTests` §13 asserts both the
+  clause and its negative control.
+
+### On the panel
+
+The cell grew from 84 to 96 pixels, and **the twelve pixels went to the strip,
+not to the name**: it now carries a level bar, the launch box *and* the fit
+box, and a level bar under about thirty pixels is a bar you cannot set. Three
+things in one strip rather than two strips, because a second row under every
+pad would cost sixteen pixels per row and make the grid taller than a laptop
+screen. `static_assert` still adds the strip up.
+
+The fit box **dims when it is not doing anything** — mode Off, no detected
+tempo, a one-shot, or a file already at the project's tempo. All four come out
+of `fitSpeed()` as exactly 1.0, and in every one of them a bright "spd" would
+be the panel telling a lie about the sound. Which of the four it was is in the
+tooltip, on the box *and* on the pad above it, because the pad is the bigger
+target.
+
+Stream **version 6**: a fourth value block, through the same
+`writeValueBlock`/`readValueBlock` the levels and divisions already use.
+
+## 12. The SDK
 
 **In-tree clone**, chosen deliberately over pointing at a sibling project's
 checkout. The first `cmake` configure clones the VST3 SDK (~250 MB) into

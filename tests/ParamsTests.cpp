@@ -490,7 +490,11 @@ int main ()
 	{
 		check (kSlotDivisionBase == kRowLevelEnd, "it starts where the row levels end");
 		check (kSlotDivisionEnd - kSlotDivisionBase == kSlotCount, "one per slot");
-		check (kSlotDivisionEnd == kNumParams, "and currently runs to the end");
+		// NOT the end any more: the tempo fits follow. That is exactly
+		// the append isSlotDivisionParam's bound was written for.
+		check (kSlotDivisionEnd < kNumParams, "and something now follows it");
+		check (! isSlotDivisionParam (kSlotDivisionEnd),
+		       "NEGATIVE CONTROL: the parameter after it is NOT a launch division");
 
 		bool roundTrips = true, classified = true, notOthers = true;
 		for (int slot = 0; slot < kSlotCount; ++slot)
@@ -550,6 +554,122 @@ int main ()
 		check (std::string (paramTitle (slotDivisionParam (0)))
 		           != std::string (paramTitle (slotLevelParam (0))),
 		       "and is not the same name as its level");
+	}
+
+	//--------------------------------------------------------------------
+	section ("12. The tempo fit block");
+	//--------------------------------------------------------------------
+	{
+		check (kSlotFitBase == kSlotDivisionEnd, "it starts where the divisions end");
+		check (kSlotFitEnd - kSlotFitBase == kSlotCount, "one per slot");
+		// The published TEMPO follows it - the one published value that
+		// is not inside the published block, because ids are never moved.
+		check (kSlotFitEnd < kNumParams, "and the published tempo follows it");
+		check (! isSlotFitParam (kLiveTempo),
+		       "NEGATIVE CONTROL: which is not itself a tempo fit");
+
+		bool roundTrips = true, classified = true, notOthers = true;
+		for (int slot = 0; slot < kSlotCount; ++slot)
+		{
+			const ParamID id = slotFitParam (slot);
+			roundTrips &= (slotOfFitParam (id) == slot);
+			classified &= isSlotFitParam (id);
+			notOthers  &= ! isSlotDivisionParam (id) && ! isSlotLevelParam (id)
+			              && ! isRowLevelParam (id) && ! isSlotPlayParam (id)
+			              && ! isLiveParam (id);
+		}
+		check (roundTrips, "slot -> fit id -> slot round-trips for all 64");
+		check (classified, "and all 64 are classified as tempo fits");
+		check (notOthers,
+		       "NEGATIVE CONTROL: and none of them as a division, level, trigger or "
+		       "published value");
+
+		const ParamDef& fit = slotFitDef ();
+		check (fit.type == ParamType::Enum, "it is enumerated, not a number to guess at");
+		check (fit.plainMin == 0.0, "from the first choice");
+		check (static_cast<int> (fit.plainMax) == kFitModeCount - 1, "to the last");
+		check (fit.stepCount == kFitModeCount - 1, "with a step per choice");
+
+		// The DEFAULT is the one that cannot sound broken - see
+		// kDefaultFitMode in Project6Stretch.h.
+		check (static_cast<int> (fit.plainDefault) == indexOfFitMode (kDefaultFitMode),
+		       "and it defaults to the mode that cannot sound broken");
+		check (static_cast<int> (fit.plainDefault) == indexOfFitMode (FitMode::Varispeed),
+		       "which is varispeed");
+
+		bool choicesRoundTrip = true;
+		for (int i = 0; i < kFitModeCount; ++i)
+			choicesRoundTrip &= (static_cast<int> (fit.toInternal (
+				fit.toNormalized (static_cast<double> (i)))) == i);
+		check (choicesRoundTrip, "every choice round-trips through normalised exactly");
+
+		// ONE SET OF NAMES, in Project6Stretch.h, so the host's list and
+		// the box on the pad cannot come to different views.
+		bool named = true;
+		for (int i = 0; i < kFitModeCount; ++i)
+			named &= (std::string (paramChoiceName (slotFitParam (0), i))
+			          == std::string (fitModeName (fitModeFromIndex (i))));
+		check (named, "the host's choice names are the stretcher header's own");
+
+		check (std::string (paramChoiceName (slotFitParam (0), 0)) == "Off",
+		       "which read Off");
+		check (std::string (paramChoiceName (slotFitParam (0), 2)) == "Keep pitch",
+		       "through to Keep pitch");
+
+		check (std::string (paramTitle (slotFitParam (0)))  == "Slot A1 Fit",
+		       "a fit is named for its cell");
+		check (std::string (paramTitle (slotFitParam (63))) == "Slot H8 Fit",
+		       "at both ends");
+
+		// The suffix map is keyed on the WHOLE suffix, not its first
+		// letter - Level, Launch and Fit would otherwise collide.
+		check (std::string (paramTitle (slotFitParam (0)))
+		           != std::string (paramTitle (slotDivisionParam (0))),
+		       "and is not the same name as its launch division");
+		check (std::string (paramTitle (slotFitParam (0)))
+		           != std::string (paramTitle (slotLevelParam (0))),
+		       "nor as its level");
+
+		// AND THE DEFINITION AGREES WITH THE DSP. paramDef has to route
+		// the whole block here, or sixty-three pads would be handed the
+		// output trim's range.
+		bool routed = true;
+		for (int slot = 0; slot < kSlotCount; ++slot)
+			routed &= (&paramDef (slotFitParam (slot)) == &slotFitDef ());
+		check (routed, "paramDef routes every one of the 64 to the fit definition");
+	}
+
+	//--------------------------------------------------------------------
+	section ("13. The published tempo, outside the published block");
+	//--------------------------------------------------------------------
+	{
+		check (kLiveTempo == kSlotFitEnd, "it is appended after the tempo fits");
+		check (kLiveTempo + 1 == kNumParams, "and is currently the last id there is");
+
+		// THE SECOND CLAUSE OF isLiveParam. Without it this would be an
+		// ordinary automatable parameter that every host listed and that
+		// a user could write - and writing it would make the panel
+		// believe a tempo the host never sent.
+		check (isLiveParam (kLiveTempo), "it is classified as a published value");
+		check (! isLiveParam (slotFitParam (kSlotCount - 1)),
+		       "NEGATIVE CONTROL: and the id just before it is not");
+		check (! isLiveParam (kSlotDivisionBase),
+		       "nor is anything else outside the block");
+
+		// It is OUTSIDE the contiguous block, which is the whole reason
+		// the predicate needed a second clause.
+		check (kLiveTempo >= kLiveEnd, "and it sits outside the published block");
+
+		check (&paramDef (kLiveTempo) == &liveTempoDef (), "paramDef routes it");
+		check (std::string (paramTitle (kLiveTempo)) == "Tempo", "and it has a name");
+
+		// Zero is a REAL value here - "the host did not say" - so the
+		// range has to start there and the default has to be it.
+		const ParamDef& tempo = liveTempoDef ();
+		check (tempo.plainMin == 0.0, "zero is in range, because zero means unknown");
+		check (tempo.plainDefault == 0.0, "and it is the default");
+		check (close (tempo.toInternal (tempo.toNormalized (128.0)), 128.0, 1e-9),
+		       "a tempo round-trips through normalised");
 	}
 
 	//--------------------------------------------------------------------

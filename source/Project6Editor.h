@@ -79,29 +79,45 @@ public:
 	//--------------------------------------------------------------------
 	// The slot grid, which sets the width of everything above it.
 	//
-	// 84 pixels is what a filename needs to be worth reading: at the
-	// panel's 8-point Arial it holds about fourteen characters before
-	// SpySampleSlot starts shedding the extension, which covers most of
-	// how people actually name samples. Below about 70 the grid stops
-	// being a list of names and becomes a grid of ellipses.
+	// A pad needs to be worth reading: at the panel's 8-point Arial, 84
+	// pixels held about fourteen characters before SpySampleSlot started
+	// shedding the extension, and below about 70 the grid stopped being a
+	// list of names and became a grid of ellipses.
+	//
+	// It is 96 now, and the twelve pixels went to the strip beneath
+	// rather than to the name: the strip has to carry a level bar, the
+	// launch box AND the tempo-fit box, and a level bar narrower than
+	// about thirty pixels is a bar you cannot set. Widening the pad is
+	// what pays for the third box, and the name got wider as well.
 	//--------------------------------------------------------------------
-	static constexpr int kSlotWidth  = 84;
+	static constexpr int kSlotWidth  = 96;
 	static constexpr int kSlotHeight = 30;
 	static constexpr int kSlotGap    = 5;
 
-	/** The strip under each pad: its level bar, and the box that says
-	    which grid line it launches on. Thirteen pixels, which is what the
-	    nine-point face needs to put "1/4" in a box - the bar itself would
-	    have been happy with nine, and a strip too short to letter would
-	    have meant a second row.
+	/** The strip under each pad: its level bar, the box that says which
+	    grid line it launches on, and the box that says what it does about
+	    the project's tempo. Thirteen pixels, which is what the nine-point
+	    face needs to put "1/4" in a box - the bar itself would have been
+	    happy with nine, and a strip too short to letter would have meant
+	    a second row.
 
 	    The bar has no room for a number even at thirteen, which is why
-	    the pad above shows the level in decibels while it is dragged. */
+	    the pad above shows the level in decibels while it is dragged.
+
+	    THREE THINGS IN ONE STRIP rather than two strips: a second row
+	    under every pad would cost sixteen pixels of height per row and
+	    make the grid taller than a laptop screen, and the two boxes are
+	    both small enumerated settings that are read rather than
+	    manipulated. The bar keeps what is left, and kLevelWidth is
+	    DERIVED so that the static_assert below catches a strip that no
+	    longer adds up. */
 	static constexpr int kStripHeight   = 13;
 	static constexpr int kLevelGap      = 2;
-	static constexpr int kDivisionWidth = 33;
+	static constexpr int kDivisionWidth = 26;
+	static constexpr int kFitWidth      = 26;
 	static constexpr int kStripGap      = 3;
-	static constexpr int kLevelWidth    = kSlotWidth - kDivisionWidth - kStripGap;
+	static constexpr int kLevelWidth    =
+		kSlotWidth - kDivisionWidth - kFitWidth - 2 * kStripGap;
 
 	/** A CELL is a pad and the strip under it. The grid's row pitch is
 	    this plus the gap between cells, so the strip belongs visually to
@@ -183,10 +199,12 @@ public:
 	               "the column buttons overlap the pads");
 
 	// The strip under a pad is exactly as wide as the pad: a bar, a gap,
-	// and the division box.
-	static_assert (kLevelWidth + kStripGap + kDivisionWidth == kSlotWidth,
-	               "the level bar and the division box do not fill the cell's width");
-	static_assert (kLevelWidth > 0, "the division box has eaten the level bar");
+	// the division box, a gap, and the fit box.
+	static_assert (kLevelWidth + kStripGap + kDivisionWidth + kStripGap + kFitWidth
+	                   == kSlotWidth,
+	               "the level bar and the two boxes do not fill the cell's width");
+	static_assert (kLevelWidth >= 30,
+	               "the boxes have eaten the level bar - a bar this narrow cannot be set");
 
 	/** How often the panel asks the controller where the DSP is. 30 ms is
 	    about 33 fps - fast enough that a smoothed move is a movement
@@ -203,6 +221,10 @@ public:
 	/** The playhead of every pad has arrived from the processor. */
 	void refreshProgress ();
 
+	/** What the panel knows of the host's tempo, from the published
+	    kLiveTempo. Zero when the host has not said. */
+	double projectTempo () const;
+
 private:
 	VSTGUI::CRect cell (int column, int row) const;
 
@@ -218,6 +240,9 @@ private:
 
 	/** The launch-division box, beside that bar. */
 	VSTGUI::CRect divisionCell (int column, int row) const;
+
+	/** The tempo-fit box, at the right-hand end of the strip. */
+	VSTGUI::CRect fitCell (int column, int row) const;
 
 	/** One row's fader, beside its row and vertically centred on the
 	    cell so it lines up with the pad rather than with the level bar
@@ -242,6 +267,10 @@ private:
 
 	/** Recompute what each column button shows from the slots below it. */
 	void refreshColumns ();
+
+	/** Work out whether one pad's tempo fit is actually doing anything,
+	    and tell its box - so a mode that is set but idle says so. */
+	void refreshFit (int index);
 
 	/** A file was dropped on a slot. Writes through the CONTROLLER, which
 	    tells the processor and calls refreshSlots on every open editor -
@@ -288,6 +317,7 @@ private:
 	SpyDisplay* mDisplay = nullptr;
 	SpySampleSlot* mSlots[kSlotCount] = { nullptr };
 	SpySlotLevel* mLevels[kSlotCount] = { nullptr };
+	SpySlotFit* mFits[kSlotCount] = { nullptr };
 	SpyColumnButton* mColumns[kSlotColumns] = { nullptr };
 
 	VSTGUI::SharedPointer<VSTGUI::CVSTGUITimer> mTimer;

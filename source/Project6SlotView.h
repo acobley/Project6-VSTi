@@ -53,6 +53,7 @@
 
 #include "Project6Sample.h"
 #include "Project6Slots.h"
+#include "Project6Stretch.h"
 #include "Project6Transport.h"
 
 #include "vstgui/vstgui.h"
@@ -92,6 +93,14 @@ public:
 	    the drop, shows the name and does nothing when clicked is the
 	    worst thing a control can do. */
 	void setStatus (SampleStatus status);
+
+	/** What was read out of the file about its TEMPO - "100.0 BPM (ACID
+	    chunk)" - appended to the pad's tooltip under the path.
+
+	    On the pad as well as on the fit box because the pad is the big
+	    target: someone wondering why a loop sounds wrong hovers the name,
+	    not the twenty-six-pixel box beside it. */
+	void setTempoText (const std::string& text);
 	SampleStatus status () const { return mStatus; }
 
 	/** True when there is a loaded file here and a click should start it. */
@@ -176,6 +185,7 @@ private:
 	int mIndex = 0;
 	std::string mPath;
 	std::string mOverlay;
+	std::string mTempoText;
 	SampleStatus mStatus = SampleStatus::Empty;
 	bool mSounding = false;
 	float mProgress = 0.f;
@@ -259,6 +269,54 @@ private:
 	void step (int delta);
 
 	int mIndex = 0;
+};
+
+//------------------------------------------------------------------------
+/** The box beside that one: what this pad does about the project's tempo.
+
+    The same shape of control as SpySlotDivision - a small enumerated box
+    that steps on a click - because it is the same kind of thing, and two
+    boxes in one strip that behaved differently would be a trap.
+
+    IT ALSO SAYS WHETHER IT IS DOING ANYTHING. A pad set to varispeed
+    whose file has no detected tempo, or whose file is a one-shot, is not
+    being fitted at all; the mode is set and nothing is happening. That is
+    precisely the "a control that looks live and is not" failure this
+    project keeps coming back to, so the label is DIMMED in that case and
+    the tooltip says why. The editor decides - it is the side that knows
+    the tempo - and hands the answer down through setFitted. */
+class SpySlotFit : public VSTGUI::CControl
+{
+public:
+	SpySlotFit (const VSTGUI::CRect& size, VSTGUI::IControlListener* listener,
+	            int32_t tag, int index);
+
+	int index () const { return mIndex; }
+
+	/** True when this pad's file is actually being stretched or
+	    resampled: a tempo was detected, the project has one, they differ,
+	    and the mode is not Off. */
+	void setFitted (bool fitted);
+
+	/** What to say in the tooltip about this pad's file - "100 BPM (ACID
+	    chunk)", or why nothing is being fitted. */
+	void setTempoText (const std::string& text);
+
+	void draw (VSTGUI::CDrawContext* context) override;
+
+	void onMouseDownEvent (VSTGUI::MouseDownEvent& event) override;
+	void onMouseWheelEvent (VSTGUI::MouseWheelEvent& event) override;
+
+	CLASS_METHODS (SpySlotFit, VSTGUI::CControl)
+
+private:
+	FitMode current () const;
+	void step (int delta);
+	void refreshTooltip ();
+
+	int  mIndex  = 0;
+	bool mFitted = false;
+	std::string mTempoText;
 };
 
 //------------------------------------------------------------------------

@@ -81,6 +81,38 @@ public:
 	    a progress bar. Zero for a slot that is not sounding. */
 	float slotProgress (int index) const;
 
+	//--------------------------------------------------------------------
+	// What was read out of a slot's file about its TEMPO.
+	//
+	// Reported by the processor on the status message, because that is
+	// where it was discovered. The panel shows it in the pad's tooltip -
+	// "90 BPM (inferred from length)" - so that a pad which sounds wrong
+	// says why without anyone having to open the file.
+	//--------------------------------------------------------------------
+
+	/** The detected tempo, or 0 when none was found. */
+	double slotTempo (int index) const;
+
+	/** Where that came from. TempoSource::None when there is no tempo. */
+	TempoSource slotTempoSource (int index) const;
+
+	/** Whether the file declared itself a one-shot, which is why an
+	    otherwise fitted pad is not being fitted. */
+	bool slotOneShot (int index) const;
+
+	/** The speed this pad's file is actually playing at, given its own
+	    tempo, the project's, and the pad's mode.
+
+	    Computed HERE from the shared fitSpeed(), not read back from the
+	    processor: the two would then be two answers to one question, and
+	    the tooltip could disagree with the sound. `projectBpm` is what
+	    the panel knows of the host's tempo.
+
+	    NOT const: getParamNormalized is not const in the SDK's
+	    EditController, and reaching around that with a cast would be a
+	    lie about which of the two objects owns the value. */
+	double slotFitSpeed (int index, double projectBpm);
+
 	/** Ask the processor for all sixty-four. Called from the editor's
 	    timer, and only while an editor is open: nothing else wants these
 	    and nobody should pay for them when the panel is shut. */
@@ -106,6 +138,9 @@ private:
 	SlotBank mSlots;
 	SampleStatus mSlotStatus[kSlotCount] = {};
 	float mSlotProgress[kSlotCount] = {};
+	double mSlotTempo[kSlotCount] = {};
+	TempoSource mSlotTempoSource[kSlotCount] = {};
+	bool mSlotOneShot[kSlotCount] = {};
 	bool mHaveLiveValues = false;
 };
 
