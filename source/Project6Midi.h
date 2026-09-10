@@ -62,6 +62,28 @@ constexpr int kMaxMidiNotes = 20000;
 constexpr int kMaxMidiTracks = 256;
 
 //------------------------------------------------------------------------
+/** The MIDI channel a ROW's notes go out on.
+
+    Row A is channel 1 and row H is channel 8, so the eight rows are eight
+    parts even in a host that only exposes the first of the plug-in's MIDI
+    outputs - see the merged bus in Project6Processor::initialize.
+
+    TWO FUNCTIONS FOR ONE FACT, because the two callers count differently
+    and one of them has to be wrong on its own terms if they share a
+    number. VST3 counts channels from ZERO in Event::noteOn.channel;
+    people count them from ONE, and the label on the panel is read by a
+    person. Deriving the second from the first is what stops the panel
+    from saying "channel 3" while the events go out on 4.
+
+    The identity mapping is deliberate and worth stating: a row IS its
+    channel, and the day that stops being true this is the single line
+    that changes. */
+constexpr int midiChannelForRow (int row) { return row; }
+
+/** The same channel as a person counts it, for the panel to print. */
+constexpr int midiChannelNumberForRow (int row) { return midiChannelForRow (row) + 1; }
+
+//------------------------------------------------------------------------
 /** One note, in quarter notes from the start of the clip.
 
     NO CHANNEL. Every pad's notes go out on ITS ROW'S channel - row A is

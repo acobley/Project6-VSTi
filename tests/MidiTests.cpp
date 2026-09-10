@@ -514,7 +514,33 @@ int main ()
 	}
 
 	//--------------------------------------------------------------------
-	section ("6. The voice: what comes out, and when");
+	section ("6. Which channel a row plays out on");
+	//--------------------------------------------------------------------
+	{
+		// A ROW IS ITS CHANNEL, which is what makes the merged MIDI
+		// output usable as eight parts in a host that shows only one.
+		check (midiChannelForRow (0) == 0, "row A is VST3 channel 0");
+		check (midiChannelForRow (7) == 7, "and row H is VST3 channel 7");
+
+		// TWO FUNCTIONS FOR ONE FACT, because VST3 counts channels from
+		// zero and people count them from one. The panel prints the
+		// second and the processor stamps the first, and the second is
+		// DERIVED from the first - which is what stops the label saying
+		// "channel 3" while the events go out on 4.
+		check (midiChannelNumberForRow (0) == 1, "which a person calls channel 1");
+		check (midiChannelNumberForRow (7) == 8, "and channel 8");
+
+		bool derived = true;
+		for (int row = 0; row < 8; ++row)
+			derived &= (midiChannelNumberForRow (row) == midiChannelForRow (row) + 1);
+		check (derived, "the printed number is always one past the stamped one");
+
+		check (midiChannelNumberForRow (0) != midiChannelForRow (0),
+		       "NEGATIVE CONTROL: and the two are not the same number");
+	}
+
+	//--------------------------------------------------------------------
+	section ("7. The voice: what comes out, and when");
 	//--------------------------------------------------------------------
 	{
 		// A clip built by hand rather than parsed - the parse is section
@@ -586,7 +612,7 @@ int main ()
 	}
 
 	//--------------------------------------------------------------------
-	section ("7. The voice: IS A NOTE LEFT ON?");
+	section ("8. The voice: IS A NOTE LEFT ON?");
 	//--------------------------------------------------------------------
 	{
 		MidiEventOut out[kMaxMidiEventsPerBlock];

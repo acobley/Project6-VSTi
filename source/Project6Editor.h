@@ -147,6 +147,21 @@ public:
 	// output trim uses, because that is what they are: a labelled level
 	// with a decibel readout.
 	//--------------------------------------------------------------------
+	/** A line above each fader saying which MIDI channel that row's pads
+	    play out on.
+
+	    IT IS ABOVE THE FADER RATHER THAN BESIDE IT because it belongs to
+	    the ROW, not to the level - a row is a bus, and its channel and
+	    its fader are two facts about the same bus. The fader moves down
+	    inside its cell to make room; the cell itself does not grow, so
+	    the grid beside it is untouched.
+
+	    Nine pixels of type in eleven pixels of box, which is what the
+	    tiny face needs and what the cell can spare - see the
+	    static_assert below, which is what fails if either changes. */
+	static constexpr int kRowChannelHeight = 11;
+	static constexpr int kRowChannelGap    = 2;
+
 	static constexpr int kRowFaderGap   = 16;
 	static constexpr int kRowFaderWidth = kSliderWidth;
 	static constexpr int kRowFaderLeft  = kMargin + kSlotGridWidth + kRowFaderGap;
@@ -207,6 +222,13 @@ public:
 	static_assert (kLevelWidth >= 30,
 	               "the boxes have eaten the level bar - a bar this narrow cannot be set");
 
+	// The channel label and the fader share one cell, and the cell is the
+	// grid's own row pitch - so a label that did not fit would push the
+	// fader out of line with the row it belongs to rather than simply
+	// overlapping something.
+	static_assert (kRowChannelHeight + kRowChannelGap + kSliderHeight <= kCellHeight,
+	               "the MIDI channel label does not fit above the row fader");
+
 	/** How often the panel asks the controller where the DSP is. 30 ms is
 	    about 33 fps - fast enough that a smoothed move is a movement
 	    rather than three steps, and slow enough to cost nothing. */
@@ -245,10 +267,13 @@ private:
 	/** The tempo-fit box, at the right-hand end of the strip. */
 	VSTGUI::CRect fitCell (int column, int row) const;
 
-	/** One row's fader, beside its row and vertically centred on the
-	    cell so it lines up with the pad rather than with the level bar
-	    beneath it. */
+	/** One row's fader, beside its row. Sits BELOW the channel label
+	    rather than centred on the cell, so the two together are centred
+	    where the fader alone used to be. */
 	VSTGUI::CRect rowFaderCell (int row) const;
+
+	/** The MIDI channel label above that fader. */
+	VSTGUI::CRect rowChannelCell (int row) const;
 
 	/** Put a slot's level, in decibels, on the pad above its bar - and
 	    take it off again. There is no room for a number on a nine-pixel
@@ -319,7 +344,8 @@ private:
 	SpySlider* addSlider (Steinberg::Vst::ParamID tag, const char* label,
 	                      const VSTGUI::CRect& rect);
 
-	VSTGUI::CTextLabel* addHeading (const char* text, const VSTGUI::CRect& rect);
+	VSTGUI::CTextLabel* addHeading (const char* text, const VSTGUI::CRect& rect,
+	                                VSTGUI::CFontRef font = nullptr);
 
 	Project6Controller* mController = nullptr;
 

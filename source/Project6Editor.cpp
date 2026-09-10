@@ -90,10 +90,25 @@ CRect Project6Editor::columnCell (int column) const
 //------------------------------------------------------------------------
 CRect Project6Editor::rowFaderCell (int row) const
 {
+	// The LABEL AND THE FADER TOGETHER are centred where the fader alone
+	// used to be, so the pair still reads as belonging to the row beside
+	// it rather than sitting high in the cell.
 	const CRect cell = slotCell (0, row);
-	const CCoord top = cell.top + (kCellHeight - kSliderHeight) * 0.5;
+	const CCoord stack = kRowChannelHeight + kRowChannelGap + kSliderHeight;
+	const CCoord top = cell.top + (kCellHeight - stack) * 0.5
+	                   + kRowChannelHeight + kRowChannelGap;
 	return CRect (kRowFaderLeft, top,
 	              kRowFaderLeft + kRowFaderWidth, top + kSliderHeight);
+}
+
+//------------------------------------------------------------------------
+CRect Project6Editor::rowChannelCell (int row) const
+{
+	// DERIVED FROM THE FADER, not from the cell a second time: the two
+	// cannot drift apart, and moving one moves the other.
+	const CRect fader = rowFaderCell (row);
+	return CRect (fader.left, fader.top - kRowChannelGap - kRowChannelHeight,
+	              fader.right, fader.top - kRowChannelGap);
 }
 
 //------------------------------------------------------------------------
@@ -148,10 +163,10 @@ SpySlider* Project6Editor::addSlider (ParamID tag, const char* label, const CRec
 }
 
 //------------------------------------------------------------------------
-CTextLabel* Project6Editor::addHeading (const char* text, const CRect& rect)
+CTextLabel* Project6Editor::addHeading (const char* text, const CRect& rect, CFontRef font)
 {
 	auto* label = new CTextLabel (rect);
-	label->setFont (panelFont ());
+	label->setFont (font != nullptr ? font : panelFont ());
 	label->setFontColor (Colours::kLabel);
 	label->setBackColor (kTransparentCColor);
 	label->setFrameColor (kTransparentCColor);
@@ -215,6 +230,25 @@ bool PLUGIN_API Project6Editor::open (void* parent, const PlatformType& platform
 			{ "Row A", "Row B", "Row C", "Row D", "Row E", "Row F", "Row G", "Row H" };
 
 		addSlider (rowLevelParam (row), kRowLabels[row], rowFaderCell (row));
+
+		// WHICH MIDI CHANNEL THIS ROW PLAYS OUT ON, above the fader.
+		//
+		// A row is a BUS, and its channel and its level are two facts
+		// about the same bus - so they belong together rather than the
+		// channel being something to look up in the notes. It matters
+		// most in a host that shows only the merged MIDI output, where
+		// the channel IS the routing and there is nothing else on screen
+		// to say which row is which.
+		//
+		// The number comes from midiChannelNumberForRow, which is derived
+		// from the one the processor stamps on the events - see
+		// Project6Midi.h for why that is two functions and not one.
+		char channel[32] = {};
+		std::snprintf (channel, sizeof (channel), "MIDI ch %d",
+		               midiChannelNumberForRow (row));
+
+		auto* label = addHeading (channel, rowChannelCell (row), panelFontTiny ());
+		label->setHoriAlign (kCenterText);
 	}
 
 	//--------------------------------------------------------------------
@@ -641,7 +675,7 @@ std::string Project6Editor::midiText (int index) const
 	std::snprintf (line, sizeof (line),
 	               "%d notes, %.2f beats — looping as %.0f bar%s on MIDI channel %d",
 	               notes, beats, loop / bar, (loop / bar) > 1.5 ? "s" : "",
-	               rowOfSlot (index) + 1);
+	               midiChannelNumberForRow (rowOfSlot (index)));
 	return line;
 }
 

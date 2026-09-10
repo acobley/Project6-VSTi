@@ -319,7 +319,7 @@ void Project6Processor::flushMidi (ProcessData& data)
 		if (pending.event.noteOn)
 		{
 			event.type = Event::kNoteOnEvent;
-			event.noteOn.channel  = static_cast<int16> (pending.row);
+			event.noteOn.channel  = static_cast<int16> (midiChannelForRow (pending.row));
 			event.noteOn.pitch    = static_cast<int16> (pending.event.note);
 			event.noteOn.velocity = static_cast<float> (pending.event.velocity) / 127.f;
 			event.noteOn.length   = 0;
@@ -329,7 +329,7 @@ void Project6Processor::flushMidi (ProcessData& data)
 		else
 		{
 			event.type = Event::kNoteOffEvent;
-			event.noteOff.channel  = static_cast<int16> (pending.row);
+			event.noteOff.channel  = static_cast<int16> (midiChannelForRow (pending.row));
 			event.noteOff.pitch    = static_cast<int16> (pending.event.note);
 			event.noteOff.velocity = 0.f;
 			event.noteOff.tuning   = 0.f;

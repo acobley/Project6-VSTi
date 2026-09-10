@@ -1275,6 +1275,25 @@ changed shape under a MIDI pad would be a worse way to say the same thing.
 The tooltip says how many notes, how long the file is, how long it *loops* for
 once run out to the bar, and which channel it leaves on.
 
+And each row fader carries a **`MIDI ch n` label above it**. A row is a bus,
+and its channel and its level are two facts about the same bus — so they
+belong together rather than the channel being something to look up in these
+notes. It earns its place most in a host that shows only the merged MIDI
+output, where the channel *is* the routing and there is nothing else on screen
+to say which row is which.
+
+The number comes from `midiChannelNumberForRow`, which is **derived from**
+`midiChannelForRow` — the one the processor stamps on its events. Two
+functions for one fact, because VST3 counts channels from zero and people
+count them from one, and sharing a single number would mean one of the two
+callers is wrong on its own terms. It is what stops the label reading
+"channel 3" while the notes go out on 4.
+
+The label sits inside the cell the fader already had: the fader moves down to
+make room and the pair is centred where the fader alone used to be, so the
+grid beside it is untouched. A `static_assert` is what fails if either height
+changes enough to stop fitting.
+
 ## 14. The SDK
 
 **In-tree clone**, chosen deliberately over pointing at a sibling project's
