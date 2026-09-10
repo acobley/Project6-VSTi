@@ -1213,6 +1213,72 @@ there. The other convention puts every off one sample early *and* uses a
 different rule for ons and offs, which is the kind of asymmetry that hides an
 off-by-one for years.
 
+### Four bugs that made a pattern stop at random, and never come back
+
+Found in a session, not here. The report was *"the MIDI drops out at what
+sounds like random; the bar keeps moving but the events stop"* — and it was
+four separate faults, three of which conspired to make one another permanent.
+
+**1. A stop that did not unlaunch.** `applyGridLine` only acts on a slot whose
+armed state *differs* from what is launched. `renderMidi`'s bail-out stopped
+the voices without clearing `mLaunched`, which left a pad armed **and**
+launched **and** not playing — a state no grid line would ever act on again.
+Silent for ever, while the transport rolled on and the panel went on saying it
+was armed. `silenceForTransport` had always cleared it, which is exactly why
+the audio pads recovered from the same situations and the MIDI pads did not.
+
+The fix is two functions rather than a flag: `stopMidiVoice` quiets the notes,
+`unlaunchMidiVoice` quiets them *and* clears the launch. The difference is the
+bug, so it is a name and not a parameter.
+
+**2. `quartersPerSample` asked for too much.** It gated on `musical`, which is
+`haveTempo && haveSig && havePos`. Placing a note needs the **tempo and the
+position**; the time signature only decides where a loop is *rounded* to, and
+`barQuartersFor` falls back to 4/4 — a slightly wrong loop length, not silence.
+A host that reports its tempo and position but does not flag its time
+signature on every block therefore stopped every MIDI pad in the bank. That is
+where the "at random" came from: one block with an incomplete context was
+enough, and fault 1 made it permanent.
+
+`TransportInfo` gained `posKnown` beside `tempoKnown` so the question can be
+asked properly. `musical` still gates the **bar lines**, which genuinely do
+need all three.
+
+**3. A locate backwards was a one-way door.** `MidiVoice::render` returned
+early when the whole block was behind the pad's launch point. A pad launched
+at bar 5 and then rewound to bar 1 went silent — not stopped, still playing,
+still launched — until the project crawled back past bar 5. Any cycle that
+began before a pad was launched did it every pass.
+
+The loop is now **anchored** at the launch point rather than started there: it
+repeats in both directions, so rewinding plays the same loop in the same
+phase. Which is what "locked to the project's timeline" has to mean if it is
+to mean anything. Only the whole-block-behind case wraps, so a pad launching
+*part way through* the current block still starts at its own sample.
+
+**4. Changing a pad's kind under it hung its notes.** `renderMidi` skips a
+slot that is not a MIDI slot, so dropping a `.wav` on a playing `.mid` pad
+left a voice that would never be rendered again, never reach its own
+note-offs, and hang. Replacing a file is not one of the ways a note is allowed
+to be left on. `loadSlot` now raises a flag when the *kind* changes and the
+audio thread stops whichever machinery was running and unlaunches the pad, so
+the next grid line brings it back on the right one.
+
+Two things came out of this beyond the fixes:
+
+* **a starved block now HOLDS rather than stops.** A rolling host that has not
+  said where it is for one block is a resync, not a reason to put a hole in
+  every pattern. The notes go on sounding and the pads carry on the moment the
+  context returns; only a sustained run of them lets the notes go.
+* **the invariant is re-asserted once a block.** A pad the processor believes
+  is launched must have a voice that is playing. Anything that stops a voice
+  without unlaunching it — a path added later, a case not thought of — now
+  shows up as one missed bar rather than as a pattern that never comes back.
+
+`MidiTests` §9 covers what is reachable without a host: the backwards locate,
+a cycle running entirely before the launch point, the phase being kept across
+it, and the negative control that a mid-block launch is still not wrapped.
+
 ### Nine event outputs, and why the merged one is not a luxury
 
 One `MIDI Out` carrying every row, then one per row — exactly the shape the

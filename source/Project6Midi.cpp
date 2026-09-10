@@ -571,10 +571,34 @@ int MidiVoice::render (const MidiClip* clip, double loopLength, double blockStar
 	// Where this block sits relative to the pad's own start. NEGATIVE
 	// when the pad launches part way through this very block, which is
 	// the normal case: a grid line lands at some sample inside it.
-	const double from = blockStartPpq - mStartPpq;
-	const double to   = from + blockQuarters;
+	double from = blockStartPpq - mStartPpq;
+	double to   = from + blockQuarters;
+
+	// THE PROJECT IS ENTIRELY BEHIND THIS PAD'S LAUNCH POINT - somebody
+	// rewound past it, or a cycle wrapped to a point before it.
+	//
+	// This used to return, and the pad went silent AND STAYED SILENT: not
+	// stopped, still playing, still counted as launched, simply never
+	// emitting anything again until the project crawled back past the
+	// point it had been launched at. It was found in a session, not here,
+	// which is what section 9 of the tests is for.
+	//
+	// THE LOOP REPEATS IN BOTH DIRECTIONS. It is anchored at the launch
+	// point rather than started there, so rewinding plays the same loop
+	// in the same phase - which is what "locked to the project's
+	// timeline" has to mean if it is to mean anything.
+	//
+	// Only when the whole block is behind it, so that a pad launching
+	// PART WAY THROUGH this block - `from` a fraction negative, the
+	// normal case - still starts at its own sample rather than being
+	// wrapped round to the end of the loop.
 	if (to <= 0.0)
-		return count;                        // launches later in a later block
+	{
+		from = std::fmod (from, loopLength);
+		if (from < 0.0)
+			from += loopLength;
+		to = from + blockQuarters;
+	}
 
 	// The sample a loop-time lands on. Clamped, because a rounding edge
 	// must not put an event outside the block - a host is entitled to

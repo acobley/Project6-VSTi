@@ -137,6 +137,17 @@ struct TransportInfo
 	    value. */
 	bool   tempoKnown = false;
 
+	/** The POSITION alone is valid - the third of the three questions,
+	    asked separately for the same reason the tempo is.
+
+	    Placing a MIDI note needs the tempo and the position and NOTHING
+	    ELSE: the time signature only decides where a loop is rounded to,
+	    and 4/4 is a workable answer when the host does not say. Gating
+	    MIDI on `musical` - all three - is over-strict, and a host that
+	    reports tempo and position but not its time signature would stop
+	    every MIDI pad in the bank. Which is exactly what one did. */
+	bool   posKnown = false;
+
 	double tempoBpm       = 120.0;
 	int    sigNumerator   = 4;
 	int    sigDenominator = 4;

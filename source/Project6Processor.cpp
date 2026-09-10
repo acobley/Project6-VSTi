@@ -156,7 +156,10 @@ TransportInfo Project6Processor::readTransport (const ProcessData& data) const
 		info.sigDenominator = context->timeSigDenominator;
 	}
 	if (havePos)
+	{
 		info.ppq = context->projectTimeMusic;
+		info.posKnown = true;
+	}
 
 	return info;
 }
@@ -181,24 +184,37 @@ void Project6Processor::applyGridLine (int step, int32 sampleOffset, double bloc
 		if (mArmed[slot] == mLaunched[slot])
 			continue;
 
-		mLaunched[slot] = mArmed[slot];
-
 		if (mKind[slot] == SlotFileKind::Midi)
 		{
-			// THE PAD'S LOOP STARTS AT THIS GRID LINE'S OWN PROJECT
-			// POSITION, not at the top of the block. From then on where
-			// it is in its loop is simply how far the project has moved
-			// since - so it cannot drift, it survives a tempo change with
-			// no arithmetic, and it follows the host when somebody drags
-			// the playhead.
-			if (mLaunched[slot])
+			if (mArmed[slot])
+			{
+				// A MIDI PAD CANNOT LAUNCH WITHOUT A TIMELINE TO LAUNCH
+				// ON, so it is left ARMED AND NOT LAUNCHED rather than
+				// marked launched and then found to be silent. It comes
+				// in at the first grid line after the host says where it
+				// is - which is the state the panel was already showing.
+				if (perSample <= 0.0)
+					continue;
+
+				// THE PAD'S LOOP STARTS AT THIS GRID LINE'S OWN PROJECT
+				// POSITION, not at the top of the block. From then on
+				// where it is in its loop is simply how far the project
+				// has moved since - so it cannot drift, it survives a
+				// tempo change with no arithmetic, and it follows the
+				// host when somebody drags the playhead.
+				mLaunched[slot] = true;
 				mMidiVoices[slot].start (blockStartPpq
 				                         + static_cast<double> (sampleOffset) * perSample);
+			}
 			else
+			{
+				mLaunched[slot] = false;
 				stopMidiVoice (slot, sampleOffset);
+			}
 		}
 		else
 		{
+			mLaunched[slot] = mArmed[slot];
 			mDsp.setSlotPlaying (slot, mLaunched[slot]);
 		}
 	}
@@ -207,14 +223,26 @@ void Project6Processor::applyGridLine (int step, int32 sampleOffset, double bloc
 //------------------------------------------------------------------------
 double Project6Processor::quartersPerSample (const TransportInfo& transport) const
 {
-	// NO MUSICAL CONTEXT, NO MIDI. An audio pad can fall back to
-	// launching at once, because a sample is a sample and it can be
-	// played at the rate it was recorded. A MIDI loop has no such
-	// fallback: its notes are placed in quarter notes, and without the
-	// host's position and tempo there is no timeline to place them on.
-	// Inventing one would put every pad in the bank out of step with the
+	// TEMPO AND POSITION, AND NOT THE TIME SIGNATURE.
+	//
+	// This asked for `musical` - all three - and that was a bug with a
+	// symptom nobody would trace back to it: a host that reports its
+	// tempo and its position but does not flag its time signature on
+	// every block stopped every MIDI pad in the bank, at what sounded
+	// like random, permanently.
+	//
+	// Placing a note needs the tempo and the position. The signature only
+	// decides where a loop is ROUNDED to, and barQuartersFor falls back
+	// to 4/4 when it is not given - which is a slightly wrong loop
+	// length, not silence.
+	//
+	// An audio pad can fall back to launching at once, because a sample
+	// can be played at the rate it was recorded. A MIDI loop has no such
+	// fallback: without a position there is no timeline to place notes
+	// on, and inventing one would put every pad out of step with the
 	// project as soon as the tempo moved.
-	if (!transport.musical || !(transport.tempoBpm > 0.0) || !(mSampleRate > 0.0))
+	if (!transport.tempoKnown || !transport.posKnown
+	    || !(transport.tempoBpm > 0.0) || !(mSampleRate > 0.0))
 		return 0.0;
 
 	return transport.tempoBpm / (60.0 * mSampleRate);
@@ -240,19 +268,92 @@ void Project6Processor::stopMidiVoice (int slot, int32 sampleOffset)
 }
 
 //------------------------------------------------------------------------
+void Project6Processor::unlaunchMidiVoice (int slot, int32 sampleOffset)
+{
+	if (!isSlotIndex (slot))
+		return;
+
+	stopMidiVoice (slot, sampleOffset);
+
+	// ONLY A MIDI PAD'S LAUNCH IS CLEARED HERE. This is called in a loop
+	// over all sixty-four, and an audio pad that is playing perfectly
+	// well must not be unlaunched by a MIDI decision - it would leave the
+	// DSP sounding a voice the processor no longer believes in.
+	if (mKind[slot] != SlotFileKind::Midi)
+		return;
+
+	// AND THE PAD IS NO LONGER LAUNCHED, which is the whole difference
+	// between this and the function above, and was the bug.
+	//
+	// applyGridLine only acts on a slot whose armed state DIFFERS from
+	// what is launched. A pad stopped without this line is left armed and
+	// launched and not playing - a state no grid line will ever act on
+	// again - so it goes quiet for ever while the transport rolls on and
+	// the panel goes on saying it is armed. That is what "the MIDI drops
+	// out at random and never comes back" was.
+	//
+	// silenceForTransport has always cleared it, which is why the audio
+	// pads recovered from the same situations and the MIDI pads did not.
+	mLaunched[slot] = false;
+}
+
+//------------------------------------------------------------------------
 void Project6Processor::renderMidi (const TransportInfo& transport, int32 numSamples)
 {
 	const double perSample = quartersPerSample (transport);
 
-	// BYPASSED, STOPPED, OR NO TIMELINE. Every one of these has to stop
-	// the notes rather than merely stop producing new ones - a bypass
-	// that left a chord sounding would be a bypass you could hear for
-	// ever.
-	if (mBypass || perSample <= 0.0 || !transport.playing)
+	// BYPASSED OR STOPPED. Both have to stop the notes rather than merely
+	// stop producing new ones - a bypass that left a chord sounding would
+	// be a bypass you could hear for ever - and both have to UNLAUNCH, so
+	// that the next grid line brings the pad back when the reason goes
+	// away. See unlaunchMidiVoice.
+	if (mBypass || !transport.playing)
 	{
 		for (int slot = 0; slot < kSlotCount; ++slot)
-			stopMidiVoice (slot, 0);
+			unlaunchMidiVoice (slot, 0);
+		mMidiStarved = 0;
 		return;
+	}
+
+	// NO TIMELINE, WHILE ROLLING. Different in kind from the two above:
+	// the host is playing and simply has not told us where it is this
+	// block. That is usually one block of nothing - a resync, an
+	// automation pass - and stopping for it would put an audible hole in
+	// every pattern for something nobody could hear.
+	//
+	// So it HOLDS: nothing is emitted, nothing is stopped, the sounding
+	// notes go on sounding, and the moment the context comes back the
+	// pads carry on exactly where they were. Only if it persists - long
+	// enough that the held notes would be a drone rather than a glitch -
+	// are they let go of; the invariant below then notices the pads are
+	// not playing and unlaunches them, so the first grid line after the
+	// context returns brings them back in on the grid. Either way nobody
+	// has to click anything.
+	if (perSample <= 0.0)
+	{
+		if (++mMidiStarved > kMidiStarveBlocks)
+		{
+			for (int slot = 0; slot < kSlotCount; ++slot)
+				stopMidiVoice (slot, 0);
+		}
+		return;
+	}
+
+	mMidiStarved = 0;
+
+	// THE INVARIANT, RE-ASSERTED once a block because getting it wrong is
+	// silent and permanent: a pad the processor believes is launched must
+	// have a voice that is playing. Anything that stops a voice without
+	// unlaunching it - a path added later, a case not thought of - shows
+	// up here as one missed bar rather than as a pattern that never comes
+	// back.
+	for (int slot = 0; slot < kSlotCount; ++slot)
+	{
+		if (mKind[slot] == SlotFileKind::Midi && mLaunched[slot]
+		    && !mMidiVoices[slot].playing ())
+		{
+			mLaunched[slot] = false;
+		}
 	}
 
 	// The PROJECT's bar, not the file's: it is the grid the pad launches
@@ -674,7 +775,24 @@ void Project6Processor::loadSlot (int index)
 	// WHICH READER, decided once and remembered. A pad holds either kind
 	// of file and nothing below here tests an extension again.
 	const SlotFileKind kind = slotFileKind (path);
+	const SlotFileKind wasKind = mKind[index];
 	mKind[index] = kind;
+
+	// A PAD THAT CHANGED KIND WHILE IT WAS RUNNING - a .wav dropped on a
+	// playing .mid pad, or the reverse. The two are played by different
+	// machinery, so whichever was running has to be stopped and the pad
+	// brought back in on the next grid line by the right one.
+	//
+	// It matters most in the MIDI direction: renderMidi skips a slot that
+	// is not a MIDI slot, so a voice left playing there would never be
+	// rendered again, never reach its own note-offs, and HANG. Replacing
+	// the file is not one of the ways a note is allowed to be left on.
+	//
+	// A flag rather than the deed itself, because this is the UI thread:
+	// stopping a voice means queueing note-offs, and note-offs need a
+	// block to go in.
+	if (wasKind != kind)
+		mRelaunch[index].store (true, std::memory_order_release);
 
 	SampleStatus status = SampleStatus::Empty;
 	std::shared_ptr<const SampleBuffer> sample;
@@ -1005,6 +1123,19 @@ tresult PLUGIN_API Project6Processor::process (ProcessData& data)
 	// Nothing carried over from the last block. Everything a pad emits is
 	// produced and handed over inside one call.
 	mMidiQueued = 0;
+
+	// A PAD WHOSE FILE CHANGED KIND since the last block. Stop whichever
+	// machinery was playing it and unlaunch it, so the next grid line
+	// brings it back in on the right one - see loadSlot.
+	for (int slot = 0; slot < kSlotCount; ++slot)
+	{
+		if (!mRelaunch[slot].exchange (false, std::memory_order_acq_rel))
+			continue;
+
+		stopMidiVoice (slot, 0);
+		mDsp.setSlotPlaying (slot, false);
+		mLaunched[slot] = false;
+	}
 
 	// Quarter notes per sample, for placing a MIDI pad's launch and its
 	// notes. Zero when the host has given us no musical context, which is

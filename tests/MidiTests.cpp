@@ -758,6 +758,96 @@ int main ()
 	}
 
 	//--------------------------------------------------------------------
+	section ("9. The host doing things the pad has to survive");
+	//--------------------------------------------------------------------
+	{
+		MidiEventOut out[kMaxMidiEventsPerBlock];
+		const double perSample = 1.0 / 1000.0;
+
+		MidiClip clip;
+		clip.notes.push_back ({ 0.0, 1.0, 60, 100 });
+		clip.notes.push_back ({ 2.0, 3.0, 64, 90 });
+		clip.content = 4.0;
+
+		// A LOCATE BACKWARDS, past the point the pad was launched at.
+		//
+		// This is the one that took a real session to find. A pad
+		// launched at bar 5 and then rewound to bar 1 used to go silent
+		// AND STAY SILENT - not stopped, still "playing", still counted
+		// as launched by the processor, simply never emitting anything
+		// again until the project crawled back past its launch point.
+		//
+		// The loop is anchored at the launch point and repeats in BOTH
+		// directions, so rewinding plays the same loop in the same phase.
+		{
+			MidiVoice voice;
+			voice.start (16.0);                     // launched four bars in
+
+			voice.render (&clip, 4.0, 16.0, perSample, 1000, out, kMaxMidiEventsPerBlock);
+
+			// ...and the host jumps back to the top of the project.
+			const int count = voice.render (&clip, 4.0, 0.0, perSample, 1000, out,
+			                                kMaxMidiEventsPerBlock);
+
+			check (voice.playing (), "a pad survives a locate back past its launch point");
+
+			bool sawNoteOn = false;
+			for (int i = 0; i < count; ++i)
+				sawNoteOn |= out[i].noteOn;
+			check (sawNoteOn,
+			       "NEGATIVE CONTROL: and it is still emitting notes afterwards");
+		}
+
+		// The same thing one block at a time, which is what it actually
+		// looks like in a cycle: every block is before the launch point.
+		{
+			MidiVoice voice;
+			voice.start (16.0);
+
+			int total = 0;
+			for (int beat = 0; beat < 8; ++beat)
+			{
+				const int count = voice.render (&clip, 4.0, static_cast<double> (beat),
+				                                perSample, 1000, out,
+				                                kMaxMidiEventsPerBlock);
+				for (int i = 0; i < count; ++i)
+					total += out[i].noteOn ? 1 : 0;
+			}
+
+			// Two notes a bar, two bars of it.
+			check (total == 4, "a cycle running entirely before the launch point plays");
+			check (voice.playing (), "and is still going at the end of it");
+		}
+
+		// AND THE PHASE IS KEPT. Launched on a bar line, the loop's first
+		// note lands on bar lines wherever the playhead goes - which is
+		// the whole point of anchoring to the project's timeline rather
+		// than to a sample count.
+		{
+			MidiVoice voice;
+			voice.start (16.0);
+
+			const int count = voice.render (&clip, 4.0, 8.0, perSample, 1000, out,
+			                                kMaxMidiEventsPerBlock);
+			check (count == 1 && out[0].noteOn && out[0].note == 60
+			           && out[0].sampleOffset == 0,
+			       "two bars before the launch point is still the top of the loop");
+		}
+
+		// A pad launched LATER in a later block is still not playing yet -
+		// the wrap must not turn "not yet" into "immediately".
+		{
+			MidiVoice voice;
+			voice.start (100.0);
+
+			const int count = voice.render (&clip, 4.0, 99.5, perSample, 1000, out,
+			                                kMaxMidiEventsPerBlock);
+			check (count == 1 && out[0].noteOn && out[0].sampleOffset == 500,
+			       "a pad launching half way through a block starts there, not at 0");
+		}
+	}
+
+	//--------------------------------------------------------------------
 	std::printf ("\n%s  (%d failure%s)\n",
 	             gFailures == 0 ? "ALL TESTS PASSED" : "TESTS FAILED",
 	             gFailures, gFailures == 1 ? "" : "s");

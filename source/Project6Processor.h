@@ -193,6 +193,20 @@ private:
 	    one more thing to remember. */
 	void stopMidiVoice (int slot, Steinberg::int32 sampleOffset);
 
+	/** The same, AND the pad is no longer launched.
+
+	    TWO FUNCTIONS BECAUSE THE DIFFERENCE IS THE BUG. applyGridLine
+	    only acts on a slot whose armed state differs from what is
+	    launched, so a pad stopped by the first of these and left launched
+	    is in a state no grid line will ever act on again: silent for
+	    ever, while the transport rolls on and the panel goes on saying it
+	    is armed.
+
+	    Use this one wherever the pad should come back when the reason it
+	    stopped goes away - a bypass, a transport stop. Use the plain one
+	    only where the pad is deliberately being held launched. */
+	void unlaunchMidiVoice (int slot, Steinberg::int32 sampleOffset);
+
 	/** Sort the queue into sample order and hand it to the host, on the
 	    merged bus AND on the row's own. */
 	void flushMidi (Steinberg::Vst::ProcessData& data);
@@ -262,6 +276,12 @@ private:
 	/** Which of the two a slot is holding, so nothing has to test the
 	    extension a second time. */
 	SlotFileKind mKind[kSlotCount] = {};
+
+	/** Set by the UI thread when a slot's file changed KIND, cleared by
+	    the audio thread when it has acted on it. The two kinds are played
+	    by different machinery, so a pad that changed from one to the
+	    other has to be stopped and relaunched rather than handed over. */
+	std::atomic<bool> mRelaunch[kSlotCount] = {};
 
 	/** How many events one BLOCK may carry, across all sixty-four pads.
 
@@ -336,6 +356,13 @@ private:
 
 	BarClock mBarClock;
 	bool mWasPlaying = false;
+
+	/** How many blocks in a row the host has rolled without telling us
+	    where it is. One or two is a resync and is held through; a run of
+	    them means the notes have to be let go of - see renderMidi. About
+	    a third of a second at a typical buffer size. */
+	static constexpr int kMidiStarveBlocks = 32;
+	int mMidiStarved = 0;
 
 	/** What was last sent to the controller, so only changes are sent.
 	    NaN so the first block publishes everything. */
