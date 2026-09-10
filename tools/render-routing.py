@@ -254,9 +254,10 @@ def main():
                  fill=SIGNAL, outline=SIGNAL)
 
     box(draw, (direct_x0, direct_y - 24, direct_x1, direct_y + 24),
-        (232, 238, 232), (90, 130, 100), 'Row A direct out', f_head)
-    text(draw, ((direct_x0 + direct_x1) / 2, direct_y + 40),
-         'and one for each of the other %d rows — %d aux buses in all'
+        (232, 238, 232), (90, 130, 100), 'Row A direct out', f_head,
+        sub='audio bus 1', subfnt=f_tiny)
+    text(draw, ((direct_x0 + direct_x1) / 2, direct_y + 42),
+         'and one for each of the other %d rows — audio buses 1–%d'
          % (rows - 1, rows), f_small, fill=MUTED, anchor='mm')
 
     # --- the row level ----------------------------------------------------
@@ -310,7 +311,8 @@ def main():
 
     arrow(draw, trim_x1, mix_mid, out_x0 - 2, mix_mid)
     box(draw, (out_x0, mix_mid - 26, out_x1, mix_mid + 26),
-        (232, 238, 232), (90, 130, 100), 'Stereo out', f_head)
+        (232, 238, 232), (90, 130, 100), 'Stereo out', f_head,
+        sub='audio bus 0', subfnt=f_tiny)
 
     # --- the notes --------------------------------------------------------
     notes_y = strip_top + (rows - 1) * (strip_h + strip_gap) + 60
@@ -382,10 +384,11 @@ def main():
     arrow(draw, rowlvl_x1, my + mh / 2, direct_x0 - 2, my + mh / 2)
 
     box(draw, (direct_x0, my, direct_x1, my + mh), (232, 238, 232), (90, 130, 100),
-        'Row C MIDI out', f_head)
-    text(draw, ((direct_x0 + direct_x1) / 2, my + mh + 16),
-         'and one for each of the other %d rows' % (rows - 1), f_small,
-         fill=MUTED, anchor='mm')
+        'Row C MIDI out', f_head, sub='event bus 3', subfnt=f_tiny)
+    # RIGHT-ALIGNED to the box: centred, this caption runs back under the
+    # line that drops to the merged bus and the two collide.
+    text(draw, (direct_x1, my + mh + 16),
+         'one per row — event buses 1–%d' % rows, f_small, fill=MUTED, anchor='rm')
 
     # ...and the merged bus, which is the one most hosts will show.
     merged_y = my + mh + 44
@@ -396,7 +399,8 @@ def main():
     arrow(draw, rowlvl_x1 + 30, merged_y + 22, direct_x0 - 2, merged_y + 22)
 
     box(draw, (direct_x0, merged_y, direct_x1, merged_y + mh),
-        (232, 238, 232), (90, 130, 100), 'MIDI Out (merged)', f_head)
+        (232, 238, 232), (90, 130, 100), 'MIDI Out (merged)', f_head,
+        sub='event bus 0', subfnt=f_tiny)
     text(draw, ((direct_x0 + direct_x1) / 2, merged_y + mh + 16),
          'every row, each on its own channel — the one most hosts will show',
          f_small, fill=MUTED, anchor='mm')
@@ -410,6 +414,9 @@ def main():
                         'running past the loop end is cut off there.'),
         ('Caps',        'At most %.0f quarter notes and %d notes per file; formats 0 and 1, '
                         'ticks-per-quarter division only.' % (max_quarters, max_notes)),
+        ('Transport',   'A MIDI pad needs the host’s TEMPO and POSITION — without them there '
+                        'is no timeline to place a note on, and the pad waits rather than '
+                        'playing. An audio pad falls back to launching at once.'),
     ]
     for i, (name, body) in enumerate(midi_notes):
         y = merged_y + mh + 48 + i * 24
