@@ -160,6 +160,8 @@ python3 tools/render-routing.py
 | `source/Project6IDs.h` | the two class UIDs, and the message rule |
 | `source/Project6Dsp.{h,cpp}` | the audio line: 64 looping voices and the output trim — **no SDK header may enter these** |
 | `source/Project6Sample.{h,cpp}` | the WAV reader and the decoded buffers — **SDK-free too** |
+| `source/Project6Midi.{h,cpp}` | the standard MIDI file reader and the note playhead — **and these** |
+| `source/Project6Stretch.{h,cpp}` | fitting a loop to the project's tempo, both ways — **and these** |
 | `source/Project6Slots.{h,cpp}` | the 8 × 8 slot bank and its path rules — **and these** |
 | `source/Project6Transport.{h,cpp}` | the bar clock: where a bar line falls in a block — **and these** |
 | `source/Project6SlotState.{h,cpp}` | the slot block of the state stream, written and read by one pair of functions |
@@ -171,11 +173,12 @@ python3 tools/render-routing.py
 | `source/Project6SlotView.{h,cpp}` | the grid's own controls: a pad, its level bar, and the launch box above each column |
 | `source/Project6Editor.{h,cpp}` | the panel |
 | `source/Project6Entry.cpp` | the factory |
-| `tests/` | `DspTests.cpp`, `SlotTests.cpp`, `WavTests.cpp` and `TransportTests.cpp`, SDK-free; `ParamsTests.cpp`, headers only |
+| `tests/` | `DspTests`, `SlotTests`, `WavTests`, `TransportTests`, `StretchTests` and `MidiTests`, SDK-free; `ParamsTests`, headers only |
 | `tools/check-editor.py` | the editor guard |
 | `tools/render-routing.py` | draws `docs/routing.png` from the headers |
 | `docs/routing.png` | the signal path: pad → slot level → row bus → row level → mix → trim |
 | `resource/au-info.plist` | the AU's four-character identity and bus layouts |
+| `LICENSE` | CC BY-SA 4.0, and what it does not cover |
 
 ## The two rules worth repeating
 
@@ -201,3 +204,15 @@ python3 tools/render-routing.py
    sounding are two different facts, and the panel shows both — see
    `PORTING-NOTES.md` §10. If you change anything about that, run
    `TransportTests` first: bar detection fails silently.
+
+---
+
+Copyright 2026 A. E. Cobley. Licensed under
+[CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/) — see
+[`LICENSE`](LICENSE). Credit it, and share anything you build on it under the
+same terms.
+
+The Steinberg VST3 SDK and VSTGUI are not covered by that: they are fetched
+into `external/` at configure time and carry their own licence terms.
+
+VST is a trademark of Steinberg Media Technologies GmbH.
