@@ -144,6 +144,17 @@ public:
 	    frame 0. */
 	void setPosition (double position);
 
+	/** Did the playhead pass the end of the file since this was last
+	    asked? Reads AND CLEARS.
+
+	    It is how a ONE-SHOT knows it has finished: a pad that is not
+	    looping plays to the end of its file and stops there, and the end
+	    of the file is exactly the moment the playhead wraps. Asked once
+	    a sample by the voice that owns it, so read-and-clear rather than
+	    a flag the caller has to remember to reset - a wrap left standing
+	    would stop the next pad to look at it. */
+	bool takeWrapped ();
+
 	/** One output frame of interleaved stereo `source`.
 
 	    `rateStep` is the file's rate over the host's - the resampling
@@ -171,6 +182,13 @@ private:
 	double mIdeal = 0.0;        ///< the musical position
 	double mRead  = 0.0;        ///< the incoming read head
 	double mPrev  = 0.0;        ///< the outgoing read head, during a fade
+
+	/** Set when mIdeal - the MUSICAL position, the one that means "how
+	    far through the file are we" - went past the end and came back.
+	    Not mRead: in the pitch-preserving mode the read head wraps
+	    whenever it feels like it, and it is the music that has finished,
+	    not the reading. */
+	bool mWrapped   = false;
 
 	int mFade       = 0;        ///< samples left in the current cross-fade
 	int mSinceHop   = 0;        ///< output samples since the last splice

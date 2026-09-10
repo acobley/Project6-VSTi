@@ -560,14 +560,14 @@ int main ()
 
 		MidiVoice voice;
 		check (! voice.playing (), "a new voice is not playing");
-		check (voice.render (&clip, loop, 0.0, perSample, 1000, out, kMaxMidiEventsPerBlock) == 0,
+		check (voice.render (&clip, loop, 0.0, perSample, 1000, true, out, kMaxMidiEventsPerBlock) == 0,
 		       "and emits nothing");
 
 		// Launched at project position 0.
 		voice.start (0.0);
 		check (voice.playing (), "starting it starts it");
 
-		int count = voice.render (&clip, loop, 0.0, perSample, 1000, out,
+		int count = voice.render (&clip, loop, 0.0, perSample, 1000, true, out,
 		                          kMaxMidiEventsPerBlock);
 		check (count == 1, "the first beat is one note on");
 		check (out[0].noteOn && out[0].note == 60 && out[0].sampleOffset == 0,
@@ -578,16 +578,16 @@ int main ()
 		// the end of this one. Both edges are half-open, so an event
 		// falling on a block boundary belongs to the block that starts
 		// there - the same rule for ons and offs.
-		count = voice.render (&clip, loop, 1.0, perSample, 1000, out, kMaxMidiEventsPerBlock);
+		count = voice.render (&clip, loop, 1.0, perSample, 1000, true, out, kMaxMidiEventsPerBlock);
 		check (count == 1 && ! out[0].noteOn && out[0].note == 60,
 		       "the second beat is that note's off");
 		check (out[0].sampleOffset == 0, "at the top of the block, not the end of the last");
 
-		count = voice.render (&clip, loop, 2.0, perSample, 1000, out, kMaxMidiEventsPerBlock);
+		count = voice.render (&clip, loop, 2.0, perSample, 1000, true, out, kMaxMidiEventsPerBlock);
 		check (count == 1 && out[0].noteOn && out[0].note == 64,
 		       "the third beat starts the second note");
 
-		count = voice.render (&clip, loop, 3.0, perSample, 1000, out, kMaxMidiEventsPerBlock);
+		count = voice.render (&clip, loop, 3.0, perSample, 1000, true, out, kMaxMidiEventsPerBlock);
 		check (count == 1 && ! out[0].noteOn && out[0].note == 64,
 		       "and the fourth ends it");
 
@@ -596,7 +596,7 @@ int main ()
 		// AND THEN IT REPEATS, on the bar line rather than at 3.5 where
 		// the file stopped - which is the padding, heard rather than
 		// measured. The fifth beat is the first beat again.
-		count = voice.render (&clip, loop, 4.0, perSample, 1000, out, kMaxMidiEventsPerBlock);
+		count = voice.render (&clip, loop, 4.0, perSample, 1000, true, out, kMaxMidiEventsPerBlock);
 		check (count == 1 && out[0].noteOn && out[0].note == 60 && out[0].sampleOffset == 0,
 		       "the loop comes round again on the bar line");
 
@@ -632,8 +632,8 @@ int main ()
 			voice.start (0.0);
 
 			// Beats 0 to 3: the note starts half way through the fourth.
-			voice.render (&clip, loop, 0.0, perSample, 3000, out, kMaxMidiEventsPerBlock);
-			int count = voice.render (&clip, loop, 3.0, perSample, 1000, out,
+			voice.render (&clip, loop, 0.0, perSample, 3000, true, out, kMaxMidiEventsPerBlock);
+			int count = voice.render (&clip, loop, 3.0, perSample, 1000, true, out,
 			                          kMaxMidiEventsPerBlock);
 
 			check (count == 2, "the note starts and is stopped inside the same beat");
@@ -657,7 +657,7 @@ int main ()
 
 			MidiVoice voice;
 			voice.start (0.0);
-			voice.render (&clip, 4.0, 0.0, perSample, 1000, out, kMaxMidiEventsPerBlock);
+			voice.render (&clip, 4.0, 0.0, perSample, 1000, true, out, kMaxMidiEventsPerBlock);
 
 			const int count = voice.allNotesOff (37, out, kMaxMidiEventsPerBlock);
 			check (count == 2, "a pad stopped mid-note turns both notes off");
@@ -679,7 +679,7 @@ int main ()
 
 			MidiVoice voice;
 			voice.start (0.0);
-			voice.render (&clip, 4.0, 0.0, perSample, 1000, out, kMaxMidiEventsPerBlock);
+			voice.render (&clip, 4.0, 0.0, perSample, 1000, true, out, kMaxMidiEventsPerBlock);
 
 			check (voice.allNotesOff (0, out, kMaxMidiEventsPerBlock) == 2,
 			       "one pitch struck twice needs two note-offs");
@@ -695,9 +695,9 @@ int main ()
 
 			MidiVoice voice;
 			voice.start (0.0);
-			voice.render (&clip, 4.0, 0.0, perSample, 1000, out, kMaxMidiEventsPerBlock);
+			voice.render (&clip, 4.0, 0.0, perSample, 1000, true, out, kMaxMidiEventsPerBlock);
 
-			const int count = voice.render (nullptr, 4.0, 1.0, perSample, 1000, out,
+			const int count = voice.render (nullptr, 4.0, 1.0, perSample, 1000, true, out,
 			                                kMaxMidiEventsPerBlock);
 			check (count == 1 && ! out[0].noteOn,
 			       "a slot emptied under a running pad turns its note off");
@@ -713,9 +713,9 @@ int main ()
 
 			MidiVoice voice;
 			voice.start (0.0);
-			voice.render (&clip, 4.0, 0.0, perSample, 1000, out, kMaxMidiEventsPerBlock);
+			voice.render (&clip, 4.0, 0.0, perSample, 1000, true, out, kMaxMidiEventsPerBlock);
 
-			const int count = voice.render (&clip, 4.0, 64.0, perSample, 1000, out,
+			const int count = voice.render (&clip, 4.0, 64.0, perSample, 1000, true, out,
 			                                kMaxMidiEventsPerBlock);
 			check (count >= 1 && ! out[0].noteOn && out[0].sampleOffset == 0,
 			       "a locate turns off what was sounding before it");
@@ -733,7 +733,7 @@ int main ()
 			voice.start (0.0);
 
 			// Straight to the third beat: the note's ON was never sent.
-			const int count = voice.render (&clip, 4.0, 1.5, perSample, 1000, out,
+			const int count = voice.render (&clip, 4.0, 1.5, perSample, 1000, true, out,
 			                                kMaxMidiEventsPerBlock);
 			check (count == 0,
 			       "NEGATIVE CONTROL: no note-off for a note this voice never started");
@@ -748,7 +748,7 @@ int main ()
 
 			MidiVoice voice;
 			voice.start (0.0);
-			voice.render (&clip, 4.0, 0.0, perSample, 1000, out, kMaxMidiEventsPerBlock);
+			voice.render (&clip, 4.0, 0.0, perSample, 1000, true, out, kMaxMidiEventsPerBlock);
 			voice.reset ();
 
 			check (! voice.playing (), "reset stops the voice");
@@ -783,10 +783,10 @@ int main ()
 			MidiVoice voice;
 			voice.start (16.0);                     // launched four bars in
 
-			voice.render (&clip, 4.0, 16.0, perSample, 1000, out, kMaxMidiEventsPerBlock);
+			voice.render (&clip, 4.0, 16.0, perSample, 1000, true, out, kMaxMidiEventsPerBlock);
 
 			// ...and the host jumps back to the top of the project.
-			const int count = voice.render (&clip, 4.0, 0.0, perSample, 1000, out,
+			const int count = voice.render (&clip, 4.0, 0.0, perSample, 1000, true, out,
 			                                kMaxMidiEventsPerBlock);
 
 			check (voice.playing (), "a pad survives a locate back past its launch point");
@@ -808,7 +808,7 @@ int main ()
 			for (int beat = 0; beat < 8; ++beat)
 			{
 				const int count = voice.render (&clip, 4.0, static_cast<double> (beat),
-				                                perSample, 1000, out,
+				                                perSample, 1000, true, out,
 				                                kMaxMidiEventsPerBlock);
 				for (int i = 0; i < count; ++i)
 					total += out[i].noteOn ? 1 : 0;
@@ -827,7 +827,7 @@ int main ()
 			MidiVoice voice;
 			voice.start (16.0);
 
-			const int count = voice.render (&clip, 4.0, 8.0, perSample, 1000, out,
+			const int count = voice.render (&clip, 4.0, 8.0, perSample, 1000, true, out,
 			                                kMaxMidiEventsPerBlock);
 			check (count == 1 && out[0].noteOn && out[0].note == 60
 			           && out[0].sampleOffset == 0,
@@ -840,10 +840,115 @@ int main ()
 			MidiVoice voice;
 			voice.start (100.0);
 
-			const int count = voice.render (&clip, 4.0, 99.5, perSample, 1000, out,
+			const int count = voice.render (&clip, 4.0, 99.5, perSample, 1000, true, out,
 			                                kMaxMidiEventsPerBlock);
 			check (count == 1 && out[0].noteOn && out[0].sampleOffset == 500,
 			       "a pad launching half way through a block starts there, not at 0");
+		}
+	}
+
+	//--------------------------------------------------------------------
+	section ("10. A MIDI pad that plays once and stops");
+	//--------------------------------------------------------------------
+	{
+		MidiEventOut out[kMaxMidiEventsPerBlock];
+		const double perSample = 1.0 / 1000.0;
+
+		MidiClip clip;
+		clip.notes.push_back ({ 0.0, 1.0, 60, 100 });
+		clip.notes.push_back ({ 2.0, 3.0, 64, 90 });
+		clip.content = 3.5;
+
+		const double loop = loopLengthQuarters (clip.content, 4.0);
+
+		// ONE PASS IS A WHOLE BAR, because a MIDI loop's length IS the
+		// padded bar. Ending at the last note instead would cut the
+		// silence the file was written with - and a drum pattern whose
+		// last hit is on beat three would end early.
+		{
+			MidiVoice voice;
+			voice.start (0.0);
+
+			int ons = 0;
+			for (int beat = 0; beat < 3; ++beat)
+			{
+				const int count = voice.render (&clip, loop, static_cast<double> (beat),
+				                                perSample, 1000, false, out,
+				                                kMaxMidiEventsPerBlock);
+				for (int i = 0; i < count; ++i)
+					ons += out[i].noteOn ? 1 : 0;
+			}
+			check (ons == 2, "a one-shot plays both of its notes");
+			check (voice.playing (), "and is still going three beats in");
+
+			// THE FOURTH BEAT ENDS EXACTLY ON THE BAR, which is where the
+			// pass ends - so the pad stops inside that block rather than
+			// surviving into the block a looping pad would come round in.
+			voice.render (&clip, loop, 3.0, perSample, 1000, false, out,
+			              kMaxMidiEventsPerBlock);
+			check (! voice.playing (), "and stops at the end of the bar, not after it");
+
+			// And there is nothing to come. A looping pad would put its
+			// first note here.
+			const int count = voice.render (&clip, loop, 4.0, perSample, 1000, false, out,
+			                                kMaxMidiEventsPerBlock);
+			int ons5 = 0;
+			for (int i = 0; i < count; ++i)
+				ons5 += out[i].noteOn ? 1 : 0;
+			check (ons5 == 0, "NEGATIVE CONTROL: with no note from a second pass");
+		}
+
+		// AND NOTHING IS LEFT SOUNDING. A one-shot only ever reaches the
+		// loop end once, so it gets the backstop flush exactly once - and
+		// it has to work, or every one-shot in the bank drones.
+		{
+			MidiClip held;
+			held.notes.push_back ({ 3.5, 8.0, 60, 100 });   // runs past the bar
+			held.content = 3.5;
+
+			MidiVoice voice;
+			voice.start (0.0);
+			voice.render (&held, 4.0, 0.0, perSample, 4000, false, out,
+			              kMaxMidiEventsPerBlock);
+
+			check (! voice.playing (), "a one-shot whose note overruns still stops");
+			check (voice.allNotesOff (0, out, kMaxMidiEventsPerBlock) == 0,
+			       "with nothing at all left sounding");
+		}
+
+		// The pass END is where the file's bar ends, not where the block
+		// happens to end: a long block does not overshoot into a second
+		// pass and a short one does not stop early.
+		{
+			MidiVoice voice;
+			voice.start (0.0);
+
+			// Eight beats in one block - two passes' worth - and it must
+			// still be one pass.
+			int ons = 0;
+			const int count = voice.render (&clip, loop, 0.0, perSample, 8000, false, out,
+			                                kMaxMidiEventsPerBlock);
+			for (int i = 0; i < count; ++i)
+				ons += out[i].noteOn ? 1 : 0;
+
+			check (ons == 2, "a block twice the length of the pass still plays it once");
+			check (! voice.playing (), "and the pad has stopped inside that block");
+		}
+
+		// A LOOPING PAD IS UNTOUCHED by any of it, which is the control
+		// for the whole section.
+		{
+			MidiVoice voice;
+			voice.start (0.0);
+
+			int ons = 0;
+			const int count = voice.render (&clip, loop, 0.0, perSample, 8000, true, out,
+			                                kMaxMidiEventsPerBlock);
+			for (int i = 0; i < count; ++i)
+				ons += out[i].noteOn ? 1 : 0;
+
+			check (ons == 4, "NEGATIVE CONTROL: the same block set to loop plays twice");
+			check (voice.playing (), "and keeps going");
 		}
 	}
 

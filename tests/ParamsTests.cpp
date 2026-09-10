@@ -644,7 +644,7 @@ int main ()
 	//--------------------------------------------------------------------
 	{
 		check (kLiveTempo == kSlotFitEnd, "it is appended after the tempo fits");
-		check (kLiveTempo + 1 == kNumParams, "and is currently the last id there is");
+		check (kLiveTempo + 1 < kNumParams, "and the loop switches follow it");
 
 		// THE SECOND CLAUSE OF isLiveParam. Without it this would be an
 		// ordinary automatable parameter that every host listed and that
@@ -670,6 +670,69 @@ int main ()
 		check (tempo.plainDefault == 0.0, "and it is the default");
 		check (close (tempo.toInternal (tempo.toNormalized (128.0)), 128.0, 1e-9),
 		       "a tempo round-trips through normalised");
+	}
+
+	//--------------------------------------------------------------------
+	section ("14. The loop / one-shot block");
+	//--------------------------------------------------------------------
+	{
+		check (kSlotLoopBase == kLiveTempo + 1, "it starts after the published tempo");
+		check (kSlotLoopEnd - kSlotLoopBase == kSlotCount, "one per slot");
+		check (kSlotLoopEnd == kNumParams, "and currently runs to the end");
+
+		bool roundTrips = true, classified = true, notOthers = true;
+		for (int slot = 0; slot < kSlotCount; ++slot)
+		{
+			const ParamID id = slotLoopParam (slot);
+			roundTrips &= (slotOfLoopParam (id) == slot);
+			classified &= isSlotLoopParam (id);
+			notOthers  &= ! isSlotFitParam (id) && ! isSlotDivisionParam (id)
+			              && ! isSlotLevelParam (id) && ! isRowLevelParam (id)
+			              && ! isSlotPlayParam (id) && ! isLiveParam (id);
+		}
+		check (roundTrips, "slot -> loop id -> slot round-trips for all 64");
+		check (classified, "and all 64 are classified as loop switches");
+		check (notOthers,
+		       "NEGATIVE CONTROL: and none of them as anything else");
+
+		// A BOOL, so a host's own list reads the two words rather than 0
+		// and 1.
+		const ParamDef& sw = slotLoopDef ();
+		check (sw.type == ParamType::Bool, "it is a two-state parameter");
+		check (sw.stepCount == 1, "with one step between the two");
+
+		// THE DEFAULT IS LOOP - what this instrument is for, and what
+		// every pad did before there was a choice, so a project saved
+		// before this parameter existed reopens behaving exactly as it
+		// did.
+		check (sw.plainDefault == 1.0, "and it defaults to LOOP");
+		check (sw.toInternal (sw.defaultNormalized ()) == 1.0,
+		       "which survives the normalised round trip");
+		check (! close (sw.plainDefault, 0.0, 1e-9),
+		       "NEGATIVE CONTROL: not to one-shot");
+
+		// A Bool SNAPS rather than rounding, so a host sending 0.49 gets
+		// one-shot and 0.5 gets loop, with nothing in between.
+		check (sw.toInternal (0.49) == 0.0, "just below half is one-shot");
+		check (sw.toInternal (0.5)  == 1.0, "and half is loop");
+
+		check (std::string (paramChoiceName (slotLoopParam (0), 0)) == "One-shot",
+		       "the host's list reads One-shot");
+		check (std::string (paramChoiceName (slotLoopParam (0), 1)) == "Loop",
+		       "and Loop");
+
+		check (std::string (paramTitle (slotLoopParam (0)))  == "Slot A1 Loop",
+		       "a loop switch is named for its cell");
+		check (std::string (paramTitle (slotLoopParam (63))) == "Slot H8 Loop",
+		       "at both ends");
+		check (std::string (paramTitle (slotLoopParam (0)))
+		           != std::string (paramTitle (slotFitParam (0))),
+		       "and is not the same name as its tempo fit");
+
+		bool routed = true;
+		for (int slot = 0; slot < kSlotCount; ++slot)
+			routed &= (&paramDef (slotLoopParam (slot)) == &slotLoopDef ());
+		check (routed, "paramDef routes every one of the 64 to the loop definition");
 	}
 
 	//--------------------------------------------------------------------

@@ -409,6 +409,40 @@ private:
 };
 
 //------------------------------------------------------------------------
+/** The smallest box in the strip: does this pad loop, or play once?
+
+    THIRTEEN PIXELS AND ONE CHARACTER - an infinity-ish "L" for a loop, a
+    "1" for a one-shot - because the strip already carries three controls
+    and a fourth that needed three characters would have cost another
+    twenty pixels on every cell and a hundred and sixty on the panel.
+
+    A two-state control rather than an enumerated one: it steps on a click
+    like the two boxes beside it, but there is nowhere to go except back,
+    so a right-click does the same thing as a left one rather than
+    pretending to go backwards through two states. */
+class SpySlotLoop : public VSTGUI::CControl
+{
+public:
+	SpySlotLoop (const VSTGUI::CRect& size, VSTGUI::IControlListener* listener,
+	             int32_t tag, int index);
+
+	int index () const { return mIndex; }
+
+	void draw (VSTGUI::CDrawContext* context) override;
+
+	void onMouseDownEvent (VSTGUI::MouseDownEvent& event) override;
+	void onMouseWheelEvent (VSTGUI::MouseWheelEvent& event) override;
+
+	CLASS_METHODS (SpySlotLoop, VSTGUI::CControl)
+
+private:
+	bool looping () const { return getValueNormalized () >= 0.5f; }
+	void toggle ();
+
+	int mIndex = 0;
+};
+
+//------------------------------------------------------------------------
 /** The box above a column: one press launches every loaded slot in it.
 
     It writes the slots' own trigger parameters and does nothing else, so

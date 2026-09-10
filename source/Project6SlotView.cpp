@@ -1054,6 +1054,84 @@ void SpySlotFit::draw (CDrawContext* context)
 }
 
 //------------------------------------------------------------------------
+// SpySlotLoop
+//------------------------------------------------------------------------
+
+SpySlotLoop::SpySlotLoop (const CRect& size, IControlListener* listener,
+                          int32_t tag, int index)
+: CControl (size, listener, tag)
+, mIndex (index)
+{
+	setMouseEnabled (true);
+	setMin (0.f);
+	setMax (1.f);
+
+	setTooltipText ("Loop or one-shot — L loops, 1 plays once and stops itself");
+}
+
+//------------------------------------------------------------------------
+void SpySlotLoop::toggle ()
+{
+	beginEdit ();
+	setValueNormalized (looping () ? 0.f : 1.f);
+	valueChanged ();
+	endEdit ();
+	invalid ();
+}
+
+//------------------------------------------------------------------------
+void SpySlotLoop::onMouseDownEvent (MouseDownEvent& event)
+{
+	// EITHER BUTTON DOES THE SAME THING. The two boxes beside this one
+	// step forwards on a left click and backwards on a right one, because
+	// they have three and four choices; with two there is nowhere to go
+	// except back, and a right-click that appeared to do something
+	// different would be a lie about a control this small.
+	const bool any = event.buttonState.isLeft () || event.buttonState.isRight ()
+	                 || event.modifiers.has (ModifierKey::Control);
+	if (! any)
+		return;
+
+	event.consumed = true;
+	toggle ();
+}
+
+//------------------------------------------------------------------------
+void SpySlotLoop::onMouseWheelEvent (MouseWheelEvent& event)
+{
+	event.consumed = true;
+	if (event.deltaY != 0.)
+		toggle ();
+}
+
+//------------------------------------------------------------------------
+void SpySlotLoop::draw (CDrawContext* context)
+{
+	const CRect r = getViewSize ();
+
+	context->setFillColor (kWellFillFull);
+	context->drawRect (r, kDrawFilled);
+	drawWell (context, r, kWellHigh, kWellShadow);
+
+	context->setFont (panelFontTiny ());
+
+	// A ONE-SHOT IS THE ONE THAT IS MARKED. Loop is the default and
+	// sixty-three pads out of sixty-four will be on it, so it is the
+	// quiet state and the "1" is what the eye should find.
+	context->setFontColor (looping () ? kSlotTextIdle : kSlotText);
+
+	const CCoord height = panelFontTiny ()->getSize () + 2.;
+	const CRect line (r.left,
+	                  r.top + (r.getHeight () - height) * 0.5,
+	                  r.right,
+	                  r.top + (r.getHeight () - height) * 0.5 + height);
+
+	context->drawString (looping () ? "L" : "1", line, kCenterText, true);
+
+	setDirty (false);
+}
+
+//------------------------------------------------------------------------
 // SpyColumnButton
 //------------------------------------------------------------------------
 

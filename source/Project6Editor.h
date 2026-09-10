@@ -85,13 +85,14 @@ public:
 	// shedding the extension, and below about 70 the grid stopped being a
 	// list of names and became a grid of ellipses.
 	//
-	// It is 96 now, and the twelve pixels went to the strip beneath
+	// It is 112 now, and every pixel past 84 went to the STRIP beneath
 	// rather than to the name: the strip has to carry a level bar, the
-	// launch box AND the tempo-fit box, and a level bar narrower than
-	// about thirty pixels is a bar you cannot set. Widening the pad is
-	// what pays for the third box, and the name got wider as well.
+	// launch box, the tempo-fit box and the loop switch, and a level bar
+	// narrower than about thirty pixels is a bar you cannot set.
+	// Widening the pad is what pays for each box, and the name gets
+	// wider as a side effect rather than as the point.
 	//--------------------------------------------------------------------
-	static constexpr int kSlotWidth  = 96;
+	static constexpr int kSlotWidth  = 112;
 	static constexpr int kSlotHeight = 30;
 	static constexpr int kSlotGap    = 5;
 
@@ -116,9 +117,16 @@ public:
 	static constexpr int kLevelGap      = 2;
 	static constexpr int kDivisionWidth = 26;
 	static constexpr int kFitWidth      = 26;
+
+	/** The loop switch, which is the smallest thing on the panel: one
+	    character, because a third three-character box would have cost
+	    twenty more pixels on every cell and a hundred and sixty on the
+	    window. */
+	static constexpr int kLoopWidth     = 13;
+
 	static constexpr int kStripGap      = 3;
 	static constexpr int kLevelWidth    =
-		kSlotWidth - kDivisionWidth - kFitWidth - 2 * kStripGap;
+		kSlotWidth - kDivisionWidth - kFitWidth - kLoopWidth - 3 * kStripGap;
 
 	/** A CELL is a pad and the strip under it. The grid's row pitch is
 	    this plus the gap between cells, so the strip belongs visually to
@@ -214,11 +222,11 @@ public:
 	static_assert (kColumnButtonTop + kColumnButtonHeight < kSlotGridTop,
 	               "the column buttons overlap the pads");
 
-	// The strip under a pad is exactly as wide as the pad: a bar, a gap,
-	// the division box, a gap, and the fit box.
+	// The strip under a pad is exactly as wide as the pad: a bar, then
+	// the division box, the fit box and the loop switch, each after a gap.
 	static_assert (kLevelWidth + kStripGap + kDivisionWidth + kStripGap + kFitWidth
-	                   == kSlotWidth,
-	               "the level bar and the two boxes do not fill the cell's width");
+	                   + kStripGap + kLoopWidth == kSlotWidth,
+	               "the level bar and the three boxes do not fill the cell's width");
 	static_assert (kLevelWidth >= 30,
 	               "the boxes have eaten the level bar - a bar this narrow cannot be set");
 
@@ -264,8 +272,11 @@ private:
 	/** The launch-division box, beside that bar. */
 	VSTGUI::CRect divisionCell (int column, int row) const;
 
-	/** The tempo-fit box, at the right-hand end of the strip. */
+	/** The tempo-fit box, beside that one. */
 	VSTGUI::CRect fitCell (int column, int row) const;
+
+	/** The loop switch, at the right-hand end of the strip. */
+	VSTGUI::CRect loopCell (int column, int row) const;
 
 	/** One row's fader, beside its row. Sits BELOW the channel label
 	    rather than centred on the cell, so the two together are centred
@@ -354,6 +365,7 @@ private:
 	SpySampleSlot* mSlots[kSlotCount] = { nullptr };
 	SpySlotLevel* mLevels[kSlotCount] = { nullptr };
 	SpySlotFit* mFits[kSlotCount] = { nullptr };
+	SpySlotLoop* mLoops[kSlotCount] = { nullptr };
 	SpyColumnButton* mColumns[kSlotColumns] = { nullptr };
 
 	VSTGUI::SharedPointer<VSTGUI::CVSTGUITimer> mTimer;

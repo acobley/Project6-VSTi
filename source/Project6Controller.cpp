@@ -209,6 +209,11 @@ tresult PLUGIN_API Project6Controller::setComponentState (IBStream* state)
 		readValueBlock (streamer, fits, kSlotCount, slotFitDef ().defaultNormalized ());
 		for (int slot = 0; slot < kSlotCount; ++slot)
 			setParamNormalized (slotFitParam (slot), fits[slot]);
+
+		double loops[kSlotCount] = {};
+		readValueBlock (streamer, loops, kSlotCount, slotLoopDef ().defaultNormalized ());
+		for (int slot = 0; slot < kSlotCount; ++slot)
+			setParamNormalized (slotLoopParam (slot), loops[slot]);
 	}
 
 	// The processor is reading the files right now and will report each

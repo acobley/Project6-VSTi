@@ -145,7 +145,19 @@ enum Param : Steinberg::Vst::ParamID
 	    what the user is hearing. */
 	kLiveTempo = kSlotFitEnd,
 
-	kNumParams = kLiveTempo + 1
+	/** LOOP, OR PLAY ONCE AND STOP, per pad. A setting, saved with the
+	    project, and appended after the published tempo because ids are
+	    never moved - even when what precedes them is a published value
+	    and this is not.
+
+	    The default is LOOP, which is what this instrument is for and
+	    what every pad did before there was a choice, so a project saved
+	    before this parameter existed reopens behaving exactly as it
+	    did. */
+	kSlotLoopBase = kLiveTempo + 1,
+	kSlotLoopEnd  = kSlotLoopBase + kSlotCount,
+
+	kNumParams = kSlotLoopEnd
 };
 
 /** What kLiveTransport carries. */
@@ -237,6 +249,25 @@ constexpr bool isSlotDivisionParam (Steinberg::Vst::ParamID id)
 constexpr int slotOfDivisionParam (Steinberg::Vst::ParamID id)
 {
 	return static_cast<int> (id - kSlotDivisionBase);
+}
+
+//------------------------------------------------------------------------
+// The loop / one-shot block
+//------------------------------------------------------------------------
+
+constexpr Steinberg::Vst::ParamID slotLoopParam (int slot)
+{
+	return static_cast<Steinberg::Vst::ParamID> (kSlotLoopBase + slot);
+}
+
+constexpr bool isSlotLoopParam (Steinberg::Vst::ParamID id)
+{
+	return id >= kSlotLoopBase && id < kSlotLoopEnd;
+}
+
+constexpr int slotOfLoopParam (Steinberg::Vst::ParamID id)
+{
+	return static_cast<int> (id - kSlotLoopBase);
 }
 
 //------------------------------------------------------------------------
@@ -414,6 +445,10 @@ const ParamDef& slotDivisionDef ();
 /** The definition every tempo fit shares: an enumerated parameter with
     kFitModeCount choices, defaulting to kDefaultFitMode. */
 const ParamDef& slotFitDef ();
+
+/** The definition every loop switch shares: a two-state parameter reading
+    "One-shot" and "Loop" in a host's own list, defaulting to Loop. */
+const ParamDef& slotLoopDef ();
 
 /** The widest bar the panel will draw a grid for. Beyond it the grid is
     noise rather than information, and a host reporting something sillier

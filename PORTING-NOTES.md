@@ -172,14 +172,15 @@ python3 tools/render-routing.py
 
 `-DRELEASE=1` is required or `fdebug.h` refuses to compile.
 
-Results, at the MIDI commit: **all seven suites all-pass**, all fifteen
+Results, at the one-shot commit: **all seven suites all-pass**, all fifteen
 translation units produced object files with no errors, every undefined
 `Project6::` symbol resolved within the set, `check-editor` reported ok, and
 `render-routing` regenerated the diagram from the headers.
 The panel's dimensions are checked by `static_assert` rather than by eye —
-943 × 624, with the grid meeting the fader column, the faders meeting the
+1071 × 624, with the grid meeting the fader column, the faders meeting the
 right margin, the launch boxes clear of the pads, and the level bar, the
-division box and the fit box filling a cell's width exactly.
+division box, the fit box and the loop switch filling a cell's width
+exactly.
 
 Re-run all eight before every commit. Adding a source file also means re-running
 `./setup-xcode.sh --no-open` before the next Xcode build, or the project
@@ -1360,7 +1361,81 @@ make room and the pair is centred where the fader alone used to be, so the
 grid beside it is untouched. A `static_assert` is what fails if either height
 changes enough to stop fitting.
 
-## 14. The SDK
+## 14. Loop, or play once and stop
+
+A switch on every pad. **Default loop** — what this instrument is for, and what
+every pad did before there was a choice, so a project saved before the
+parameter existed reopens behaving exactly as it did.
+
+### One click, one hit
+
+A one-shot that has played **turns its own trigger off**. The pad goes dark and
+the next click is another hit, rather than the "off" half of a toggle that has
+to be clicked twice. The processor writes the trigger back through
+`data.outputParameterChanges`, which is how a plug-in reports a control it
+moved itself — so a host recording automation sees the pad turn itself off.
+
+Not through `publishOne`. That only sends what *moved*, and would therefore go
+silent the second time a pad finished at the same value. This is an **event**,
+not a published state, and the difference is a pad that fires once and then
+never again.
+
+Everything the processor believes about the pad goes back to stopped **before**
+the host is told — `mLaunched`, `mArmed`, and its own copy of the parameter —
+so nothing can see it half way between the two states and start it again.
+
+### Where the end is
+
+* **Audio:** the moment the playhead wraps. `TimeStretcher::takeWrapped` reads
+  and clears, so the wrap is acted on once and cannot be seen twice. It watches
+  `mIdeal`, the *musical* position — in the pitch-preserving mode the read head
+  wraps whenever it feels like it, and it is the music that has finished, not
+  the reading. `StretchTests` §8 has that as its negative control: four
+  thousand samples at half speed is **two** passes, not the four the read head
+  did.
+* **MIDI:** one pass of the loop, which is the file **run out to the end of its
+  bar**. Ending at the last note instead would cut the silence the file was
+  written with, and a pattern whose last hit is on beat three would end early.
+
+The audio stop is the ordinary **fade-out, not a cut**. The last sample of a
+file is no more likely to be at zero than the first, and a one-shot that
+clicked when it finished would be worse than one that simply looped.
+
+Switching a running pad to one-shot lets it **finish the pass it is on** rather
+than cutting it. The setting is read once a block, like the launch division and
+the tempo fit, and acted on at the next end of the file.
+
+### What it cost
+
+The cell went 96 → 112 and the window 943 → 1071. Every pixel past the
+original 84 has gone to the **strip**, not the name: it now carries a level
+bar, a launch box, a fit box and this switch, and a level bar under about
+thirty pixels is a bar you cannot set. The switch is **thirteen pixels and one
+character** — `L` or `1` — because a fourth three-character box would have cost
+another twenty pixels on every cell and a hundred and sixty on the panel.
+
+One-shot is the state that is **marked**: loop is the default and sixty-three
+pads out of sixty-four will be on it, so `L` is drawn dim and the `1` is what
+the eye should find.
+
+Both mouse buttons do the same thing on it. The two boxes beside it step
+forwards on a left click and backwards on a right one because they have three
+and four choices; with two there is nowhere to go except back, and a
+right-click that appeared to do something different would be a lie about a
+control this small.
+
+### One thing deliberately not done
+
+A `.wav` whose ACID chunk carries the **one-shot flag** does *not* default this
+switch to one-shot. That flag is about **tempo fitting** — it means "do not
+stretch this" — and quietly making it mean something else as well would be the
+kind of helpfulness nobody asked for and nobody could find. The default is
+Loop, as specified, for every file.
+
+Stream **version 7**: a fifth value block, through the same
+`writeValueBlock`/`readValueBlock` the other four use.
+
+## 15. The SDK
 
 **In-tree clone**, chosen deliberately over pointing at a sibling project's
 checkout. The first `cmake` configure clones the VST3 SDK (~250 MB) into

@@ -378,7 +378,8 @@ void Project6Processor::renderMidi (const TransportInfo& transport, int32 numSam
 			: 0.0;
 
 		const int count = mMidiVoices[slot].render (clip, loop, transport.ppq, perSample,
-		                                            static_cast<int> (numSamples), events,
+		                                            static_cast<int> (numSamples),
+		                                            mLoop[slot], events,
 		                                            kMaxMidiEventsPerBlock);
 		queueMidi (rowOfSlot (slot), events, count);
 	}
@@ -469,6 +470,53 @@ void Project6Processor::silenceForTransport ()
 			stopMidiVoice (slot, 0);
 		else
 			mDsp.setSlotPlaying (slot, false);
+	}
+}
+
+//------------------------------------------------------------------------
+void Project6Processor::clearFinishedOneShots (ProcessData& data)
+{
+	IParameterChanges* changes = data.outputParameterChanges;
+
+	for (int slot = 0; slot < kSlotCount; ++slot)
+	{
+		// Only a pad that is LAUNCHED and set to one-shot can finish. A
+		// looping pad never does, and an armed pad waiting for its bar
+		// line has not started.
+		if (!mLaunched[slot] || mLoop[slot])
+			continue;
+
+		const bool sounding = (mKind[slot] == SlotFileKind::Midi)
+			? mMidiVoices[slot].playing ()
+			: mDsp.slotSounding (slot);
+
+		if (sounding)
+			continue;
+
+		// IT HAS PLAYED. Everything the processor believes about this pad
+		// goes back to stopped FIRST, so that nothing - a grid line later
+		// in this block, the next block's arming - can see it half way
+		// between the two states and start it again.
+		mLaunched[slot] = false;
+		mArmed[slot]    = false;
+		mParams[slotPlayParam (slot)] = 0.0;
+
+		// AND THE HOST IS TOLD, so the pad goes dark, a second click is
+		// another hit rather than an "off", and a host recording
+		// automation sees the pad turn itself off.
+		//
+		// NOT through publishOne, which only sends what MOVED and would
+		// therefore stay silent the second time a pad finished at the
+		// same value. This is an event, not a published state.
+		if (changes != nullptr)
+		{
+			int32 index = 0;
+			if (auto* queue = changes->addParameterData (slotPlayParam (slot), index))
+			{
+				int32 point = 0;
+				queue->addPoint (0, 0.0, point);
+			}
+		}
 	}
 }
 
@@ -1112,6 +1160,12 @@ tresult PLUGIN_API Project6Processor::process (ProcessData& data)
 		// block for the same reason: it is a conversion, not a state.
 		mDsp.setSlotFitMode (slot, fitModeFromIndex (static_cast<int> (
 			slotFitDef ().toInternal (mParams[slotFitParam (slot)]))));
+
+		// And whether it loops or plays once. Read every block for the
+		// same reason again - and read into BOTH halves, because a pad
+		// holds either kind of file and the MIDI side needs it too.
+		mLoop[slot] = mParams[slotLoopParam (slot)] >= 0.5;
+		mDsp.setSlotLoop (slot, mLoop[slot]);
 	}
 
 	// And the eight row buses, the same way.
@@ -1321,6 +1375,7 @@ tresult PLUGIN_API Project6Processor::process (ProcessData& data)
 		    (bypassed || !mDsp.rowSounding (row)) ? allChannels (data.outputs[bus]) : 0;
 	}
 
+	clearFinishedOneShots (data);
 	publishLiveValues (data);
 
 	return kResultOk;
@@ -1349,6 +1404,7 @@ tresult PLUGIN_API Project6Processor::getState (IBStream* state)
 	writeValueBlock (streamer, &mParams[kRowLevelBase], kSlotRows);
 	writeValueBlock (streamer, &mParams[kSlotDivisionBase], kSlotCount);
 	writeValueBlock (streamer, &mParams[kSlotFitBase], kSlotCount);
+	writeValueBlock (streamer, &mParams[kSlotLoopBase], kSlotCount);
 
 	return kResultOk;
 }
@@ -1411,6 +1467,8 @@ tresult PLUGIN_API Project6Processor::setState (IBStream* state)
 	                slotDivisionDef ().defaultNormalized ());
 	readValueBlock (streamer, &mParams[kSlotFitBase], kSlotCount,
 	                slotFitDef ().defaultNormalized ());
+	readValueBlock (streamer, &mParams[kSlotLoopBase], kSlotCount,
+	                slotLoopDef ().defaultNormalized ());
 
 	// The paths are back; now read the files. setState is not the audio
 	// thread, so this is where sixty-four disk reads belong - and a slot

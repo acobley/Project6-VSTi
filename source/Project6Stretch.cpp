@@ -185,6 +185,7 @@ void TimeStretcher::reset ()
 	mRead  = 0.0;
 	mPrev  = 0.0;
 	mFade  = 0;
+	mWrapped = false;
 
 	// A HOP'S WORTH OF CREDIT AT THE START, so the first splice happens
 	// after a hop of audio rather than on the first sample - where there
@@ -201,6 +202,15 @@ void TimeStretcher::setPosition (double position)
 	mPrev  = position;
 	mFade  = 0;
 	mSinceHop = 0;
+	mWrapped = false;
+}
+
+//------------------------------------------------------------------------
+bool TimeStretcher::takeWrapped ()
+{
+	const bool wrapped = mWrapped;
+	mWrapped = false;
+	return wrapped;
 }
 
 //------------------------------------------------------------------------
@@ -285,7 +295,11 @@ void TimeStretcher::next (const float* source, int frames, double rateStep, doub
 		// speed 1.0 is still bit-identical to its file.
 		readAt (source, frames, mIdeal, left, right);
 
+		const double before = mIdeal;
 		mIdeal = wrapPosition (mIdeal + rateStep * fit, frames);
+		if (mIdeal < before)
+			mWrapped = true;
+
 		mRead  = mIdeal;
 		mPrev  = mIdeal;
 		mFade  = 0;
@@ -343,7 +357,12 @@ void TimeStretcher::next (const float* source, int frames, double rateStep, doub
 	// THE READ HEAD MOVES AT THE FILE'S OWN RATE - that is the whole of
 	// why the pitch survives - while the ideal head moves at the tempo.
 	mRead  = wrapPosition (mRead + rateStep, frames);
+
+	const double before = mIdeal;
 	mIdeal = wrapPosition (mIdeal + rateStep * fit, frames);
+	if (mIdeal < before)
+		mWrapped = true;
+
 	++mSinceHop;
 }
 

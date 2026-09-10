@@ -246,6 +246,19 @@ public:
 	void setSlotFitMode (int index, FitMode mode);
 	FitMode slotFitMode (int index) const;
 
+	/** Loop, or play once and stop.
+
+	    THE DEFAULT IS LOOP, which is what this instrument is for - a bank
+	    of loops - and what every pad did before there was a choice, so a
+	    project saved before this parameter existed reopens behaving
+	    exactly as it did.
+
+	    Changed WHILE PLAYING is fine and takes effect at the next end of
+	    the file: switching a running loop to one-shot lets it finish the
+	    pass it is on. */
+	void setSlotLoop (int index, bool loop);
+	bool slotLoop (int index) const;
+
 	/** The speed this pad's file is actually being played at, all things
 	    considered: 1.0 when the pad is off, when either tempo is unknown,
 	    or when the file is a one-shot. For the tests and the tooltip. */
@@ -322,6 +335,15 @@ private:
 		    on - see Project6Stretch.h. */
 		TimeStretcher stretch;
 		FitMode       fitMode = kDefaultFitMode;
+
+		/** False makes this pad a ONE-SHOT: it plays its file once and
+		    stops itself at the end rather than coming round again.
+
+		    The stop is the ordinary fade-out, not a cut - the file's last
+		    sample is no more likely to be at zero than its first, and a
+		    one-shot that clicked at the end would be worse than one that
+		    looped. */
+		bool loop = true;
 
 		/** The slot's own level. Two numbers because it is smoothed: the
 		    target is what the parameter says, the gain is where the

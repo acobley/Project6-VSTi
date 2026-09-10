@@ -75,7 +75,16 @@ CRect Project6Editor::divisionCell (int column, int row) const
 CRect Project6Editor::fitCell (int column, int row) const
 {
 	const CRect pad = slotCell (column, row);
-	return CRect (pad.right - kFitWidth, pad.bottom + kLevelGap,
+	const CCoord left = pad.left + kLevelWidth + kStripGap + kDivisionWidth + kStripGap;
+	return CRect (left, pad.bottom + kLevelGap,
+	              left + kFitWidth, pad.bottom + kLevelGap + kStripHeight);
+}
+
+//------------------------------------------------------------------------
+CRect Project6Editor::loopCell (int column, int row) const
+{
+	const CRect pad = slotCell (column, row);
+	return CRect (pad.right - kLoopWidth, pad.bottom + kLevelGap,
 	              pad.right, pad.bottom + kLevelGap + kStripHeight);
 }
 
@@ -364,6 +373,21 @@ bool PLUGIN_API Project6Editor::open (void* parent, const PlatformType& platform
 
 			mFits[index] = fit;
 			frame->addView (fit);
+
+			// And the smallest box on the panel: loop, or play once and
+			// stop. Its own parameter like everything else here, so a
+			// host can automate a pad from a loop into a hit.
+			auto* loopSwitch = new SpySlotLoop (
+				loopCell (column, row), this,
+				static_cast<int32_t> (slotLoopParam (index)), index);
+
+			mControls[slotLoopParam (index)] = loopSwitch;
+			if (mController)
+				showValue (loopSwitch,
+				           mController->getParamNormalized (slotLoopParam (index)));
+
+			mLoops[index] = loopSwitch;
+			frame->addView (loopSwitch);
 		}
 	}
 

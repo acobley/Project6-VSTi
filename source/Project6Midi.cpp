@@ -533,7 +533,8 @@ int MidiVoice::allNotesOff (int sampleOffset, MidiEventOut* out, int maxOut)
 
 //------------------------------------------------------------------------
 int MidiVoice::render (const MidiClip* clip, double loopLength, double blockStartPpq,
-                       double quartersPerSample, int numSamples, MidiEventOut* out, int maxOut)
+                       double quartersPerSample, int numSamples, bool loop,
+                       MidiEventOut* out, int maxOut)
 {
 	if (out == nullptr || maxOut <= 0 || numSamples <= 0)
 		return 0;
@@ -610,6 +611,14 @@ int MidiVoice::render (const MidiClip* clip, double loopLength, double blockStar
 		return std::min (numSamples - 1, std::max (0, rounded));
 	};
 
+	// A ONE-SHOT STOPS AT THE END OF ITS ONE PASS. The block is clipped
+	// to the loop end, everything after it is not played at all, and the
+	// voice is stopped below - so nothing has to notice the wrap and
+	// nothing can slip through into a second pass.
+	const bool endsHere = !loop && (to >= loopLength);
+	if (endsHere)
+		to = loopLength;
+
 	// Walked in pieces that never cross a loop boundary, so that the
 	// truncation at the loop end is a property of the piece rather than
 	// something to test for note by note.
@@ -669,6 +678,18 @@ int MidiVoice::render (const MidiClip* clip, double loopLength, double blockStar
 				while (mSounding[note] > 0 && count < maxOut)
 					emitOff (out, maxOut, count, at, static_cast<unsigned char> (note));
 		}
+	}
+
+	if (endsHere)
+	{
+		// The pass is over. allNotesOff is what stops the voice, and it
+		// catches anything the boundary flush above did not - which is
+		// the same backstop a looping pad gets on every repetition and
+		// a one-shot only gets here.
+		const int at = std::min (numSamples - 1,
+		                         std::max (0, static_cast<int> ((to - from) / quartersPerSample)));
+		count += allNotesOff (at, out + count, maxOut - count);
+		return count;
 	}
 
 	mPosition = std::fmod (std::max (0.0, to), loopLength);

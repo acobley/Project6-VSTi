@@ -283,12 +283,20 @@ public:
 	    host's own context, so the pad follows the project's tempo without
 	    ever being told what it is.
 
+	    `loop` false is a ONE-SHOT: the pad plays one pass of its loop -
+	    the file run out to the end of its bar, which is the pad's own
+	    notion of once - and then stops itself, note-offs and all. The
+	    pass is still a whole bar, because a MIDI loop's length IS the
+	    padded bar; ending at the last note instead would cut the silence
+	    the file was written with.
+
 	    Returns how many events were written. When the buffer fills, note
 	    ONS stop being written and note-offs go on being written: a
 	    dropped note-on is a note nobody hears, and a dropped note-off is
 	    a note nobody can stop. */
 	int render (const MidiClip* clip, double loopLength, double blockStartPpq,
-	            double quartersPerSample, int numSamples, MidiEventOut* out, int maxOut);
+	            double quartersPerSample, int numSamples, bool loop,
+	            MidiEventOut* out, int maxOut);
 
 private:
 	/** Emit, and count. */

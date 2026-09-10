@@ -220,6 +220,17 @@ private:
 	    ONLY the ones that have moved. Sixty-six queues a block, most of
 	    them saying what they said last time, is work the host has to do
 	    for nothing. */
+	/** A ONE-SHOT THAT HAS PLAYED TURNS ITSELF OFF.
+
+	    One click, one hit: the pad goes dark and its trigger goes back to
+	    off, so the next click is another hit rather than the "off" half
+	    of a toggle. The host is told through data.outputParameterChanges,
+	    which is how a plug-in reports a control it moved itself.
+
+	    Called AFTER the block has been rendered, because a pad that
+	    finished during it has only finished by then. */
+	void clearFinishedOneShots (Steinberg::Vst::ProcessData& data);
+
 	void publishLiveValues (Steinberg::Vst::ProcessData& data);
 	void publishOne (Steinberg::Vst::IParameterChanges* changes,
 	                 Steinberg::Vst::ParamID id, double normalized);
@@ -353,6 +364,11 @@ private:
 	/** Which grid line each slot is waiting for, read off its parameter
 	    once a block. */
 	LaunchDivision mDivision[kSlotCount] = {};
+
+	/** Whether each slot loops or plays once, read the same way. Kept
+	    here as well as pushed into the DSP because the MIDI side is
+	    sequenced in this class and needs the same answer. */
+	bool mLoop[kSlotCount] = {};
 
 	BarClock mBarClock;
 	bool mWasPlaying = false;

@@ -339,6 +339,9 @@ def main():
         ('Grid',         '%d columns × %d rows = %d slots. A slot’s ROW decides '
                          'which bus it sums into, and which direct out it leaves on.'
                          % (columns, rows, count)),
+        ('Loop switch',  'Each pad LOOPS or plays once and stops itself — default loop. '
+                         'A one-shot fades out at the end of its file and turns its own '
+                         'trigger off, so the next click is another hit.'),
         ('Tempo fit',    '%d modes per pad — off, varispeed, keep pitch. Speed is '
                          'project BPM ÷ file BPM, clamped to %.2f–%.2f×; a one-shot '
                          'is never fitted.' % (fit_modes, fit_min, fit_max)),

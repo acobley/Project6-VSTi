@@ -342,6 +342,55 @@ int main ()
 	}
 
 	//--------------------------------------------------------------------
+	section ("8. Saying when the file came round again");
+	//--------------------------------------------------------------------
+	{
+		// This is what a ONE-SHOT pad listens to: the end of the file is
+		// the moment the playhead wraps, and nothing else knows where
+		// that is.
+		const int frames = 1000;
+		const std::vector<float> source = sineLoop (441.0, frames);
+
+		TimeStretcher stretcher;
+		stretcher.setSampleRate (kRate);
+
+		double l = 0.0, r = 0.0;
+		check (! stretcher.takeWrapped (), "a new stretcher has not wrapped");
+
+		for (int i = 0; i < 999; ++i)
+			stretcher.next (source.data (), frames, 1.0, 1.0, FitMode::Varispeed, l, r);
+		check (! stretcher.takeWrapped (), "nor has one that is one sample short");
+
+		stretcher.next (source.data (), frames, 1.0, 1.0, FitMode::Varispeed, l, r);
+		check (stretcher.takeWrapped (), "the sample that passes the end reports it");
+
+		// READ AND CLEAR, so the wrap is acted on once. A flag left
+		// standing would stop the next pad to look at it.
+		check (! stretcher.takeWrapped (), "and asking twice says no the second time");
+
+		// IT IS THE MUSICAL POSITION THAT WRAPS, not the read head. In
+		// the pitch-preserving mode the read head jumps about; the file
+		// has finished when the MUSIC has, and only once per pass.
+		stretcher.reset ();
+		int wraps = 0;
+		for (int i = 0; i < 4000; ++i)
+		{
+			stretcher.next (source.data (), frames, 1.0, 0.5, FitMode::PitchPreserved, l, r);
+			wraps += stretcher.takeWrapped () ? 1 : 0;
+		}
+		check (wraps == 2, "at half speed, four thousand samples is two passes");
+		check (wraps != 4, "NEGATIVE CONTROL: and not four, which is what the READ head did");
+
+		// setPosition and reset both clear it: a pad relaunched from the
+		// top has not just finished.
+		stretcher.reset ();
+		for (int i = 0; i < 1001; ++i)
+			stretcher.next (source.data (), frames, 1.0, 1.0, FitMode::Varispeed, l, r);
+		stretcher.setPosition (0.0);
+		check (! stretcher.takeWrapped (), "relaunching a pad clears a pending wrap");
+	}
+
+	//--------------------------------------------------------------------
 	std::printf ("\n%s  (%d failure%s)\n",
 	             gFailures == 0 ? "ALL TESTS PASSED" : "TESTS FAILED",
 	             gFailures, gFailures == 1 ? "" : "s");

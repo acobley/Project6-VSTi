@@ -78,6 +78,18 @@ const ParamDef& slotDivisionDef ()
 }
 
 //------------------------------------------------------------------------
+const ParamDef& slotLoopDef ()
+{
+	// A BOOL, so a host's own list reads "Loop" rather than "1". The
+	// default is 1 - loop - which is what this instrument is for and what
+	// every pad did before there was a choice.
+	static const ParamDef def =
+		{ kSlotLoopBase, "Slot Loop", "", ParamType::Bool,
+		  0.0, 1.0, 1.0, 0.0, 1.0, 1, false };
+	return def;
+}
+
+//------------------------------------------------------------------------
 const ParamDef& liveTempoDef ()
 {
 	// 0 to 999 BPM. The top is absurd on purpose: this is REPORTING what
@@ -210,11 +222,11 @@ const std::vector<std::string>& rowNames ()
 //------------------------------------------------------------------------
 static_assert (kNumTableParams == 1, "one described parameter: the output trim");
 static_assert (kNumParams == kNumTableParams + kSlotCount + 3 + kSlotCount + kSlotCount
-                                 + kSlotRows + kSlotCount + kSlotCount + 1,
+                                 + kSlotRows + kSlotCount + kSlotCount + 1 + kSlotCount,
                "the trim, 64 triggers, the transport, the bar phase, the beats per "
                "bar, 64 published slot states, 64 slot levels, 8 row levels, 64 "
-               "launch divisions, 64 tempo fits and the published tempo is every "
-               "parameter there is");
+               "launch divisions, 64 tempo fits, the published tempo and 64 loop "
+               "switches is every parameter there is");
 // THE APPEND THE BOUND WAS WRITTEN FOR. The published block now sits
 // after the triggers, so isSlotPlayParam's upper bound is load-bearing
 // rather than merely careful.
@@ -242,7 +254,17 @@ static_assert (kSlotFitBase == kSlotDivisionEnd,
                "the tempo fits start where the launch divisions end");
 static_assert (kSlotFitEnd < kNumParams, "and something follows them");
 static_assert (kLiveTempo == kSlotFitEnd, "the published tempo is what follows them");
-static_assert (kLiveTempo + 1 == kNumParams, "and it is currently the last id");
+static_assert (kLiveTempo + 1 < kNumParams, "and the loop switches follow it");
+static_assert (kSlotLoopBase == kLiveTempo + 1,
+               "the loop switches start where the published tempo ends");
+static_assert (kSlotLoopEnd == kNumParams, "and currently run to the end");
+static_assert (! isLiveParam (slotLoopParam (0)),
+               "a loop switch is not a published value");
+static_assert (! isSlotFitParam (slotLoopParam (0)), "nor a tempo fit");
+static_assert (! isSlotPlayParam (slotLoopParam (0)), "nor a trigger");
+static_assert (slotOfLoopParam (slotLoopParam (63)) == 63, "the two directions agree");
+static_assert (isSlotLoopParam (slotLoopParam (kSlotCount - 1)),
+               "the last one is in the block");
 // THE SECOND CLAUSE, asserted. A published value outside the published
 // block is exactly the thing that would be silently automatable if
 // isLiveParam were left as one range.
@@ -311,6 +333,8 @@ const ParamDef& paramDef (Steinberg::Vst::ParamID id)
 		return slotFitDef ();
 	if (id == kLiveTempo)
 		return liveTempoDef ();
+	if (isSlotLoopParam (id))
+		return slotLoopDef ();
 
 	return kParams[kOutputTrim];
 }
@@ -343,6 +367,10 @@ const char* paramTitle (Steinberg::Vst::ParamID id)
 		return slotNames ("Fit")[
 			static_cast<std::size_t> (slotOfFitParam (id))].c_str ();
 
+	if (isSlotLoopParam (id))
+		return slotNames ("Loop")[
+			static_cast<std::size_t> (slotOfLoopParam (id))].c_str ();
+
 	if (id == kLiveTransport)
 		return liveTransportDef ().title;
 	if (id == kLiveBarPhase)
@@ -374,6 +402,9 @@ const char* paramChoiceName (Steinberg::Vst::ParamID id, int choice)
 	// Project6Stretch.h, for the same reason.
 	if (isSlotFitParam (id))
 		return fitModeName (fitModeFromIndex (choice));
+
+	if (isSlotLoopParam (id))
+		return (choice == 0) ? "One-shot" : "Loop";
 
 	return (choice == 0) ? "Off" : "On";
 }

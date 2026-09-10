@@ -1059,7 +1059,142 @@ int main ()
 	}
 
 	//--------------------------------------------------------------------
-	section ("7. Fitting a pad's file to the project's tempo");
+	section ("7. Loop, or play once and stop");
+	//--------------------------------------------------------------------
+	{
+		// A four-frame file at the session rate, so one pass is four
+		// samples and the arithmetic is done in the head.
+		SampleBuffer four;
+		four.frameCount = 4;
+		four.sourceRate = 1000.0;
+		four.samples.assign (4 * kSampleChannels, 0.f);
+		for (int f = 0; f < 4; ++f)
+		{
+			four.samples[static_cast<size_t> (f) * 2]     = 0.25f * (f + 1);
+			four.samples[static_cast<size_t> (f) * 2 + 1] = 0.25f * (f + 1);
+		}
+
+		//----------------------------------------------------------------
+		// THE DEFAULT IS LOOP, which is what this instrument is for and
+		// what every pad did before there was a choice.
+		//----------------------------------------------------------------
+		{
+			Project6Dsp dsp;
+			dsp.setSampleRate (1000.0);
+			check (dsp.slotLoop (0), "a pad loops unless it is told not to");
+			check (dsp.slotLoop (-1), "and a bad index answers the default");
+
+			dsp.setSlotLoop (0, false);
+			check (! dsp.slotLoop (0), "and the setting is remembered");
+			dsp.setSlotLoop (0, true);
+			check (dsp.slotLoop (0), "both ways");
+		}
+
+		//----------------------------------------------------------------
+		// A LOOPING PAD GOES ROUND. Sixteen samples of a four-frame file
+		// is four passes, and it is still sounding at the end of them.
+		//----------------------------------------------------------------
+		{
+			Project6Dsp dsp;
+			dsp.setSampleRate (1000.0);
+			dsp.setOutputTrimDb (kTrimMaxDb);
+			dsp.setSlotSample (3, &four);
+			dsp.setSlotPlaying (3, true);
+
+			std::vector<float> out (64 * kChannelCount, 0.f);
+			dsp.render (out.data (), 64);
+			check (dsp.slotSounding (3), "a looping pad is still going after sixteen passes");
+		}
+
+		//----------------------------------------------------------------
+		// A ONE-SHOT STOPS. The declick fade is five milliseconds - five
+		// samples at this rate - so it is silent a few samples after the
+		// end of the file and not on the very sample.
+		//----------------------------------------------------------------
+		{
+			Project6Dsp dsp;
+			dsp.setSampleRate (1000.0);
+			dsp.setOutputTrimDb (kTrimMaxDb);
+			dsp.setSlotSample (3, &four);
+			dsp.setSlotLoop (3, false);
+			dsp.setSlotPlaying (3, true);
+
+			std::vector<float> out (64 * kChannelCount, 0.f);
+			dsp.render (out.data (), 3);
+			check (dsp.slotSounding (3), "it is still sounding part way through its file");
+
+			dsp.render (out.data (), 61);
+			check (! dsp.slotSounding (3), "and has stopped itself by the end of the block");
+
+			// NEGATIVE CONTROL for the whole feature: the identical pad
+			// left looping is still going.
+			Project6Dsp looping;
+			looping.setSampleRate (1000.0);
+			looping.setSlotSample (3, &four);
+			looping.setSlotPlaying (3, true);
+			looping.render (out.data (), 64);
+			check (looping.slotSounding (3),
+			       "NEGATIVE CONTROL: the same pad set to loop is not stopped");
+		}
+
+		//----------------------------------------------------------------
+		// IT FADES RATHER THAN CUTS. The last sample of a file is no more
+		// likely to be at zero than the first, and a one-shot that
+		// clicked when it finished would be worse than one that looped.
+		//----------------------------------------------------------------
+		{
+			Project6Dsp dsp;
+			dsp.setSampleRate (1000.0);
+			dsp.setOutputTrimDb (kTrimMaxDb);
+			dsp.setSlotSample (3, &four);
+			dsp.setSlotLoop (3, false);
+			dsp.setSlotPlaying (3, true);
+
+			std::vector<float> out (16 * kChannelCount, 0.f);
+			dsp.render (out.data (), 16);
+
+			// Somewhere after the file ends there is audio that is
+			// neither the file nor silence: that is the fade.
+			bool faded = false;
+			for (int i = 4; i < 16; ++i)
+			{
+				const float v = out[static_cast<size_t> (i) * 2];
+				faded |= (v != 0.f);
+			}
+			check (faded, "the tail after the file is a fade, not a cut");
+
+			// And it does reach silence. A fade that never finished would
+			// leave a voice in the mix for ever.
+			check (out[static_cast<size_t> (15) * 2] == 0.f, "which reaches zero");
+		}
+
+		//----------------------------------------------------------------
+		// SWITCHED WHILE RUNNING, it takes effect at the next end of the
+		// file rather than cutting the pass it is on.
+		//----------------------------------------------------------------
+		{
+			Project6Dsp dsp;
+			dsp.setSampleRate (1000.0);
+			dsp.setSlotSample (3, &four);
+			dsp.setSlotPlaying (3, true);
+
+			std::vector<float> out (2 * kChannelCount, 0.f);
+			dsp.render (out.data (), 2);          // two frames into the file
+
+			dsp.setSlotLoop (3, false);
+			check (dsp.slotSounding (3), "switching to one-shot mid-pass does not cut it");
+
+			dsp.render (out.data (), 2);          // ...to the end of the file
+			check (dsp.slotSounding (3), "it is still finishing the pass it was on");
+
+			std::vector<float> tail (64 * kChannelCount, 0.f);
+			dsp.render (tail.data (), 64);
+			check (! dsp.slotSounding (3), "and stops at the end of it");
+		}
+	}
+
+	//--------------------------------------------------------------------
+	section ("8. Fitting a pad's file to the project's tempo");
 	//--------------------------------------------------------------------
 	{
 		// A file that KNOWS its own tempo. Sixteen frames at 1000 Hz is

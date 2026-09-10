@@ -260,6 +260,24 @@ void Project6Dsp::setSlotFitMode (int index, FitMode mode)
 }
 
 //------------------------------------------------------------------------
+void Project6Dsp::setSlotLoop (int index, bool loop)
+{
+	if (!isSlotIndex (index))
+		return;
+
+	mVoices[index].loop = loop;
+}
+
+//------------------------------------------------------------------------
+bool Project6Dsp::slotLoop (int index) const
+{
+	if (!isSlotIndex (index))
+		return true;
+
+	return mVoices[index].loop;
+}
+
+//------------------------------------------------------------------------
 FitMode Project6Dsp::slotFitMode (int index) const
 {
 	if (!isSlotIndex (index))
@@ -495,6 +513,19 @@ void Project6Dsp::renderVoice (Voice& voice, float* dest, int numSamples)
 		// the stretcher, where both modes can share it.
 		double left = 0.0, right = 0.0;
 		voice.stretch.next (source, frames, step, speed, mode, left, right);
+
+		// A ONE-SHOT HAS REACHED THE END OF ITS FILE. takeWrapped reads
+		// and clears, so the wrap is acted on once and cannot be seen by
+		// the next sample as well.
+		//
+		// It starts the ordinary fade-out rather than cutting: the last
+		// sample of a file is no more likely to be at zero than the
+		// first, and a one-shot that clicked when it finished would be
+		// worse than one that simply looped. The samples already read
+		// this call are kept - the fade begins from here.
+		const bool wrapped = voice.stretch.takeWrapped ();
+		if (wrapped && !voice.loop)
+			voice.stopping = true;
 
 		// The declick envelope and the slot's level, in that order and
 		// both before the row bus. At the default level of 0 dB the
