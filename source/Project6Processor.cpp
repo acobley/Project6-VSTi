@@ -68,6 +68,34 @@ tresult PLUGIN_API Project6Processor::initialize (FUnknown* context)
 
 	addEventInput (STR16 ("Event In"), 16);
 
+	//--------------------------------------------------------------------
+	// MIDI OUT: one merged bus, then one per row - exactly the shape the
+	// audio side already has, and for the same reason.
+	//
+	// THE MERGED BUS IS NOT A LUXURY. Support for several event outputs
+	// is patchy: plenty of hosts show only the first, and an AU wrapper
+	// has one MIDI output callback and no more. A plug-in whose rows were
+	// only reachable as eight separate buses would be a plug-in whose
+	// rows most people could not reach at all.
+	//
+	// It works because every pad's notes go out on ITS ROW'S CHANNEL -
+	// row A is channel 1, row H is channel 8 - so the merged bus is
+	// eight parts in one cable, and a host with one MIDI input can split
+	// it by channel. The per-row buses are then the tidy way to do the
+	// same thing where they are supported.
+	addEventOutput (STR16 ("MIDI Out"), kSlotRows);
+
+	static const char16_t* const kRowMidiNames[kSlotRows] = {
+		STR16 ("Row A MIDI"), STR16 ("Row B MIDI"), STR16 ("Row C MIDI"),
+		STR16 ("Row D MIDI"), STR16 ("Row E MIDI"), STR16 ("Row F MIDI"),
+		STR16 ("Row G MIDI"), STR16 ("Row H MIDI") };
+
+	for (int row = 0; row < kSlotRows; ++row)
+		addEventOutput (kRowMidiNames[row], 1, BusTypes::kAux, BusInfo::kDefaultActive);
+
+	for (int slot = 0; slot < kSlotCount; ++slot)
+		mLiveClips[slot].store (nullptr, std::memory_order_relaxed);
+
 	return kResultOk;
 }
 
@@ -134,7 +162,8 @@ TransportInfo Project6Processor::readTransport (const ProcessData& data) const
 }
 
 //------------------------------------------------------------------------
-void Project6Processor::applyGridLine (int step)
+void Project6Processor::applyGridLine (int step, int32 sampleOffset, double blockStartPpq,
+                                       double perSample)
 {
 	for (int slot = 0; slot < kSlotCount; ++slot)
 	{
@@ -153,8 +182,172 @@ void Project6Processor::applyGridLine (int step)
 			continue;
 
 		mLaunched[slot] = mArmed[slot];
-		mDsp.setSlotPlaying (slot, mLaunched[slot]);
+
+		if (mKind[slot] == SlotFileKind::Midi)
+		{
+			// THE PAD'S LOOP STARTS AT THIS GRID LINE'S OWN PROJECT
+			// POSITION, not at the top of the block. From then on where
+			// it is in its loop is simply how far the project has moved
+			// since - so it cannot drift, it survives a tempo change with
+			// no arithmetic, and it follows the host when somebody drags
+			// the playhead.
+			if (mLaunched[slot])
+				mMidiVoices[slot].start (blockStartPpq
+				                         + static_cast<double> (sampleOffset) * perSample);
+			else
+				stopMidiVoice (slot, sampleOffset);
+		}
+		else
+		{
+			mDsp.setSlotPlaying (slot, mLaunched[slot]);
+		}
 	}
+}
+
+//------------------------------------------------------------------------
+double Project6Processor::quartersPerSample (const TransportInfo& transport) const
+{
+	// NO MUSICAL CONTEXT, NO MIDI. An audio pad can fall back to
+	// launching at once, because a sample is a sample and it can be
+	// played at the rate it was recorded. A MIDI loop has no such
+	// fallback: its notes are placed in quarter notes, and without the
+	// host's position and tempo there is no timeline to place them on.
+	// Inventing one would put every pad in the bank out of step with the
+	// project as soon as the tempo moved.
+	if (!transport.musical || !(transport.tempoBpm > 0.0) || !(mSampleRate > 0.0))
+		return 0.0;
+
+	return transport.tempoBpm / (60.0 * mSampleRate);
+}
+
+//------------------------------------------------------------------------
+void Project6Processor::queueMidi (int row, const MidiEventOut* events, int count)
+{
+	for (int i = 0; i < count && mMidiQueued < kMaxBlockMidiEvents; ++i)
+		mMidiQueue[mMidiQueued++] = { row, events[i] };
+}
+
+//------------------------------------------------------------------------
+void Project6Processor::stopMidiVoice (int slot, int32 sampleOffset)
+{
+	if (!isSlotIndex (slot) || !mMidiVoices[slot].playing ())
+		return;
+
+	MidiEventOut events[kMaxMidiEventsPerBlock];
+	const int count = mMidiVoices[slot].allNotesOff (static_cast<int> (sampleOffset), events,
+	                                                 kMaxMidiEventsPerBlock);
+	queueMidi (rowOfSlot (slot), events, count);
+}
+
+//------------------------------------------------------------------------
+void Project6Processor::renderMidi (const TransportInfo& transport, int32 numSamples)
+{
+	const double perSample = quartersPerSample (transport);
+
+	// BYPASSED, STOPPED, OR NO TIMELINE. Every one of these has to stop
+	// the notes rather than merely stop producing new ones - a bypass
+	// that left a chord sounding would be a bypass you could hear for
+	// ever.
+	if (mBypass || perSample <= 0.0 || !transport.playing)
+	{
+		for (int slot = 0; slot < kSlotCount; ++slot)
+			stopMidiVoice (slot, 0);
+		return;
+	}
+
+	// The PROJECT's bar, not the file's: it is the grid the pad launches
+	// on, and a loop rounded to any other would drift against everything
+	// else on the panel. Read every block, so a time-signature change
+	// changes the loop without anything being reloaded.
+	const double barQuarters = barQuartersFor (transport.sigNumerator,
+	                                           transport.sigDenominator);
+
+	MidiEventOut events[kMaxMidiEventsPerBlock];
+
+	for (int slot = 0; slot < kSlotCount; ++slot)
+	{
+		if (mKind[slot] != SlotFileKind::Midi || !mMidiVoices[slot].playing ())
+			continue;
+
+		// ACQUIRE, to pair with the release store in publishSlot.
+		const MidiClip* clip = mLiveClips[slot].load (std::memory_order_acquire);
+
+		const double loop = (clip != nullptr)
+			? loopLengthQuarters (clip->content, barQuarters)
+			: 0.0;
+
+		const int count = mMidiVoices[slot].render (clip, loop, transport.ppq, perSample,
+		                                            static_cast<int> (numSamples), events,
+		                                            kMaxMidiEventsPerBlock);
+		queueMidi (rowOfSlot (slot), events, count);
+	}
+}
+
+//------------------------------------------------------------------------
+void Project6Processor::flushMidi (ProcessData& data)
+{
+	if (mMidiQueued <= 0)
+		return;
+
+	IEventList* out = data.outputEvents;
+	if (out == nullptr)
+	{
+		mMidiQueued = 0;
+		return;
+	}
+
+	// SORTED INTO SAMPLE ORDER. The events were produced in two places -
+	// a pad stopping at a grid line part way through the block, and each
+	// pad's own sequencing run afterwards - so they arrive out of order,
+	// and a host is entitled to a sorted list. STABLE, so a note-off and
+	// a note-on at the same sample keep the order they were made in:
+	// the off was queued first, and on the same pitch that is the
+	// difference between a re-strike and a silence.
+	std::stable_sort (mMidiQueue, mMidiQueue + mMidiQueued,
+	                  [] (const PendingMidi& a, const PendingMidi& b)
+	                  { return a.event.sampleOffset < b.event.sampleOffset; });
+
+	for (int i = 0; i < mMidiQueued; ++i)
+	{
+		const PendingMidi& pending = mMidiQueue[i];
+
+		Event event = {};
+		event.sampleOffset = pending.event.sampleOffset;
+		event.ppqPosition  = 0.0;
+		event.flags        = Event::kIsLive;
+
+		if (pending.event.noteOn)
+		{
+			event.type = Event::kNoteOnEvent;
+			event.noteOn.channel  = static_cast<int16> (pending.row);
+			event.noteOn.pitch    = static_cast<int16> (pending.event.note);
+			event.noteOn.velocity = static_cast<float> (pending.event.velocity) / 127.f;
+			event.noteOn.length   = 0;
+			event.noteOn.tuning   = 0.f;
+			event.noteOn.noteId   = -1;
+		}
+		else
+		{
+			event.type = Event::kNoteOffEvent;
+			event.noteOff.channel  = static_cast<int16> (pending.row);
+			event.noteOff.pitch    = static_cast<int16> (pending.event.note);
+			event.noteOff.velocity = 0.f;
+			event.noteOff.tuning   = 0.f;
+			event.noteOff.noteId   = -1;
+		}
+
+		// TWICE: once on the merged bus and once on the row's own. The
+		// merged one is what makes the rows reachable in a host that
+		// shows a plug-in only its first event output - which is most of
+		// them, and every AU wrapper.
+		event.busIndex = 0;
+		out->addEvent (event);
+
+		event.busIndex = 1 + pending.row;
+		out->addEvent (event);
+	}
+
+	mMidiQueued = 0;
 }
 
 //------------------------------------------------------------------------
@@ -170,7 +363,11 @@ void Project6Processor::silenceForTransport ()
 			continue;
 
 		mLaunched[slot] = false;
-		mDsp.setSlotPlaying (slot, false);
+
+		if (mKind[slot] == SlotFileKind::Midi)
+			stopMidiVoice (slot, 0);
+		else
+			mDsp.setSlotPlaying (slot, false);
 	}
 }
 
@@ -231,7 +428,17 @@ void Project6Processor::publishLiveValues (ProcessData& data)
 	                                : 0.0));
 
 	for (int slot = 0; slot < kSlotCount; ++slot)
-		publishOne (changes, liveSlotParam (slot), mDsp.slotSounding (slot) ? 1.0 : 0.0);
+	{
+		// WHICH KIND OF PAD IS SOUNDING is asked of whichever half is
+		// playing it. The panel does not care which - a lit pad is a lit
+		// pad - which is the whole reason this is one published value
+		// rather than two.
+		const bool sounding = (mKind[slot] == SlotFileKind::Midi)
+			? mMidiVoices[slot].playing ()
+			: mDsp.slotSounding (slot);
+
+		publishOne (changes, liveSlotParam (slot), sounding ? 1.0 : 0.0);
+	}
 }
 
 //------------------------------------------------------------------------
@@ -241,7 +448,11 @@ tresult PLUGIN_API Project6Processor::terminate ()
 	// retire list can go without waiting for the block counter.
 	mActive.store (false, std::memory_order_release);
 	for (int index = 0; index < kSlotCount; ++index)
+	{
 		mDsp.setSlotSample (index, nullptr);
+		mLiveClips[index].store (nullptr, std::memory_order_release);
+		mMidiVoices[index].reset ();
+	}
 	collectRetired (true);
 
 	return AudioEffect::terminate ();
@@ -314,6 +525,13 @@ tresult PLUGIN_API Project6Processor::setActive (TBool state)
 	{
 		mDsp.reset ();
 
+		// The MIDI voices go back to silent WITHOUT EMITTING ANYTHING.
+		// There is no block to put note-offs in on an activate, and the
+		// host has not been sent anything to hang yet.
+		for (MidiVoice& voice : mMidiVoices)
+			voice.reset ();
+		mMidiQueued = 0;
+
 		// Same reason as in setupProcessing: reset() stopped every voice.
 		for (bool& launched : mLaunched)
 			launched = false;
@@ -370,7 +588,9 @@ tresult PLUGIN_API Project6Processor::notify (IMessage* message)
 		// to within eleven milliseconds.
 		float progress[kSlotCount];
 		for (int slot = 0; slot < kSlotCount; ++slot)
-			progress[slot] = mDsp.slotProgress (slot);
+			progress[slot] = (mKind[slot] == SlotFileKind::Midi)
+				? mMidiVoices[slot].progress ()
+				: mDsp.slotProgress (slot);
 
 		if (auto* reply = allocateMessage ())
 		{
@@ -420,6 +640,30 @@ tresult PLUGIN_API Project6Processor::notify (IMessage* message)
 }
 
 //------------------------------------------------------------------------
+namespace {
+
+/** A MIDI file's verdict, said in the language the panel already speaks.
+
+    ONE STATUS PER SLOT, not two. A pad shows one tooltip and the person
+    reading it does not care which of two enums the answer came out of -
+    what they care about is why the pad will not play. SampleStatus grew
+    two members rather than the panel growing a second code path. */
+SampleStatus statusOfMidi (MidiStatus status)
+{
+	switch (status)
+	{
+		case MidiStatus::Loaded:            return SampleStatus::Loaded;
+		case MidiStatus::NotMidi:           return SampleStatus::NotMidi;
+		case MidiStatus::UnsupportedFormat: return SampleStatus::UnsupportedFormat;
+		case MidiStatus::TooLong:           return SampleStatus::TooLong;
+		case MidiStatus::NoNotes:           return SampleStatus::NoNotes;
+	}
+	return SampleStatus::Unreadable;
+}
+
+} // namespace
+
+//------------------------------------------------------------------------
 void Project6Processor::loadSlot (int index)
 {
 	if (!isSlotIndex (index))
@@ -427,20 +671,44 @@ void Project6Processor::loadSlot (int index)
 
 	const std::string& path = mSlots.path (index);
 
-	SampleBuffer buffer;
-	const SampleStatus status = path.empty () ? SampleStatus::Empty
-	                                          : loadWavFile (path, buffer);
+	// WHICH READER, decided once and remembered. A pad holds either kind
+	// of file and nothing below here tests an extension again.
+	const SlotFileKind kind = slotFileKind (path);
+	mKind[index] = kind;
+
+	SampleStatus status = SampleStatus::Empty;
+	std::shared_ptr<const SampleBuffer> sample;
+	std::shared_ptr<const MidiClip> clip;
+
+	if (kind == SlotFileKind::Audio)
+	{
+		SampleBuffer buffer;
+		status = loadWavFile (path, buffer);
+		if (status == SampleStatus::Loaded)
+			sample = std::make_shared<const SampleBuffer> (std::move (buffer));
+	}
+	else if (kind == SlotFileKind::Midi)
+	{
+		MidiClip parsed;
+		const MidiStatus midi = loadMidiFile (path, parsed);
+		status = statusOfMidi (midi);
+		if (midi == MidiStatus::Loaded)
+			clip = std::make_shared<const MidiClip> (std::move (parsed));
+	}
+	else if (!path.empty ())
+	{
+		// A path this plug-in does not take. It cannot normally get here
+		// - the drop handler refuses it - but a project file written by
+		// hand, or by a future build with a longer list, can.
+		status = SampleStatus::UnsupportedFormat;
+	}
 
 	// A FAILED LOAD STILL KEEPS THE PATH. The slot goes on showing the
 	// file's name and the project goes on remembering it - the file may
 	// simply be on a drive that is not plugged in today. What it does not
-	// get is audio, and the status is how the panel says so.
-	std::shared_ptr<const SampleBuffer> sample;
-	if (status == SampleStatus::Loaded)
-		sample = std::make_shared<const SampleBuffer> (std::move (buffer));
-
+	// get is audio or notes, and the status is how the panel says so.
 	mStatus[index] = status;
-	publishSlot (index, std::move (sample));
+	publishSlot (index, std::move (sample), std::move (clip));
 	sendSlotStatusToController (index);
 }
 
@@ -452,23 +720,33 @@ void Project6Processor::loadAllSlots ()
 }
 
 //------------------------------------------------------------------------
-void Project6Processor::publishSlot (int index, std::shared_ptr<const SampleBuffer> sample)
+void Project6Processor::publishSlot (int index, std::shared_ptr<const SampleBuffer> sample,
+                                     std::shared_ptr<const MidiClip> clip)
 {
 	if (!isSlotIndex (index))
 		return;
 
-	std::shared_ptr<const SampleBuffer> previous = std::move (mSamples[index]);
+	std::shared_ptr<const SampleBuffer> previousSample = std::move (mSamples[index]);
+	std::shared_ptr<const MidiClip>     previousClip   = std::move (mClips[index]);
+
 	mSamples[index] = std::move (sample);
+	mClips[index]   = std::move (clip);
 
 	// The DSP gets a bare pointer into a buffer this object owns. It is
 	// only ever read there, and never freed there.
 	mDsp.setSlotSample (index, mSamples[index] ? mSamples[index].get () : nullptr);
 
+	// RELEASE, exactly as the DSP's own store is, and for the same
+	// reason: a thread that acquires this pointer must also see the notes
+	// that were written before it was published.
+	mLiveClips[index].store (mClips[index] ? mClips[index].get () : nullptr,
+	                         std::memory_order_release);
+
 	// The counter is read AFTER the swap, so any block still holding the
 	// old pointer started at or before this value.
-	if (previous)
-		mRetired.push_back (
-			{ std::move (previous), mBlockCounter.load (std::memory_order_acquire) });
+	const std::uint64_t at = mBlockCounter.load (std::memory_order_acquire);
+	if (previousSample || previousClip)
+		mRetired.push_back ({ std::move (previousSample), std::move (previousClip), at });
 
 	collectRetired (false);
 }
@@ -521,6 +799,19 @@ void Project6Processor::sendSlotStatusToController (int index)
 		message->getAttributes ()->setFloat (kProject6SlotTempoAttribute, tempo);
 		message->getAttributes ()->setInt (kProject6SlotTempoSrcAttribute, source);
 		message->getAttributes ()->setInt (kProject6SlotOneShotAttribute, oneShot);
+
+		// And the MIDI side of the same question.
+		int64 notes = 0;
+		double beats = 0.0;
+		if (const auto& clip = mClips[index])
+		{
+			notes = clip->noteCount ();
+			beats = clip->content;
+		}
+		message->getAttributes ()->setInt (kProject6SlotKindAttribute,
+		                                   static_cast<int64> (mKind[index]));
+		message->getAttributes ()->setInt (kProject6SlotNotesAttribute, notes);
+		message->getAttributes ()->setFloat (kProject6SlotBeatsAttribute, beats);
 
 		sendMessage (message);
 	}
@@ -711,6 +1002,16 @@ tresult PLUGIN_API Project6Processor::process (ProcessData& data)
 
 	const TransportInfo transport = readTransport (data);
 
+	// Nothing carried over from the last block. Everything a pad emits is
+	// produced and handed over inside one call.
+	mMidiQueued = 0;
+
+	// Quarter notes per sample, for placing a MIDI pad's launch and its
+	// notes. Zero when the host has given us no musical context, which is
+	// the one case in which a MIDI pad cannot play at all - see
+	// quartersPerSample.
+	const double midiPerSample = quartersPerSample (transport);
+
 	// THE PROJECT'S TEMPO, for the pads that are fitted to it. Gated on
 	// tempoKnown and not on `musical`: a stopped transport still has a
 	// tempo, and a host that reports a tempo without a position can
@@ -728,7 +1029,7 @@ tresult PLUGIN_API Project6Processor::process (ProcessData& data)
 		// host reporting no transport looks broken, not careful. Step 0,
 		// because every division fires on the bar line and there is no
 		// grid here to be finer about.
-		applyGridLine (0);
+		applyGridLine (0, 0, transport.ppq, midiPerSample);
 	}
 	else if (!transport.playing)
 	{
@@ -744,7 +1045,7 @@ tresult PLUGIN_API Project6Processor::process (ProcessData& data)
 		// Rolling, but the host cannot say where the bars are - so there
 		// are no divisions either. Launching as soon as it rolls is
 		// closer to what was asked for than never launching at all.
-		applyGridLine (0);
+		applyGridLine (0, 0, transport.ppq, midiPerSample);
 	}
 
 	mWasPlaying = transport.playing;
@@ -832,7 +1133,7 @@ tresult PLUGIN_API Project6Processor::process (ProcessData& data)
 
 		if (takeLine)
 		{
-			applyGridLine (gridLines[lineIndex].step);
+			applyGridLine (gridLines[lineIndex].step, at, transport.ppq, midiPerSample);
 			++lineIndex;
 		}
 		else
@@ -843,6 +1144,18 @@ tresult PLUGIN_API Project6Processor::process (ProcessData& data)
 	}
 
 	renderSegment (data, position, data.numSamples - position);
+
+	//--------------------------------------------------------------------
+	// THE MIDI, once for the whole block and after the audio.
+	//
+	// It does not need to be interleaved with the rendering the way a bar
+	// line does, because an event carries its own sample offset: the host
+	// places it, not us. What it does need is to happen after the grid
+	// lines have been applied, so that a pad launched at sample 500 has
+	// already been started before its notes are asked for.
+	//--------------------------------------------------------------------
+	renderMidi (transport, data.numSamples);
+	flushMidi (data);
 
 	// Tell the host when there is genuinely nothing sounding, so it can
 	// skip downstream work - and ONLY then. A synth that flags silence

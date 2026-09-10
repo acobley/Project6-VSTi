@@ -153,8 +153,10 @@ const char* sampleStatusText (SampleStatus status)
 		case SampleStatus::Unreadable:        return "could not be read";
 		case SampleStatus::NotWave:           return "not a WAV file";
 		case SampleStatus::UnsupportedFormat: return "unsupported WAV format";
-		case SampleStatus::TooLong:           return "longer than 60 seconds";
+		case SampleStatus::TooLong:           return "longer than this slot will take";
 		case SampleStatus::NoFrames:          return "no audio in the file";
+		case SampleStatus::NotMidi:           return "not a MIDI file";
+		case SampleStatus::NoNotes:           return "no notes in the file";
 	}
 	return "unknown";
 }

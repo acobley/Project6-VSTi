@@ -126,7 +126,7 @@ What was run, and passed:
 ```sh
 cd ~/DXi-DEv/Project6-VSTi
 
-# 1. All six test suites, from a clean build.
+# 1. All seven test suites, from a clean build.
 c++ -std=c++17 -O2 -Wall -Isource tests/DspTests.cpp \
     source/Project6Dsp.cpp source/Project6Sample.cpp \
     source/Project6Slots.cpp source/Project6Stretch.cpp \
@@ -143,6 +143,9 @@ c++ -std=c++17 -O2 -Wall -Isource tests/TransportTests.cpp \
 
 c++ -std=c++17 -O2 -Wall -Isource tests/StretchTests.cpp \
     source/Project6Stretch.cpp -o /tmp/stretchtests && /tmp/stretchtests
+
+c++ -std=c++17 -O2 -Wall -Isource tests/MidiTests.cpp \
+    source/Project6Midi.cpp -o /tmp/miditests && /tmp/miditests
 
 SDK=~/DXi-DEv/VocalFilter-VSTi/external/vst3sdk        # any existing checkout
 c++ -std=c++17 -O2 -Wall -Isource -I$SDK \
@@ -169,7 +172,7 @@ python3 tools/render-routing.py
 
 `-DRELEASE=1` is required or `fdebug.h` refuses to compile.
 
-Results, at the pad-drag commit: **all six suites all-pass**, all fourteen
+Results, at the MIDI commit: **all seven suites all-pass**, all fifteen
 translation units produced object files with no errors, every undefined
 `Project6::` symbol resolved within the set, `check-editor` reported ok, and
 `render-routing` regenerated the diagram from the headers.
@@ -178,14 +181,15 @@ The panel's dimensions are checked by `static_assert` rather than by eye —
 right margin, the launch boxes clear of the pads, and the level bar, the
 division box and the fit box filling a cell's width exactly.
 
-Re-run all seven before every commit. Adding a source file also means re-running
+Re-run all eight before every commit. Adding a source file also means re-running
 `./setup-xcode.sh --no-open` before the next Xcode build, or the project
 compiles the old file list.
 
 **What the tests cannot reach**, and what the first real listen is for: the
 drag-and-drop itself (a platform drag package is not something a unit test can
 manufacture), whether the panel looks right, whether five milliseconds is in
-fact enough declick on real material, and whether a host's `ProcessContext`
+fact enough declick on real material, whether a host actually exposes nine event
+outputs or only the first, and whether a host's `ProcessContext`
 says what this code assumes it says — `TransportTests` proves the arithmetic
 is right about the numbers it is given, not that the numbers arrive. That last
 one is the first thing to check in a real DAW: if the display reads
@@ -1114,7 +1118,164 @@ status message arrived. The panel was saying the setting was idle at the exact
 moment it stopped being. `updateControl` now recomputes it whenever a fit
 parameter or the published tempo moves.
 
-## 13. The SDK
+## 13. A slot that holds a .mid instead
+
+A pad takes either kind of file. An audio pad plays into its row's **audio**
+bus; a MIDI pad plays into its row's **event** bus. Nothing else about a pad
+differs — same launch quantise, same bar lines, same drag and drop, same state
+stream — and `SlotFileKind` is the one place the difference is named.
+
+### Everything is in quarter notes, and that decides the rest
+
+A `.mid` file carries its own tempo in a meta event, and a naive reader
+converts its ticks to seconds using it. Do that and every MIDI pad needs the
+same varispeed-or-stretch machinery a sample does — and all of it is waste,
+because notes have no waveform to resample.
+
+Converting ticks to **quarter notes** at load throws the file's tempo away as
+the irrelevance it is. Playback is then a matter of following the host's own
+musical position: a project at 90 BPM plays the loop at 90, change it to 140
+mid-bar and the loop is at 140 from that sample on, with no fitting, no
+artefacts and nothing to configure. The tempo-fit box on a MIDI pad is
+therefore **inert and says so** — it is not that the fit is off, it is that
+the pad is already at the project's tempo by construction.
+
+The file's tempo meta event is read and kept only to be shown; its time
+signature likewise.
+
+### Running the loop out to the end of the bar
+
+The request. A file that stops half way through its last bar — which is most
+files, because a DAW exports the region you selected — would otherwise loop
+early and put every repetition one beat further out of step. `content` is what
+the file actually holds; `loopLengthQuarters(content, barQuarters)` rounds it
+**up to a whole bar** and the tail is silence.
+
+Two decisions inside that:
+
+* it is the **project's** bar, not the file's, because that is the grid the
+  pad launches on and a loop measured against any other would drift against
+  everything else on the panel;
+* it is applied **at playback, not baked in at load**, so a time-signature
+  change changes the loop with nothing reloaded. The same lesson the tempo fit
+  taught.
+
+The tolerance is what makes "already a whole number of bars" true: a four-bar
+clip whose ticks divided out to 3.9999999996 bars is four bars, and without
+the epsilon every loop in the bank would be padded a bar too long. That has
+its own negative control in `MidiTests` §5.
+
+### The playhead is musical
+
+A pad launched on a grid line remembers the **project position** it started
+at. Where it is in its loop is then simply how far the project has moved
+since — so it cannot drift, it survives a tempo change with no arithmetic, and
+it follows the host when somebody drags the playhead. `applyGridLine` grew a
+sample offset for exactly this: a pad launched at sample 500 of a block starts
+its loop at *that* sample's project position, not at the top of the block.
+
+The one thing this costs: **without a musical context a MIDI pad cannot play
+at all**. An audio pad falls back to launching at once, because a sample can
+be played at the rate it was recorded; a MIDI loop has no such fallback, and
+inventing a timeline would put every pad out of step the moment the tempo
+moved.
+
+### The question every assertion in MidiTests §7 is a version of
+
+*Is a note left on?* It is the failure mode of every MIDI looper, it is silent
+until somebody notices a drone, and it is the only thing here a user cannot
+fix after the fact.
+
+`MidiVoice` counts every note it starts, per pitch — a **count**, not a flag,
+because one pitch can be struck again before the first is released and a flag
+loses the second off. Everything counted is turned off when the loop reaches
+the note's end, when the loop wraps past it, when the pad is stopped at a grid
+line, when the transport stops, when the host locates, when the file is taken
+away and when the plug-in is bypassed. Every one of those is one call to
+`stopMidiVoice`, which is the point of counting rather than remembering.
+
+`reset()` is the exception and the only one: it forgets without emitting,
+because it is the deactivate path and there is no block to put note-offs in.
+
+Two rules fall out of the same discipline:
+
+* **no orphan note-offs.** A voice that never sent an on never sends the
+  matching off — some instruments answer one by cutting off a note *another*
+  pad is playing. This is what makes a locate survivable.
+* **a note is cut off at the loop end.** Stated as an explicit flush when a
+  piece reaches the boundary, not as an interval's edge case. It is also the
+  backstop: an off that went missing for any other reason is caught within one
+  repetition rather than hanging.
+
+Both note-on and note-off intervals are **half-open**, by the same rule, so an
+event falling exactly on a block boundary belongs to the block that starts
+there. The other convention puts every off one sample early *and* uses a
+different rule for ons and offs, which is the kind of asymmetry that hides an
+off-by-one for years.
+
+### Nine event outputs, and why the merged one is not a luxury
+
+One `MIDI Out` carrying every row, then one per row — exactly the shape the
+audio side already has. Support for several event outputs is patchy: plenty of
+hosts show only the first, and an AU wrapper has one MIDI output callback and
+no more. A plug-in whose rows were reachable only as eight separate buses
+would be a plug-in whose rows most people could not reach at all.
+
+It works because **every pad's notes go out on its row's channel** — row A is
+channel 1, row H is channel 8 — so the merged bus is eight parts in one cable
+and a host with one MIDI input can split it by channel. That is also why
+`MidiNote` carries no channel of its own: keeping the file's would be keeping
+a number that is then overwritten, and a multi-channel file is merged onto its
+row's channel rather than half-honoured.
+
+Events are **collected across the block and sorted at the end**. They are
+produced in two places — a pad stopping at a grid line part way through, and
+each pad's own sequencing run afterwards — so they arrive out of order, and a
+host is entitled to a sorted list. Stable, so a note-off and a note-on at the
+same sample keep the order they were made in: on the same pitch that is the
+difference between a re-strike and a silence.
+
+### The reader
+
+`parseMidiFile` handles what a loop library and a DAW export actually contain:
+formats 0 and 1 (merged onto one timeline, each track walked from its own
+zero), running status, note-on-with-velocity-zero, SysEx and meta events
+skipped by their own declared lengths, and a note still held when the track
+ends. Note-offs pair with the **oldest** matching note-on, so one pitch struck
+twice is two notes rather than one long one.
+
+Refused rather than half-read: **SMPTE division** (the file is timed in frames
+and seconds, with no musical grid to loop to), **format 2** (independent
+sequences, not one song — merging them would be inventing a piece of music),
+and anything past the caps.
+
+MIDI is **big-endian** and WAV is little-endian, which is the classic first bug
+in an SMF reader and does not announce itself: a division of 480 read the
+wrong way is 61440, and every note lands in the first hundredth of a bar with
+no error anywhere. `MidiTests` §1 has that as a negative control.
+
+`SampleStatus` grew `NotMidi` and `NoNotes` rather than the panel growing a
+second code path: a pad shows one tooltip, and the person reading it does not
+care which of two enums the answer came out of.
+
+### On the panel
+
+A MIDI pad's well is a cooler, slightly violet grey — colour, because the well
+is the biggest thing on a cell and colour is what the eye finds across
+sixty-four of them, where a badge or a letter would be one more small thing to
+read. Live and waiting keep their own colours: three more would be saying the
+same two things twice.
+
+Its **level bar dims** and its **fit box dims**, because neither does anything
+to notes. Both are still real parameters, still saved, and both start working
+the moment an audio file lands in that pad — what they must not do is look
+live while doing nothing. The bar is dimmed rather than hidden: a strip that
+changed shape under a MIDI pad would be a worse way to say the same thing.
+
+The tooltip says how many notes, how long the file is, how long it *loops* for
+once run out to the bar, and which channel it leaves on.
+
+## 14. The SDK
 
 **In-tree clone**, chosen deliberately over pointing at a sibling project's
 checkout. The first `cmake` configure clones the VST3 SDK (~250 MB) into

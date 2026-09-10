@@ -100,6 +100,18 @@ static const char* const kProject6SlotTempoAttribute   = "Tempo";
 static const char* const kProject6SlotTempoSrcAttribute = "TempoSource";
 static const char* const kProject6SlotOneShotAttribute = "OneShot";
 
+/** And what KIND of file it turned out to be, with the two numbers that
+    only mean anything for a MIDI one: how many notes are in it and how
+    long it is in quarter notes BEFORE the rounding up to a bar.
+
+    The rounding itself is not sent. It depends on the project's time
+    signature, which changes without any file being reloaded, so the
+    panel does it with loopLengthQuarters exactly as the processor does -
+    the shared function rather than a number that could go stale. */
+static const char* const kProject6SlotKindAttribute    = "Kind";
+static const char* const kProject6SlotNotesAttribute   = "Notes";
+static const char* const kProject6SlotBeatsAttribute   = "Beats";
+
 /** The playhead of every slot, for the progress bars on the pads.
 
     A REQUEST AND A REPLY, both on the UI thread: the controller asks on

@@ -104,37 +104,78 @@ int main ()
 	section ("2. What the slots will take");
 	//--------------------------------------------------------------------
 	{
-		check (isAcceptedSampleFile ("/Users/andy/Samples/kick.wav"),
+		check (isAcceptedSlotFile ("/Users/andy/Samples/kick.wav"),
 		       "a .wav is accepted");
-		check (isAcceptedSampleFile ("/Users/andy/Samples/KICK.WAV"),
+		check (isAcceptedSlotFile ("/Users/andy/Samples/KICK.WAV"),
 		       "and so is a .WAV - refusing it would look like a failed drop");
-		check (isAcceptedSampleFile ("C:\\Samples\\snare.Wav"),
+		check (isAcceptedSlotFile ("C:\\Samples\\snare.Wav"),
 		       "and a Windows path out of an old project file");
-		check (isAcceptedSampleFile ("kick.wav"),
+		check (isAcceptedSlotFile ("kick.wav"),
 		       "and a bare filename with no directory at all");
 
-		check (! isAcceptedSampleFile ("/Users/andy/Samples/kick.aiff"),
+		check (! isAcceptedSlotFile ("/Users/andy/Samples/kick.aiff"),
 		       "an .aiff is refused - the list has one entry today");
-		check (! isAcceptedSampleFile ("/Users/andy/Samples/kick"),
+		check (! isAcceptedSlotFile ("/Users/andy/Samples/kick"),
 		       "so is a file with no extension");
-		check (! isAcceptedSampleFile ("/Users/andy/Samples/"),
+		check (! isAcceptedSlotFile ("/Users/andy/Samples/"),
 		       "so is a directory");
-		check (! isAcceptedSampleFile (""),
+		check (! isAcceptedSlotFile (""),
 		       "so is an empty path");
 
 		// NEGATIVE CONTROL for the extension test itself. "wav" has to be
 		// an EXTENSION, not a substring: a folder called Samples.wav with
 		// a file in it, or a file called wavetable, must not sneak past.
-		check (! isAcceptedSampleFile ("/Users/andy/Samples.wav/notes"),
+		check (! isAcceptedSlotFile ("/Users/andy/Samples.wav/notes"),
 		       "NEGATIVE CONTROL: .wav in a DIRECTORY name does not count");
-		check (! isAcceptedSampleFile ("/Users/andy/wavetable"),
+		check (! isAcceptedSlotFile ("/Users/andy/wavetable"),
 		       "and neither does a name that merely contains 'wav'");
 
 		// A hidden file whose whole name is the extension has nothing to
 		// show on a slot, so it is refused rather than drawn as a full
 		// slot that looks empty.
-		check (! isAcceptedSampleFile ("/Users/andy/.wav"),
+		check (! isAcceptedSlotFile ("/Users/andy/.wav"),
 		       "a dot-file called '.wav' is refused, having no name to show");
+
+		//----------------------------------------------------------------
+		// AND MIDI, which a slot takes just as readily. Everything else
+		// about a pad is the same either way; what differs is which of
+		// its row's two buses it plays into.
+		//----------------------------------------------------------------
+		check (slotFileKind ("/Users/andy/Loops/groove.mid") == SlotFileKind::Midi,
+		       "a .mid file is a MIDI slot");
+		check (slotFileKind ("/Users/andy/Loops/groove.midi") == SlotFileKind::Midi,
+		       "and so is a .midi one");
+		check (slotFileKind ("/Users/andy/Loops/GROOVE.MID") == SlotFileKind::Midi,
+		       "case-insensitively, like the audio ones");
+		check (slotFileKind ("/Users/andy/Samples/kick.wav") == SlotFileKind::Audio,
+		       "a .wav file is an audio slot");
+		check (slotFileKind ("/Users/andy/Samples/kick.aiff") == SlotFileKind::None,
+		       "and an aiff is still neither");
+
+		// ".midi" ends with ".midi" and NOT with ".mid" - whole suffixes,
+		// so the order the two lists are tested in cannot matter.
+		check (slotFileKind ("/a/x.mid") == slotFileKind ("/a/x.midi"),
+		       "both MIDI extensions land on the same kind");
+		check (slotFileKind ("/a/hybrid.mid.wav") == SlotFileKind::Audio,
+		       "NEGATIVE CONTROL: the LAST extension is the one that counts");
+
+		check (isAcceptedSlotFile ("/a/x.mid"), "a MIDI file is an accepted slot file");
+		check (isAcceptedSlotFile ("/a/x.wav"), "and so is an audio one");
+		check (! isAcceptedSlotFile ("/a/x.txt"), "and a text file is not");
+
+		// Every kind has a word the panel can show.
+		const SlotFileKind kinds[] = {
+			SlotFileKind::None, SlotFileKind::Audio, SlotFileKind::Midi };
+		bool named = true;
+		for (SlotFileKind kind : kinds)
+			named &= (slotFileKindName (kind) != nullptr
+			          && slotFileKindName (kind)[0] != '\0');
+		check (named, "and a word to describe it");
+
+		// And a MIDI file survives the drag path the same way.
+		check (sampleFilePathFromDragText ("file:///Users/andy/My%20Loops/beat.mid")
+		           == "/Users/andy/My Loops/beat.mid",
+		       "a MIDI file dragged in as a URL unescapes like any other");
 	}
 
 	//--------------------------------------------------------------------

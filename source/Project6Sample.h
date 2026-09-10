@@ -116,8 +116,15 @@ enum class SampleStatus
 	Unreadable,         ///< the file could not be opened or read
 	NotWave,            ///< not a RIFF/WAVE file at all
 	UnsupportedFormat,  ///< a wav, but not a PCM or float layout we decode
-	TooLong,            ///< longer than kMaxSampleSeconds
-	NoFrames            ///< a wav with no audio in it
+	TooLong,            ///< longer than the cap for its kind
+	NoFrames,           ///< a wav with no audio in it
+
+	// A SLOT TAKES EITHER KIND OF FILE, so this enum covers both. It
+	// stays here, beside the WAV reader, because a pad shows ONE tooltip
+	// and the person reading it does not care which of two enums the
+	// answer came out of - see Project6Midi.h for the MIDI side.
+	NotMidi,            ///< not a standard MIDI file at all
+	NoNotes             ///< a MIDI file with nothing to play in it
 };
 
 /** One short line, for the panel's tooltip. Never null. */

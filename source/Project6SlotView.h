@@ -109,6 +109,15 @@ public:
 	    target: someone wondering why a loop sounds wrong hovers the name,
 	    not the twenty-six-pixel box beside it. */
 	void setTempoText (const std::string& text);
+
+	/** WHICH KIND OF FILE this pad is holding, so it can be drawn as what
+	    it is. A MIDI pad takes a different well colour - the well is the
+	    biggest thing on a cell and colour is what the eye finds across
+	    sixty-four of them, where a badge or a letter would be one more
+	    small thing to read. */
+	void setKind (SlotFileKind kind);
+	SlotFileKind kind () const { return mKind; }
+
 	SampleStatus status () const { return mStatus; }
 
 	/** True when there is a loaded file here and a click should start it. */
@@ -244,6 +253,7 @@ private:
 	std::string mOverlay;
 	std::string mTempoText;
 	SampleStatus mStatus = SampleStatus::Empty;
+	SlotFileKind mKind = SlotFileKind::None;
 	bool mSounding = false;
 
 	/** The press that has not yet decided whether it is a click or a
@@ -280,6 +290,18 @@ public:
 
 	int index () const { return mIndex; }
 
+	/** False on a MIDI pad, where there is no audio for a level to
+	    scale.
+
+	    THE BAR IS DIMMED RATHER THAN HIDDEN, and it still works: it is a
+	    real parameter, it is saved with the project, and it will do
+	    something the moment an audio file is dropped here. What it must
+	    not do is look live while doing nothing, which is the failure this
+	    project keeps coming back to. A bar that vanished would also make
+	    the strip under a MIDI pad a different shape from every other
+	    strip, which is a worse way to say the same thing. */
+	void setApplies (bool applies);
+
 	void draw (VSTGUI::CDrawContext* context) override;
 
 	void onMouseDownEvent (VSTGUI::MouseDownEvent& event) override;
@@ -292,6 +314,7 @@ public:
 
 private:
 	int mIndex = 0;
+	bool mApplies = true;
 	bool mDragging = false;
 	VSTGUI::CPoint mLastPoint;
 };

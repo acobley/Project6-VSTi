@@ -52,6 +52,12 @@ const CColor kSlotTextBad  (208, 132, 132, 255);
     with a tempo lands here - but visibly not in force. */
 const CColor kSlotTextIdle (140, 140, 140, 255);
 
+/** A MIDI pad's well. Cooler and a shade violet against the neutral grey
+    of an audio one - far enough apart to pick out of a grid of sixty-four
+    at a glance, close enough that a bank of both does not look like two
+    different plug-ins. */
+const CColor kWellFillMidi (58, 56, 74, 255);
+
 /** The border while the loop is running. The DXi's own lamp red. */
 const CColor kLiveBorder   (255,  70,  70, 255);
 /** The border while a change is waiting for the next bar line - in
@@ -159,6 +165,16 @@ void SpySampleSlot::setTempoText (const std::string& text)
 
 	mTempoText = text;
 	refreshTooltip ();
+}
+
+//------------------------------------------------------------------------
+void SpySampleSlot::setKind (SlotFileKind kind)
+{
+	if (kind == mKind)
+		return;
+
+	mKind = kind;
+	invalid ();
 }
 
 //------------------------------------------------------------------------
@@ -622,9 +638,16 @@ void SpySampleSlot::draw (CDrawContext* context)
 	const bool waiting  = playable () && pending ();
 
 	// The well itself.
+	// A MIDI PAD IS A DIFFERENT COLOUR, but only in the resting state:
+	// live is live and waiting is waiting whatever is in the slot, and
+	// three more colours to say the same two things would be worse than
+	// one colour saying one thing.
+	const CColor resting = mPath.empty ()
+		? kWellFill
+		: (mKind == SlotFileKind::Midi ? kWellFillMidi : kWellFillFull);
+
 	context->setFillColor (sounding ? kWellFillLive
-	                                : (waiting ? kWellFillArmed
-	                                           : (mPath.empty () ? kWellFill : kWellFillFull)));
+	                                : (waiting ? kWellFillArmed : resting));
 	context->drawRect (r, kDrawFilled);
 	drawWell (context, r, kWellShadow, kWellHigh);
 
@@ -719,13 +742,27 @@ void SpySlotLevel::draw (CDrawContext* context)
 	                   static_cast<double> (getValueNormalized ()), 0.0, 1.0);
 	if (fill.getWidth () > 0. && fill.getHeight () > 0.)
 	{
-		context->setFillColor (Colours::kBarFill);
+		// DIMMED ON A MIDI PAD, where there is no audio for it to scale.
+		// The bar is still real, still saved and still works the moment
+		// an audio file lands here - what it must not do is look live
+		// while doing nothing.
+		context->setFillColor (mApplies ? Colours::kBarFill : kSlotTextIdle);
 		context->drawRect (fill, kDrawFilled);
 	}
 
 	drawWell (context, r, Colours::kBarLight, Colours::kBarHigh);
 
 	setDirty (false);
+}
+
+//------------------------------------------------------------------------
+void SpySlotLevel::setApplies (bool applies)
+{
+	if (applies == mApplies)
+		return;
+
+	mApplies = applies;
+	invalid ();
 }
 
 //------------------------------------------------------------------------

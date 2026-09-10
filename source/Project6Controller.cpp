@@ -226,6 +226,9 @@ tresult PLUGIN_API Project6Controller::setComponentState (IBStream* state)
 		mSlotTempo[index]       = 0.0;
 		mSlotTempoSource[index] = TempoSource::None;
 		mSlotOneShot[index]     = false;
+		mSlotKind[index]        = slotFileKind (mSlots.path (index));
+		mSlotNotes[index]       = 0;
+		mSlotBeats[index]       = 0.0;
 	}
 
 	// Usually there is no editor yet at this point - the host sets state
@@ -283,6 +286,33 @@ bool Project6Controller::slotOneShot (int index) const
 }
 
 //------------------------------------------------------------------------
+SlotFileKind Project6Controller::slotKind (int index) const
+{
+	if (!isSlotIndex (index))
+		return SlotFileKind::None;
+
+	return mSlotKind[index];
+}
+
+//------------------------------------------------------------------------
+int Project6Controller::slotNoteCount (int index) const
+{
+	if (!isSlotIndex (index))
+		return 0;
+
+	return mSlotNotes[index];
+}
+
+//------------------------------------------------------------------------
+double Project6Controller::slotBeats (int index) const
+{
+	if (!isSlotIndex (index))
+		return 0.0;
+
+	return mSlotBeats[index];
+}
+
+//------------------------------------------------------------------------
 double Project6Controller::slotFitSpeed (int index, double projectBpm)
 {
 	if (!isSlotIndex (index))
@@ -294,7 +324,11 @@ double Project6Controller::slotFitSpeed (int index, double projectBpm)
 	const FitMode mode = fitModeFromIndex (static_cast<int> (
 		slotFitDef ().toInternal (getParamNormalized (slotFitParam (index)))));
 
-	if (mode == FitMode::Off || mSlotOneShot[index])
+	// A MIDI PAD IS NEVER FITTED. Its notes are placed in quarter notes,
+	// so it is already at the project's tempo by construction and there
+	// is nothing for a fit to do - see Project6Midi.h.
+	if (mode == FitMode::Off || mSlotOneShot[index]
+	    || mSlotKind[index] == SlotFileKind::Midi)
 		return 1.0;
 
 	return fitSpeed (mSlotTempo[index], projectBpm);
@@ -337,6 +371,15 @@ void Project6Controller::setSlotPath (int index, const std::string& path)
 	mSlotTempo[index]       = 0.0;
 	mSlotTempoSource[index] = TempoSource::None;
 	mSlotOneShot[index]     = false;
+
+	// The KIND, though, IS guessed from the extension straight away -
+	// unlike the tempo, it is a fact about the path rather than about
+	// the file's contents, so the panel can draw a MIDI pad as a MIDI
+	// pad from the moment it is dropped. The processor's reply confirms
+	// it, or corrects it to None if the file would not parse.
+	mSlotKind[index]  = slotFileKind (path);
+	mSlotNotes[index] = 0;
+	mSlotBeats[index] = 0.0;
 
 	sendSlotToProcessor (index, path);
 
@@ -505,6 +548,17 @@ tresult PLUGIN_API Project6Controller::notify (IMessage* message)
 			mSlotTempo[index]       = (tempo > 0.0) ? tempo : 0.0;
 			mSlotTempoSource[index] = static_cast<TempoSource> (source);
 			mSlotOneShot[index]     = (oneShot != 0);
+
+			int64 kind = static_cast<int64> (SlotFileKind::None);
+			int64 notes = 0;
+			double beats = 0.0;
+			message->getAttributes ()->getInt (kProject6SlotKindAttribute, kind);
+			message->getAttributes ()->getInt (kProject6SlotNotesAttribute, notes);
+			message->getAttributes ()->getFloat (kProject6SlotBeatsAttribute, beats);
+
+			mSlotKind[index]  = static_cast<SlotFileKind> (kind);
+			mSlotNotes[index] = static_cast<int> (notes);
+			mSlotBeats[index] = beats;
 
 			for (auto* editor : mEditors)
 				editor->refreshSlots ();

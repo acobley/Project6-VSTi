@@ -100,6 +100,17 @@ public:
 	    otherwise fitted pad is not being fitted. */
 	bool slotOneShot (int index) const;
 
+	/** WHICH KIND of file a slot is holding, as the processor read it -
+	    not as the panel guesses from the extension. A .mid that failed to
+	    parse is still a MIDI slot; a pad with nothing in it is None. */
+	SlotFileKind slotKind (int index) const;
+
+	/** How many notes are in a MIDI slot's file, and how long it is in
+	    quarter notes BEFORE the rounding up to a whole bar. Both zero for
+	    an audio slot. */
+	int slotNoteCount (int index) const;
+	double slotBeats (int index) const;
+
 	/** The speed this pad's file is actually playing at, given its own
 	    tempo, the project's, and the pad's mode.
 
@@ -177,6 +188,9 @@ private:
 	double mSlotTempo[kSlotCount] = {};
 	TempoSource mSlotTempoSource[kSlotCount] = {};
 	bool mSlotOneShot[kSlotCount] = {};
+	SlotFileKind mSlotKind[kSlotCount] = {};
+	int mSlotNotes[kSlotCount] = {};
+	double mSlotBeats[kSlotCount] = {};
 	bool mHaveLiveValues = false;
 };
 

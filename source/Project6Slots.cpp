@@ -14,8 +14,10 @@ namespace Project6 {
 
 namespace {
 
-/** What the slots will take. One entry today; see the header. */
-const char* const kAcceptedExtensions[] = { ".wav" };
+/** What the slots will take, by kind. Lists even where there is one
+    entry - see the header. */
+const char* const kAudioExtensions[] = { ".wav" };
+const char* const kMidiExtensions[]  = { ".mid", ".midi" };
 
 /** Case-insensitive, because a file called KICK.WAV is a wav file and
     refusing it would look like the drop had failed. */
@@ -179,11 +181,11 @@ std::string sampleFilePathFromDragText (const std::string& text)
 		line = percentDecode (line.substr (slash));
 	}
 
-	return isAcceptedSampleFile (line) ? line : std::string ();
+	return isAcceptedSlotFile (line) ? line : std::string ();
 }
 
 //------------------------------------------------------------------------
-bool isAcceptedSampleFile (const std::string& path)
+SlotFileKind slotFileKind (const std::string& path)
 {
 	// A path that is nothing but an extension - ".wav" - is a UNIX hidden
 	// file with no name, not a sample. slotFileStem would have nothing to
@@ -191,13 +193,32 @@ bool isAcceptedSampleFile (const std::string& path)
 	// that is nonetheless full.
 	const std::string name = slotFileName (path);
 	if (name.empty () || name.front () == '.')
-		return false;
+		return SlotFileKind::None;
 
-	for (const char* extension : kAcceptedExtensions)
+	for (const char* extension : kAudioExtensions)
 		if (endsWithNoCase (name, extension))
-			return true;
+			return SlotFileKind::Audio;
 
-	return false;
+	// MIDI IS TESTED SECOND AND ".midi" BEFORE ".mid" cannot matter,
+	// because endsWithNoCase compares whole suffixes: "loop.midi" ends
+	// with ".midi" and does not end with ".mid".
+	for (const char* extension : kMidiExtensions)
+		if (endsWithNoCase (name, extension))
+			return SlotFileKind::Midi;
+
+	return SlotFileKind::None;
+}
+
+//------------------------------------------------------------------------
+const char* slotFileKindName (SlotFileKind kind)
+{
+	switch (kind)
+	{
+		case SlotFileKind::Audio: return "audio";
+		case SlotFileKind::Midi:  return "MIDI";
+		case SlotFileKind::None:  return "empty";
+	}
+	return "empty";
 }
 
 //------------------------------------------------------------------------

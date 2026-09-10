@@ -527,6 +527,14 @@ void Project6Editor::refreshSlots ()
 				mController->hasLiveValues () ? liveSlotParam (index)
 				                              : slotPlayParam (index)) >= 0.5);
 
+		// WHICH KIND OF PAD, so the well is drawn as what it holds and
+		// the two controls that do nothing to notes say so.
+		const SlotFileKind kind = mController->slotKind (index);
+		mSlots[index]->setKind (kind);
+
+		if (mLevels[index])
+			mLevels[index]->setApplies (kind != SlotFileKind::Midi);
+
 		refreshFit (index);
 	}
 
@@ -573,6 +581,14 @@ void Project6Editor::refreshFit (int index)
 	std::string text;
 	if (mController->slotStatus (index) == SampleStatus::Empty)
 		text.clear ();
+	else if (mController->slotKind (index) == SlotFileKind::Midi)
+	{
+		// A MIDI PAD IS ALWAYS AT THE PROJECT'S TEMPO, by construction:
+		// its notes are placed in quarter notes, so there is nothing for
+		// a fit to do and nothing a fit could improve. Saying that is
+		// more use than leaving the box unexplained.
+		text = "MIDI — always at the project's tempo";
+	}
 	else if (mController->slotOneShot (index))
 		text = "one-shot — never fitted";
 	else if (fileBpm <= 0.0)
@@ -588,9 +604,45 @@ void Project6Editor::refreshFit (int index)
 
 	mFits[index]->setTempoText (text);
 
-	// The same line on the pad above, which is the bigger target.
+	// The same line on the pad above, which is the bigger target - and on
+	// a MIDI pad, what the pad says instead is what is actually in the
+	// file and where it goes.
 	if (mSlots[index])
-		mSlots[index]->setTempoText (text);
+		mSlots[index]->setTempoText (
+			mController->slotKind (index) == SlotFileKind::Midi ? midiText (index) : text);
+}
+
+//------------------------------------------------------------------------
+std::string Project6Editor::midiText (int index) const
+{
+	if (mController == nullptr || !isSlotIndex (index))
+		return std::string ();
+
+	const int notes = mController->slotNoteCount (index);
+	const double beats = mController->slotBeats (index);
+	if (notes <= 0)
+		return std::string ();
+
+	// THE ROUNDING IS DONE HERE, with the shared function, rather than
+	// sent from the processor - it depends on the project's time
+	// signature, which changes without any file being reloaded.
+	const int numerator = static_cast<int> (
+		paramDef (kLiveBeatsPerBar).toInternal (
+			mController->getParamNormalized (kLiveBeatsPerBar)));
+
+	// The DENOMINATOR is not published, and 4 is the assumption. It is
+	// the right one almost always, and where it is wrong the tooltip
+	// names a bar count that is out by a factor rather than a loop that
+	// plays wrongly - the processor uses the host's real signature.
+	const double bar = barQuartersFor (numerator, 4);
+	const double loop = loopLengthQuarters (beats, bar);
+
+	char line[192] = {};
+	std::snprintf (line, sizeof (line),
+	               "%d notes, %.2f beats — looping as %.0f bar%s on MIDI channel %d",
+	               notes, beats, loop / bar, (loop / bar) > 1.5 ? "s" : "",
+	               rowOfSlot (index) + 1);
+	return line;
 }
 
 //------------------------------------------------------------------------

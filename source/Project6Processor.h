@@ -34,6 +34,7 @@
 #pragma once
 
 #include "Project6Dsp.h"
+#include "Project6Midi.h"
 #include "Project6Params.h"
 #include "Project6Sample.h"
 #include "Project6Slots.h"
@@ -113,7 +114,8 @@ private:
 	    be freed here; it goes on mRetired and is freed later, once the
 	    block counter proves no block that could have seen it is still
 	    running. */
-	void publishSlot (int index, std::shared_ptr<const SampleBuffer> sample);
+	void publishSlot (int index, std::shared_ptr<const SampleBuffer> sample,
+	                  std::shared_ptr<const MidiClip> clip);
 
 	/** Free the retired buffers it is now safe to free. `force` is for
 	    teardown, where there is no audio thread left to wait for. */
@@ -159,11 +161,46 @@ private:
 	    differs from what is launched, so a line that arrives twice - a
 	    host repeating a block, a cycle wrapping onto the same line -
 	    cannot restart a pad that is already running. */
-	void applyGridLine (int step);
+	void applyGridLine (int step, Steinberg::int32 sampleOffset, double blockStartPpq,
+	                    double quartersPerSample);
 
 	/** The transport is not rolling: silence every voice but leave the
 	    arming alone, so rolling again brings the same pads back in. */
 	void silenceForTransport ();
+
+	//--------------------------------------------------------------------
+	// MIDI out
+	//--------------------------------------------------------------------
+
+	/** Run every launched MIDI pad across this block and queue what it
+	    produces. Called once, for the whole block, AFTER the audio has
+	    been rendered - the events carry their own sample offsets, so they
+	    do not need to be interleaved with the rendering the way a bar
+	    line does. */
+	void renderMidi (const TransportInfo& transport, Steinberg::int32 numSamples);
+
+	/** Put one pad's events on the queue, tagged with its row. Silently
+	    drops anything past kMaxBlockMidiEvents - see the queue's own
+	    comment for why that bound is safe. */
+	void queueMidi (int row, const MidiEventOut* events, int count);
+
+	/** Stop one MIDI pad AT a sample offset, queueing the note-offs.
+
+	    Every way a pad can go quiet ends up here: stopped at a grid line,
+	    the transport stopping, the file taken away, the plug-in
+	    bypassed. A hanging note is the failure mode of every MIDI looper,
+	    and one function is how each of those becomes one call rather than
+	    one more thing to remember. */
+	void stopMidiVoice (int slot, Steinberg::int32 sampleOffset);
+
+	/** Sort the queue into sample order and hand it to the host, on the
+	    merged bus AND on the row's own. */
+	void flushMidi (Steinberg::Vst::ProcessData& data);
+
+	/** Quarter notes per sample, from the host's tempo. Zero when the
+	    host has not given us a musical context, which is the one case in
+	    which a MIDI pad cannot play at all. */
+	double quartersPerSample (const TransportInfo& transport) const;
 
 	/** Push the published values into data.outputParameterChanges, but
 	    ONLY the ones that have moved. Sixty-six queues a block, most of
@@ -195,6 +232,60 @@ private:
 	    these; nothing else may. */
 	std::shared_ptr<const SampleBuffer> mSamples[kSlotCount];
 
+	//--------------------------------------------------------------------
+	// The MIDI side of a slot
+	//
+	// A pad holds EITHER a .wav or a .mid, so exactly one of mSamples and
+	// mClips is filled for any given slot. The MIDI half deliberately
+	// mirrors the audio half rather than inventing a second discipline:
+	// owned here as a shared_ptr, published to the audio thread as a bare
+	// pointer through an atomic, and retired on the same list against the
+	// same block counter.
+	//
+	// WHAT DOES NOT MIRROR IT is where the playing happens. Audio is
+	// rendered by Project6Dsp, which owns its voices; MIDI is sequenced
+	// HERE, because what it produces is not samples in a buffer but
+	// events in the host's own list, and handing that back through the
+	// DSP would be a layer that carried nothing.
+	//--------------------------------------------------------------------
+
+	std::shared_ptr<const MidiClip> mClips[kSlotCount];
+
+	/** What the AUDIO THREAD reads. Release-ordered on the way in, like
+	    Project6Dsp::setSlotSample, so a thread that sees the pointer also
+	    sees the notes behind it. */
+	std::atomic<const MidiClip*> mLiveClips[kSlotCount];
+
+	/** One playhead per pad. Touched by the audio thread only. */
+	MidiVoice mMidiVoices[kSlotCount];
+
+	/** Which of the two a slot is holding, so nothing has to test the
+	    extension a second time. */
+	SlotFileKind mKind[kSlotCount] = {};
+
+	/** How many events one BLOCK may carry, across all sixty-four pads.
+
+	    A bound rather than a budget, and the reason the queue below is a
+	    member and not a local: sixty-four stack arrays of 192 events each
+	    would be most of a megabyte on the audio thread's stack. */
+	static constexpr int kMaxBlockMidiEvents = 512;
+
+	/** One event, and which row's bus it belongs on. */
+	struct PendingMidi
+	{
+		int          row = 0;
+		MidiEventOut event;
+	};
+
+	/** COLLECTED ACROSS THE BLOCK AND SORTED AT THE END. Events are
+	    produced in two places - a pad stopping at a grid line, part way
+	    through the block, and a pad's own sequencing, run for the whole
+	    block afterwards - so they arrive out of order. A host is entitled
+	    to an event list in sample order and some drop the whole list
+	    rather than sort it. */
+	PendingMidi mMidiQueue[kMaxBlockMidiEvents];
+	int mMidiQueued = 0;
+
 	/** How each slot's file read, so the panel can say why one will not
 	    play. */
 	SampleStatus mStatus[kSlotCount] = {};
@@ -204,6 +295,11 @@ private:
 	struct Retired
 	{
 		std::shared_ptr<const SampleBuffer> sample;
+		/** ...or the clip, when it was a MIDI pad. ONE LIST FOR BOTH:
+		    they are retired against the same block counter for the same
+		    reason, and two lists would be two chances to get the +2 wrong
+		    in different ways. */
+		std::shared_ptr<const MidiClip> clip;
 		std::uint64_t at = 0;
 	};
 	std::vector<Retired> mRetired;

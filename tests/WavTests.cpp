@@ -645,7 +645,8 @@ int main ()
 		const SampleStatus all[] = {
 			SampleStatus::Empty, SampleStatus::Loaded, SampleStatus::Unreadable,
 			SampleStatus::NotWave, SampleStatus::UnsupportedFormat,
-			SampleStatus::TooLong, SampleStatus::NoFrames };
+			SampleStatus::TooLong, SampleStatus::NoFrames,
+			SampleStatus::NotMidi, SampleStatus::NoNotes };
 
 		bool allNamed = true;
 		for (SampleStatus status : all)

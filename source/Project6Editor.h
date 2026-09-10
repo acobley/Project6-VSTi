@@ -27,6 +27,7 @@
 
 #include "Project6Controls.h"
 #include "Project6Display.h"
+#include "Project6Midi.h"
 #include "Project6Params.h"
 #include "Project6SlotView.h"
 
@@ -271,6 +272,11 @@ private:
 	/** Work out whether one pad's tempo fit is actually doing anything,
 	    and tell its box - so a mode that is set but idle says so. */
 	void refreshFit (int index);
+
+	/** What a MIDI pad's tooltip says: how many notes, how long the file
+	    is, how long it LOOPS for once it has been run out to the end of
+	    the bar, and which channel it leaves on. */
+	std::string midiText (int index) const;
 
 	/** A file was dropped on a slot. Writes through the CONTROLLER, which
 	    tells the processor and calls refreshSlots on every open editor -

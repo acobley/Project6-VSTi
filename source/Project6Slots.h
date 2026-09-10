@@ -65,13 +65,41 @@ constexpr int columnOfSlot (int index) { return index % kSlotColumns; }
 
 constexpr bool isRowIndex (int row) { return row >= 0 && row < kSlotRows; }
 
-/** True for a path this plug-in will take.
+//------------------------------------------------------------------------
+/** WHAT KIND OF FILE a pad is holding.
 
-    The list is deliberately a list, even though there is one entry in it:
-    adding .aif is one line here and nothing anywhere else, because the
-    slot view, the drop handler and the state code all ask this function
-    rather than testing the extension themselves. */
-bool isAcceptedSampleFile (const std::string& path);
+    A slot takes either an audio file, which plays into its row's AUDIO
+    bus, or a MIDI file, which plays into its row's EVENT bus. Everything
+    else about a pad - the launch quantise, the bar-line arming, the drag
+    and drop, the state stream - is the same for both, and this enum is
+    the one place the difference is named.
+
+    It is a KIND rather than a bool because almost every caller wants to
+    know which, not merely whether: the panel draws them differently, the
+    processor loads them with different readers, and the level bar and the
+    tempo fit apply to one and not the other. A predicate would have meant
+    every one of those places testing the extension itself, which is how
+    ".WAV" ends up accepted in one place and refused in another. */
+enum class SlotFileKind
+{
+	None,   ///< not a file this plug-in will take
+	Audio,  ///< .wav - see Project6Sample.h
+	Midi    ///< .mid or .midi - see Project6Midi.h
+};
+
+/** What kind, from the path alone. The lists are deliberately lists, even
+    where there is one entry: adding .aif is one line here and nothing
+    anywhere else. */
+SlotFileKind slotFileKind (const std::string& path);
+
+/** True for a path this plug-in will take, of either kind. */
+inline bool isAcceptedSlotFile (const std::string& path)
+{
+	return slotFileKind (path) != SlotFileKind::None;
+}
+
+/** One word for a kind, for the panel. Never null. */
+const char* slotFileKindName (SlotFileKind kind);
 
 //------------------------------------------------------------------------
 // DRAGGING A PAD ONTO ANOTHER PAD
