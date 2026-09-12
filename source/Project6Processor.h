@@ -251,6 +251,19 @@ private:
 	std::FILE* mMidiLog = nullptr;
 	std::uint64_t mLoggedBlocks = 0;
 
+	/** WHAT IS ON THE OTHER END, written at the top of the log.
+
+	    IHostApplication::getName, taken once in initialize. In a host it
+	    is the host's own name; loaded as an Audio Unit it is Steinberg's
+	    wrapper saying "VST3-AU Wrapper", because the wrapper implements
+	    IHostApplication itself and the real host is behind it.
+
+	    So this one string says WHICH BINARY WROTE THE LOG. Two hunts have
+	    now turned on a log whose format could not be established from the
+	    log, and a marker that costs one line is cheaper than a second
+	    capture. */
+	std::string mHostName;
+
 	/** Quarter notes per sample, from the host's tempo. Zero when the
 	    host has not given us a musical context, which is the one case in
 	    which a MIDI pad cannot play at all. */

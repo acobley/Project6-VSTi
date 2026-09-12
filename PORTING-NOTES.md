@@ -64,6 +64,47 @@ The block header tells them apart: `ctx1 play0 musical0` is (1), a header with
 silently when `data.outputEvents` was null, which logged identically to having
 nothing to send. It now says which.
 
+### The capture, and what it settles
+
+3,917 blocks, 1,583 stopped and 2,334 playing, one MIDI pad (62 — row H,
+channel 8). Every playing block: `ctx1 play1 musical1 tempo1 pos1`, 120 BPM,
+4/4, ppq advancing by 0.02133 a block without a gap. The pad armed, launched
+on the bar line at ppq 4.0 exactly, and played:
+
+```
+blk 1212  ctx1 play1 musical1 tempo1 pos1  ppq 3.98933 ...
+   pad 62  armed1 launched1 playing1 loop1  pos 0.0000  clip1
+   flush 2 queued, event list present
+   +256    ON   37   v100  ch8   bus7  ppq 4.00000  ok
+   +256    ON   42   v100  ch8   bus7  ppq 4.00000  ok
+```
+
+**185 flushes, 652 events, every one `ok`, the event list present every
+time, not one `REFUSED`.** So candidate (1) is dead: the transport is
+complete, the pad launches, and the notes are produced and accepted. The
+plug-in is emitting correctly and the loss is downstream — either
+`MIDIOutputCallbackHelper::fireAtTimeStamp` finding a null callback because
+Reaper never set `kAudioUnitProperty_MIDIOutputCallback`, or Reaper having the
+callback and the MIDI going somewhere the project does not route.
+
+### And the thing that made this capture inconclusive anyway
+
+**Nothing in the log said which binary wrote it.** A log that shows the
+plug-in working is the expected result for the VST3 and a surprising one for
+the AU, and the file could not tell them apart. That is the second time this
+hunt has turned on a log whose own provenance was a guess.
+
+So `initialize` now takes `IHostApplication::getName` once and
+`openMidiLog` prints it at the top. In a host it is the host's own name; under
+the AU it is `VST3-AU Wrapper`, because Steinberg's wrapper implements
+`IHostApplication` itself and the real host is behind it. Nothing decides
+anything on the string — a plug-in that behaves differently per host is a
+plug-in nobody can reason about — it exists only so that a log says what it is
+a log OF.
+
+Note also that `openMidiLog` opens with `"w"`, so **two instances logging at
+once truncate and interleave**. One plug-in at a time.
+
 ## 0. OPEN: MIDI goes silent at a transport loop point
 
 **NOT FIXED. NOT CONFIRMED FIXED. Do not close this without a test that

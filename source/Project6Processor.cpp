@@ -9,6 +9,8 @@
 #include "base/source/fstreamer.h"
 #include "public.sdk/source/vst/utility/processcontextrequirements.h"
 #include "pluginterfaces/vst/ivstevents.h"
+#include "pluginterfaces/vst/ivsthostapplication.h"
+#include "base/source/fstring.h"
 #include "pluginterfaces/vst/ivstparameterchanges.h"
 
 #include <algorithm>
@@ -47,6 +49,31 @@ tresult PLUGIN_API Project6Processor::initialize (FUnknown* context)
 	const tresult result = AudioEffect::initialize (context);
 	if (result != kResultOk)
 		return result;
+
+	// WHO IS ON THE OTHER END. Only ever read back out of the MIDI log -
+	// nothing decides anything on it, because a plug-in that behaves
+	// differently per host is a plug-in nobody can reason about. It is
+	// there so that a log says which binary produced it: a host names
+	// itself, and Steinberg's AU wrapper names itself "VST3-AU Wrapper".
+	if (context != nullptr)
+	{
+		IHostApplication* host = nullptr;
+		if (context->queryInterface (IHostApplication::iid,
+		                             reinterpret_cast<void**> (&host)) == kResultOk
+		    && host != nullptr)
+		{
+			String128 name = {};
+			if (host->getName (name) == kResultTrue)
+			{
+				Steinberg::String wide (name);
+				wide.toMultiByte (Steinberg::kCP_Utf8);
+				if (const char* text = wide.text8 ())
+					mHostName = text;
+			}
+
+			host->release ();
+		}
+	}
 
 	// An instrument: notes in, audio out, no audio input.
 	addAudioOutput (STR16 ("Stereo Out"), SpeakerArr::kStereo);
@@ -316,9 +343,12 @@ void Project6Processor::openMidiLog ()
 	{
 		std::fprintf (mMidiLog,
 		              "Project6 MIDI log\n"
+		              "  host:    %s\n"
 		              "  columns: blk | playing | ppq | tempo | frames "
 		              "| then one line per event\n"
-		              "  events:  +sample  on/off  pitch  vel  ch  bus  ppq\n\n");
+		              "  events:  +sample  on/off  pitch  vel  ch  bus  ppq\n\n",
+		              mHostName.empty () ? "(the host did not say)"
+		                                 : mHostName.c_str ());
 		std::fflush (mMidiLog);
 	}
 }
