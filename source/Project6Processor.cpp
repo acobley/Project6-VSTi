@@ -12,6 +12,8 @@
 #include "pluginterfaces/vst/ivstparameterchanges.h"
 
 #include <algorithm>
+#include <cstdarg>
+#include <cstdlib>
 #include <cmath>
 #include <cstddef>
 #include <limits>
@@ -249,6 +251,52 @@ double Project6Processor::quartersPerSample (const TransportInfo& transport) con
 }
 
 //------------------------------------------------------------------------
+void Project6Processor::openMidiLog ()
+{
+	if (mMidiLog != nullptr)
+		return;
+
+	const char* path = std::getenv ("PROJECT6_MIDI_LOG");
+	if (path == nullptr || path[0] == '\0')
+		return;
+
+	mMidiLog = std::fopen (path, "w");
+	mLoggedBlocks = 0;
+
+	if (mMidiLog != nullptr)
+	{
+		std::fprintf (mMidiLog,
+		              "Project6 MIDI log\n"
+		              "  columns: blk | playing | ppq | tempo | frames "
+		              "| then one line per event\n"
+		              "  events:  +sample  on/off  pitch  vel  ch  bus  ppq\n\n");
+		std::fflush (mMidiLog);
+	}
+}
+
+//------------------------------------------------------------------------
+void Project6Processor::closeMidiLog ()
+{
+	if (mMidiLog == nullptr)
+		return;
+
+	std::fclose (mMidiLog);
+	mMidiLog = nullptr;
+}
+
+//------------------------------------------------------------------------
+void Project6Processor::logMidi (const char* format, ...)
+{
+	if (mMidiLog == nullptr)
+		return;
+
+	va_list args;
+	va_start (args, format);
+	std::vfprintf (mMidiLog, format, args);
+	va_end (args);
+}
+
+//------------------------------------------------------------------------
 void Project6Processor::queueMidi (int row, const MidiEventOut* events, int count)
 {
 	for (int i = 0; i < count; ++i)
@@ -332,6 +380,38 @@ void Project6Processor::unlaunchMidiVoice (int slot, int32 sampleOffset)
 void Project6Processor::renderMidi (const TransportInfo& transport, int32 numSamples)
 {
 	const double perSample = quartersPerSample (transport);
+
+	//--------------------------------------------------------------------
+	// THE BLOCK HEADER, and it is written HERE rather than beside the
+	// events because the block that matters most is the one with NO
+	// events in it. A log that only recorded blocks that sent something
+	// would fall silent at exactly the moment the plug-in did, and say
+	// nothing about why.
+	//--------------------------------------------------------------------
+	if (mMidiLog != nullptr)
+	{
+		logMidi ("blk %llu  ctx%d play%d musical%d tempo%d pos%d  ppq %.5f  "
+		         "%.2f BPM  %d/%d  frames %d  perSample %.9f\n",
+		         static_cast<unsigned long long> (mLoggedBlocks++),
+		         transport.hasContext ? 1 : 0, transport.playing ? 1 : 0,
+		         transport.musical ? 1 : 0, transport.tempoKnown ? 1 : 0,
+		         transport.posKnown ? 1 : 0, transport.ppq, transport.tempoBpm,
+		         transport.sigNumerator, transport.sigDenominator,
+		         static_cast<int> (numSamples), perSample);
+
+		for (int slot = 0; slot < kSlotCount; ++slot)
+		{
+			if (mKind[slot] != SlotFileKind::Midi)
+				continue;
+
+			logMidi ("   pad %d  armed%d launched%d playing%d loop%d  pos %.4f  "
+			         "clip%d\n",
+			         slot, mArmed[slot] ? 1 : 0, mLaunched[slot] ? 1 : 0,
+			         mMidiVoices[slot].playing () ? 1 : 0, mLoop[slot] ? 1 : 0,
+			         mMidiVoices[slot].position (),
+			         mLiveClips[slot].load (std::memory_order_acquire) != nullptr ? 1 : 0);
+		}
+	}
 
 	// BYPASSED OR STOPPED. Both have to stop the notes rather than merely
 	// stop producing new ones - a bypass that left a chord sounding would
@@ -417,7 +497,7 @@ void Project6Processor::renderMidi (const TransportInfo& transport, int32 numSam
 }
 
 //------------------------------------------------------------------------
-void Project6Processor::flushMidi (ProcessData& data)
+void Project6Processor::flushMidi (ProcessData& data, double blockStartPpq, double perSample)
 {
 	if (mMidiQueued <= 0)
 		return;
@@ -446,8 +526,28 @@ void Project6Processor::flushMidi (ProcessData& data)
 
 		Event event = {};
 		event.sampleOffset = pending.event.sampleOffset;
-		event.ppqPosition  = 0.0;
-		event.flags        = Event::kIsLive;
+
+		// WHERE THIS EVENT IS IN THE PROJECT, which used to be written as
+		// a flat zero on every event ever sent.
+		//
+		// ppqPosition is documented as "position in project time music".
+		// Zero is not a missing value, it is a WRONG one: it says every
+		// note this plug-in has ever emitted happened at the very start
+		// of the project. A host has no reason to look at it while the
+		// transport runs in a straight line - the sample offset is
+		// enough - but a LOOPING transport is exactly when a host would
+		// consult it, to work out where an event falls relative to the
+		// loop region. Which is the one condition under which this was
+		// reported to go wrong.
+		event.ppqPosition = blockStartPpq
+		                    + static_cast<double> (pending.event.sampleOffset) * perSample;
+
+		// AND THEY ARE NOT LIVE. kIsLive means "played live, directly
+		// from a keyboard". These were read out of a file and placed on a
+		// grid; saying otherwise invites a host to treat them as
+		// unsequenced input, which among other things is a reason to
+		// ignore the position above.
+		event.flags = 0;
 
 		if (pending.event.noteOn)
 		{
@@ -474,10 +574,18 @@ void Project6Processor::flushMidi (ProcessData& data)
 		// shows a plug-in only its first event output - which is most of
 		// them, and every AU wrapper.
 		event.busIndex = 0;
-		out->addEvent (event);
+		const tresult merged = out->addEvent (event);
 
 		event.busIndex = 1 + pending.row;
-		out->addEvent (event);
+		const tresult perRow = out->addEvent (event);
+
+		logMidi ("   +%-6d %-4s %-4d v%-4d ch%-3d ppq %.5f  %s%s\n",
+		         pending.event.sampleOffset, pending.event.noteOn ? "ON" : "off",
+		         static_cast<int> (pending.event.note),
+		         static_cast<int> (pending.event.velocity),
+		         midiChannelForRow (pending.row) + 1, event.ppqPosition,
+		         merged == kResultOk ? "bus0 " : "bus0-REFUSED ",
+		         perRow == kResultOk ? "busN" : "busN-REFUSED");
 	}
 
 	mMidiQueued = 0;
@@ -626,6 +734,8 @@ tresult PLUGIN_API Project6Processor::terminate ()
 {
 	// Nothing is rendering by the time terminate is reached, so the
 	// retire list can go without waiting for the block counter.
+	closeMidiLog ();
+
 	mActive.store (false, std::memory_order_release);
 	for (int index = 0; index < kSlotCount; ++index)
 	{
@@ -717,6 +827,8 @@ tresult PLUGIN_API Project6Processor::setActive (TBool state)
 			launched = false;
 		mBarClock.reset ();
 		mWasPlaying = false;
+
+		openMidiLog ();
 
 		mActive.store (true, std::memory_order_release);
 		sendSampleRateToController ();
@@ -1371,7 +1483,7 @@ tresult PLUGIN_API Project6Processor::process (ProcessData& data)
 	// already been started before its notes are asked for.
 	//--------------------------------------------------------------------
 	renderMidi (transport, data.numSamples);
-	flushMidi (data);
+	flushMidi (data, transport.ppq, midiPerSample);
 
 	// Tell the host when there is genuinely nothing sounding, so it can
 	// skip downstream work - and ONLY then. A synth that flags silence

@@ -1382,6 +1382,53 @@ written from the inside.
 The trace has a `--launch` option for exactly that reason. It is the detail a
 test written from the inside never thinks of.
 
+### ppqPosition was a lie, and the log that should have existed sooner
+
+Two things were wrong in every MIDI event this plug-in has ever sent.
+
+**`Event::ppqPosition` was a flat zero.** It is documented as "position in
+project time music", and zero is not a missing value — it is a *wrong* one,
+saying every note happened at the very start of the project. A host has no
+reason to consult it while the transport runs in a straight line; the sample
+offset is enough. A **looping** transport is exactly when a host would look,
+to work out where an event falls relative to the loop region — which is the
+one condition under which this was reported to go wrong, and the only
+condition: *"if the transport is not looping, the file plays forever."*
+
+**`Event::kIsLive` was set.** That flag means "played live, directly from a
+keyboard". These notes were read out of a file and placed on a grid. Saying
+otherwise invites a host to treat them as unsequenced input, which among
+other things is a reason to ignore the position above.
+
+Both are now correct. Neither is a theory about the fault; both are simply
+false statements the plug-in was making.
+
+### PROJECT6_MIDI_LOG
+
+Three fixes for one reported fault were wrong in a row — each reasoned from
+the code, each plausible, each shipped. That is the point at which guessing
+again is the wrong thing to do. What was missing was never another theory. It
+was **evidence of what the plug-in actually sends, from inside the host where
+it goes wrong.**
+
+Set `PROJECT6_MIDI_LOG` to a file path and every block is written to it: the
+transport's context flags, its position, tempo and meter; every MIDI pad's
+armed, launched, playing and loop state and where its playhead is; and every
+event with its sample offset, pitch, channel, project position and whether
+the host **accepted** it on each bus. Unset — which it is unless somebody
+deliberately sets it — and it costs one null check.
+
+The block header is written in `renderMidi` and not beside the events,
+because **the block that matters most is the one with no events in it**. A
+log that only recorded blocks that sent something would fall silent at
+exactly the moment the plug-in did, and say nothing about why.
+
+It writes from the audio thread, which is the one thing the rest of this
+plug-in refuses to do. That is deliberate, and it is why it is off by
+default: a diagnostic that queued its lines through a lock-free ring would be
+a second thing that could be wrong, and the question is what the *first* one
+is doing. Expect glitches while it is on.
+
 ### Nine event outputs, and why the merged one is not a luxury
 
 One `MIDI Out` carrying every row, then one per row — exactly the shape the

@@ -47,6 +47,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <cstdio>
 #include <vector>
 
 namespace Project6 {
@@ -208,8 +209,47 @@ private:
 	void unlaunchMidiVoice (int slot, Steinberg::int32 sampleOffset);
 
 	/** Sort the queue into sample order and hand it to the host, on the
-	    merged bus AND on the row's own. */
-	void flushMidi (Steinberg::Vst::ProcessData& data);
+	    merged bus AND on the row's own.
+
+	    `blockStartPpq` and `perSample` are needed to give every event its
+	    REAL position in project time - see Event::ppqPosition in the
+	    implementation, which used to be a lie. */
+	void flushMidi (Steinberg::Vst::ProcessData& data, double blockStartPpq,
+	                double perSample);
+
+	//--------------------------------------------------------------------
+	// A DIAGNOSTIC LOG, off unless asked for
+	//
+	// Three fixes for one reported fault have now been wrong, each of
+	// them reasoned from the code and each of them plausible. That is the
+	// point at which guessing again is the wrong thing to do: what is
+	// missing is not another theory but EVIDENCE of what this plug-in
+	// actually sends, from inside the host where it goes wrong.
+	//
+	// Set PROJECT6_MIDI_LOG to a file path and every block and every
+	// event is written to it. Unset - which is always, unless somebody
+	// deliberately sets it - and none of this costs anything but a null
+	// check.
+	//
+	// IT WRITES FROM THE AUDIO THREAD, which is exactly what the rest of
+	// this plug-in refuses to do. That is deliberate and it is why it is
+	// off by default: a diagnostic that queued its lines through a
+	// lock-free ring would be a second thing that could be wrong, and the
+	// question here is what the FIRST thing is doing. Expect glitches
+	// while it is on, and turn it off when you are done.
+	//--------------------------------------------------------------------
+
+	/** Opens the log if the environment asks for one. Called from
+	    setActive, which is the UI thread. */
+	void openMidiLog ();
+	void closeMidiLog ();
+
+	/** Never null-checked at the call site: the macro-free way is one
+	    check in here. */
+	void logMidi (const char* format, ...);
+
+	std::FILE* mMidiLog = nullptr;
+	std::uint64_t mLoggedBlocks = 0;
 
 	/** Quarter notes per sample, from the host's tempo. Zero when the
 	    host has not given us a musical context, which is the one case in
