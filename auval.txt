@@ -1,0 +1,3361 @@
+
+    AU Validation Tool
+    Version: 1.10.0 
+    Copyright 2003-2019, Apple Inc. All Rights Reserved.
+    Specify -h (-help) for command options
+
+--------------------------------------------------
+VALIDATING AUDIO UNIT: 'aumu' - 'Prj6' - 'AECo'
+--------------------------------------------------
+Manufacturer String: A. E. Cobley
+AudioUnit Name: Project6
+Component Version: 1.0.0 (0x10000)
+
+* * PASS
+--------------------------------------------------
+TESTING OPEN TIMES:
+COLD:
+Time to open AudioUnit:         10.360 ms
+WARM:
+Time to open AudioUnit:         0.380  ms
+This AudioUnit is a version 2 implementation.
+FIRST TIME:
+Time for initialization:        0.504 ms
+
+* * PASS
+--------------------------------------------------
+VERIFYING DEFAULT SCOPE FORMATS:
+Input Scope Bus Configuration:
+ Default Bus Count:0
+
+Output Scope Bus Configuration:
+ Default Bus Count:9
+    Bus Name: Stereo Out
+    Format Bus 0: AudioStreamBasicDescription:  2 ch,  44100 Hz, Float32, deinterleaved
+    Bus Name: Row A
+    Format Bus 1: AudioStreamBasicDescription:  2 ch,  44100 Hz, Float32, deinterleaved
+    Bus Name: Row B
+    Format Bus 2: AudioStreamBasicDescription:  2 ch,  44100 Hz, Float32, deinterleaved
+    Bus Name: Row C
+    Format Bus 3: AudioStreamBasicDescription:  2 ch,  44100 Hz, Float32, deinterleaved
+    Bus Name: Row D
+    Format Bus 4: AudioStreamBasicDescription:  2 ch,  44100 Hz, Float32, deinterleaved
+    Bus Name: Row E
+    Format Bus 5: AudioStreamBasicDescription:  2 ch,  44100 Hz, Float32, deinterleaved
+    Bus Name: Row F
+    Format Bus 6: AudioStreamBasicDescription:  2 ch,  44100 Hz, Float32, deinterleaved
+    Bus Name: Row G
+    Format Bus 7: AudioStreamBasicDescription:  2 ch,  44100 Hz, Float32, deinterleaved
+    Bus Name: Row H
+    Format Bus 8: AudioStreamBasicDescription:  2 ch,  44100 Hz, Float32, deinterleaved
+
+* * PASS
+--------------------------------------------------
+VERIFYING REQUIRED PROPERTIES:
+
+* * PASS
+--------------------------------------------------
+VERIFYING RECOMMENDED PROPERTIES:
+  VERIFYING PROPERTY: Latency
+    PASS
+
+* * PASS
+--------------------------------------------------
+VERIFYING OPTIONAL PROPERTIES:
+  VERIFYING PROPERTY: Bypass Effect
+    PASS
+
+* * PASS
+--------------------------------------------------
+VERIFYING SPECIAL PROPERTIES:
+
+VERIFYING CUSTOM UI
+Cocoa Views Available: 1
+  SMTG_AUCocoaUIBase_Project62026255201227
+    PASS
+
+VERIFYING CLASS INFO
+    PASS
+
+TESTING HOST CALLBACKS
+    PASS
+
+* * PASS
+--------------------------------------------------
+PUBLISHED PARAMETER INFO:
+
+# # # 461 Global Scope Parameters:
+Parameter ID:0
+Name: Output Trim
+Parameter Type: dB
+Values: Minimum = -60.0000, Default = 0.0000, Maximum = 0.0000
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:1
+Name: Slot A1 Play
+Parameter Type: Boolean
+Values: Minimum = Stopped, Default = Stopped, Maximum = Playing
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:2
+Name: Slot A2 Play
+Parameter Type: Boolean
+Values: Minimum = Stopped, Default = Stopped, Maximum = Playing
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:3
+Name: Slot A3 Play
+Parameter Type: Boolean
+Values: Minimum = Stopped, Default = Stopped, Maximum = Playing
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:4
+Name: Slot A4 Play
+Parameter Type: Boolean
+Values: Minimum = Stopped, Default = Stopped, Maximum = Playing
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:5
+Name: Slot A5 Play
+Parameter Type: Boolean
+Values: Minimum = Stopped, Default = Stopped, Maximum = Playing
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:6
+Name: Slot A6 Play
+Parameter Type: Boolean
+Values: Minimum = Stopped, Default = Stopped, Maximum = Playing
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:7
+Name: Slot A7 Play
+Parameter Type: Boolean
+Values: Minimum = Stopped, Default = Stopped, Maximum = Playing
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:8
+Name: Slot A8 Play
+Parameter Type: Boolean
+Values: Minimum = Stopped, Default = Stopped, Maximum = Playing
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:9
+Name: Slot B1 Play
+Parameter Type: Boolean
+Values: Minimum = Stopped, Default = Stopped, Maximum = Playing
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:10
+Name: Slot B2 Play
+Parameter Type: Boolean
+Values: Minimum = Stopped, Default = Stopped, Maximum = Playing
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:11
+Name: Slot B3 Play
+Parameter Type: Boolean
+Values: Minimum = Stopped, Default = Stopped, Maximum = Playing
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:12
+Name: Slot B4 Play
+Parameter Type: Boolean
+Values: Minimum = Stopped, Default = Stopped, Maximum = Playing
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:13
+Name: Slot B5 Play
+Parameter Type: Boolean
+Values: Minimum = Stopped, Default = Stopped, Maximum = Playing
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:14
+Name: Slot B6 Play
+Parameter Type: Boolean
+Values: Minimum = Stopped, Default = Stopped, Maximum = Playing
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:15
+Name: Slot B7 Play
+Parameter Type: Boolean
+Values: Minimum = Stopped, Default = Stopped, Maximum = Playing
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:16
+Name: Slot B8 Play
+Parameter Type: Boolean
+Values: Minimum = Stopped, Default = Stopped, Maximum = Playing
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:17
+Name: Slot C1 Play
+Parameter Type: Boolean
+Values: Minimum = Stopped, Default = Stopped, Maximum = Playing
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:18
+Name: Slot C2 Play
+Parameter Type: Boolean
+Values: Minimum = Stopped, Default = Stopped, Maximum = Playing
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:19
+Name: Slot C3 Play
+Parameter Type: Boolean
+Values: Minimum = Stopped, Default = Stopped, Maximum = Playing
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:20
+Name: Slot C4 Play
+Parameter Type: Boolean
+Values: Minimum = Stopped, Default = Stopped, Maximum = Playing
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:21
+Name: Slot C5 Play
+Parameter Type: Boolean
+Values: Minimum = Stopped, Default = Stopped, Maximum = Playing
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:22
+Name: Slot C6 Play
+Parameter Type: Boolean
+Values: Minimum = Stopped, Default = Stopped, Maximum = Playing
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:23
+Name: Slot C7 Play
+Parameter Type: Boolean
+Values: Minimum = Stopped, Default = Stopped, Maximum = Playing
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:24
+Name: Slot C8 Play
+Parameter Type: Boolean
+Values: Minimum = Stopped, Default = Stopped, Maximum = Playing
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:25
+Name: Slot D1 Play
+Parameter Type: Boolean
+Values: Minimum = Stopped, Default = Stopped, Maximum = Playing
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:26
+Name: Slot D2 Play
+Parameter Type: Boolean
+Values: Minimum = Stopped, Default = Stopped, Maximum = Playing
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:27
+Name: Slot D3 Play
+Parameter Type: Boolean
+Values: Minimum = Stopped, Default = Stopped, Maximum = Playing
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:28
+Name: Slot D4 Play
+Parameter Type: Boolean
+Values: Minimum = Stopped, Default = Stopped, Maximum = Playing
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:29
+Name: Slot D5 Play
+Parameter Type: Boolean
+Values: Minimum = Stopped, Default = Stopped, Maximum = Playing
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:30
+Name: Slot D6 Play
+Parameter Type: Boolean
+Values: Minimum = Stopped, Default = Stopped, Maximum = Playing
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:31
+Name: Slot D7 Play
+Parameter Type: Boolean
+Values: Minimum = Stopped, Default = Stopped, Maximum = Playing
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:32
+Name: Slot D8 Play
+Parameter Type: Boolean
+Values: Minimum = Stopped, Default = Stopped, Maximum = Playing
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:33
+Name: Slot E1 Play
+Parameter Type: Boolean
+Values: Minimum = Stopped, Default = Stopped, Maximum = Playing
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:34
+Name: Slot E2 Play
+Parameter Type: Boolean
+Values: Minimum = Stopped, Default = Stopped, Maximum = Playing
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:35
+Name: Slot E3 Play
+Parameter Type: Boolean
+Values: Minimum = Stopped, Default = Stopped, Maximum = Playing
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:36
+Name: Slot E4 Play
+Parameter Type: Boolean
+Values: Minimum = Stopped, Default = Stopped, Maximum = Playing
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:37
+Name: Slot E5 Play
+Parameter Type: Boolean
+Values: Minimum = Stopped, Default = Stopped, Maximum = Playing
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:38
+Name: Slot E6 Play
+Parameter Type: Boolean
+Values: Minimum = Stopped, Default = Stopped, Maximum = Playing
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:39
+Name: Slot E7 Play
+Parameter Type: Boolean
+Values: Minimum = Stopped, Default = Stopped, Maximum = Playing
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:40
+Name: Slot E8 Play
+Parameter Type: Boolean
+Values: Minimum = Stopped, Default = Stopped, Maximum = Playing
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:41
+Name: Slot F1 Play
+Parameter Type: Boolean
+Values: Minimum = Stopped, Default = Stopped, Maximum = Playing
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:42
+Name: Slot F2 Play
+Parameter Type: Boolean
+Values: Minimum = Stopped, Default = Stopped, Maximum = Playing
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:43
+Name: Slot F3 Play
+Parameter Type: Boolean
+Values: Minimum = Stopped, Default = Stopped, Maximum = Playing
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:44
+Name: Slot F4 Play
+Parameter Type: Boolean
+Values: Minimum = Stopped, Default = Stopped, Maximum = Playing
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:45
+Name: Slot F5 Play
+Parameter Type: Boolean
+Values: Minimum = Stopped, Default = Stopped, Maximum = Playing
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:46
+Name: Slot F6 Play
+Parameter Type: Boolean
+Values: Minimum = Stopped, Default = Stopped, Maximum = Playing
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:47
+Name: Slot F7 Play
+Parameter Type: Boolean
+Values: Minimum = Stopped, Default = Stopped, Maximum = Playing
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:48
+Name: Slot F8 Play
+Parameter Type: Boolean
+Values: Minimum = Stopped, Default = Stopped, Maximum = Playing
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:49
+Name: Slot G1 Play
+Parameter Type: Boolean
+Values: Minimum = Stopped, Default = Stopped, Maximum = Playing
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:50
+Name: Slot G2 Play
+Parameter Type: Boolean
+Values: Minimum = Stopped, Default = Stopped, Maximum = Playing
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:51
+Name: Slot G3 Play
+Parameter Type: Boolean
+Values: Minimum = Stopped, Default = Stopped, Maximum = Playing
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:52
+Name: Slot G4 Play
+Parameter Type: Boolean
+Values: Minimum = Stopped, Default = Stopped, Maximum = Playing
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:53
+Name: Slot G5 Play
+Parameter Type: Boolean
+Values: Minimum = Stopped, Default = Stopped, Maximum = Playing
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:54
+Name: Slot G6 Play
+Parameter Type: Boolean
+Values: Minimum = Stopped, Default = Stopped, Maximum = Playing
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:55
+Name: Slot G7 Play
+Parameter Type: Boolean
+Values: Minimum = Stopped, Default = Stopped, Maximum = Playing
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:56
+Name: Slot G8 Play
+Parameter Type: Boolean
+Values: Minimum = Stopped, Default = Stopped, Maximum = Playing
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:57
+Name: Slot H1 Play
+Parameter Type: Boolean
+Values: Minimum = Stopped, Default = Stopped, Maximum = Playing
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:58
+Name: Slot H2 Play
+Parameter Type: Boolean
+Values: Minimum = Stopped, Default = Stopped, Maximum = Playing
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:59
+Name: Slot H3 Play
+Parameter Type: Boolean
+Values: Minimum = Stopped, Default = Stopped, Maximum = Playing
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:60
+Name: Slot H4 Play
+Parameter Type: Boolean
+Values: Minimum = Stopped, Default = Stopped, Maximum = Playing
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:61
+Name: Slot H5 Play
+Parameter Type: Boolean
+Values: Minimum = Stopped, Default = Stopped, Maximum = Playing
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:62
+Name: Slot H6 Play
+Parameter Type: Boolean
+Values: Minimum = Stopped, Default = Stopped, Maximum = Playing
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:63
+Name: Slot H7 Play
+Parameter Type: Boolean
+Values: Minimum = Stopped, Default = Stopped, Maximum = Playing
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:64
+Name: Slot H8 Play
+Parameter Type: Boolean
+Values: Minimum = Stopped, Default = Stopped, Maximum = Playing
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:65
+Name: Transport
+Parameter Type: 
+Values: Minimum = 0, Default = 0, Maximum = 2
+Flags: Values Have Strings, Not Real Time, Readable, 
+  -parameter PASS
+
+Parameter ID:66
+Name: Bar Phase
+Parameter Type: 
+Values: Minimum = 0.0000, Default = 0.0000, Maximum = 1.0000
+Flags: Values Have Strings, Not Real Time, Readable, 
+  -parameter PASS
+
+Parameter ID:67
+Name: Beats Per Bar
+Parameter Type: 
+Values: Minimum = 1, Default = 4, Maximum = 32
+Flags: Values Have Strings, Not Real Time, Readable, 
+  -parameter PASS
+
+Parameter ID:68
+Name: Slot A1 Sounding
+Parameter Type: Boolean
+Values: Minimum = Off, Default = Off, Maximum = On
+Flags: Values Have Strings, Not Real Time, Readable, 
+  -parameter PASS
+
+Parameter ID:69
+Name: Slot A2 Sounding
+Parameter Type: Boolean
+Values: Minimum = Off, Default = Off, Maximum = On
+Flags: Values Have Strings, Not Real Time, Readable, 
+  -parameter PASS
+
+Parameter ID:70
+Name: Slot A3 Sounding
+Parameter Type: Boolean
+Values: Minimum = Off, Default = Off, Maximum = On
+Flags: Values Have Strings, Not Real Time, Readable, 
+  -parameter PASS
+
+Parameter ID:71
+Name: Slot A4 Sounding
+Parameter Type: Boolean
+Values: Minimum = Off, Default = Off, Maximum = On
+Flags: Values Have Strings, Not Real Time, Readable, 
+  -parameter PASS
+
+Parameter ID:72
+Name: Slot A5 Sounding
+Parameter Type: Boolean
+Values: Minimum = Off, Default = Off, Maximum = On
+Flags: Values Have Strings, Not Real Time, Readable, 
+  -parameter PASS
+
+Parameter ID:73
+Name: Slot A6 Sounding
+Parameter Type: Boolean
+Values: Minimum = Off, Default = Off, Maximum = On
+Flags: Values Have Strings, Not Real Time, Readable, 
+  -parameter PASS
+
+Parameter ID:74
+Name: Slot A7 Sounding
+Parameter Type: Boolean
+Values: Minimum = Off, Default = Off, Maximum = On
+Flags: Values Have Strings, Not Real Time, Readable, 
+  -parameter PASS
+
+Parameter ID:75
+Name: Slot A8 Sounding
+Parameter Type: Boolean
+Values: Minimum = Off, Default = Off, Maximum = On
+Flags: Values Have Strings, Not Real Time, Readable, 
+  -parameter PASS
+
+Parameter ID:76
+Name: Slot B1 Sounding
+Parameter Type: Boolean
+Values: Minimum = Off, Default = Off, Maximum = On
+Flags: Values Have Strings, Not Real Time, Readable, 
+  -parameter PASS
+
+Parameter ID:77
+Name: Slot B2 Sounding
+Parameter Type: Boolean
+Values: Minimum = Off, Default = Off, Maximum = On
+Flags: Values Have Strings, Not Real Time, Readable, 
+  -parameter PASS
+
+Parameter ID:78
+Name: Slot B3 Sounding
+Parameter Type: Boolean
+Values: Minimum = Off, Default = Off, Maximum = On
+Flags: Values Have Strings, Not Real Time, Readable, 
+  -parameter PASS
+
+Parameter ID:79
+Name: Slot B4 Sounding
+Parameter Type: Boolean
+Values: Minimum = Off, Default = Off, Maximum = On
+Flags: Values Have Strings, Not Real Time, Readable, 
+  -parameter PASS
+
+Parameter ID:80
+Name: Slot B5 Sounding
+Parameter Type: Boolean
+Values: Minimum = Off, Default = Off, Maximum = On
+Flags: Values Have Strings, Not Real Time, Readable, 
+  -parameter PASS
+
+Parameter ID:81
+Name: Slot B6 Sounding
+Parameter Type: Boolean
+Values: Minimum = Off, Default = Off, Maximum = On
+Flags: Values Have Strings, Not Real Time, Readable, 
+  -parameter PASS
+
+Parameter ID:82
+Name: Slot B7 Sounding
+Parameter Type: Boolean
+Values: Minimum = Off, Default = Off, Maximum = On
+Flags: Values Have Strings, Not Real Time, Readable, 
+  -parameter PASS
+
+Parameter ID:83
+Name: Slot B8 Sounding
+Parameter Type: Boolean
+Values: Minimum = Off, Default = Off, Maximum = On
+Flags: Values Have Strings, Not Real Time, Readable, 
+  -parameter PASS
+
+Parameter ID:84
+Name: Slot C1 Sounding
+Parameter Type: Boolean
+Values: Minimum = Off, Default = Off, Maximum = On
+Flags: Values Have Strings, Not Real Time, Readable, 
+  -parameter PASS
+
+Parameter ID:85
+Name: Slot C2 Sounding
+Parameter Type: Boolean
+Values: Minimum = Off, Default = Off, Maximum = On
+Flags: Values Have Strings, Not Real Time, Readable, 
+  -parameter PASS
+
+Parameter ID:86
+Name: Slot C3 Sounding
+Parameter Type: Boolean
+Values: Minimum = Off, Default = Off, Maximum = On
+Flags: Values Have Strings, Not Real Time, Readable, 
+  -parameter PASS
+
+Parameter ID:87
+Name: Slot C4 Sounding
+Parameter Type: Boolean
+Values: Minimum = Off, Default = Off, Maximum = On
+Flags: Values Have Strings, Not Real Time, Readable, 
+  -parameter PASS
+
+Parameter ID:88
+Name: Slot C5 Sounding
+Parameter Type: Boolean
+Values: Minimum = Off, Default = Off, Maximum = On
+Flags: Values Have Strings, Not Real Time, Readable, 
+  -parameter PASS
+
+Parameter ID:89
+Name: Slot C6 Sounding
+Parameter Type: Boolean
+Values: Minimum = Off, Default = Off, Maximum = On
+Flags: Values Have Strings, Not Real Time, Readable, 
+  -parameter PASS
+
+Parameter ID:90
+Name: Slot C7 Sounding
+Parameter Type: Boolean
+Values: Minimum = Off, Default = Off, Maximum = On
+Flags: Values Have Strings, Not Real Time, Readable, 
+  -parameter PASS
+
+Parameter ID:91
+Name: Slot C8 Sounding
+Parameter Type: Boolean
+Values: Minimum = Off, Default = Off, Maximum = On
+Flags: Values Have Strings, Not Real Time, Readable, 
+  -parameter PASS
+
+Parameter ID:92
+Name: Slot D1 Sounding
+Parameter Type: Boolean
+Values: Minimum = Off, Default = Off, Maximum = On
+Flags: Values Have Strings, Not Real Time, Readable, 
+  -parameter PASS
+
+Parameter ID:93
+Name: Slot D2 Sounding
+Parameter Type: Boolean
+Values: Minimum = Off, Default = Off, Maximum = On
+Flags: Values Have Strings, Not Real Time, Readable, 
+  -parameter PASS
+
+Parameter ID:94
+Name: Slot D3 Sounding
+Parameter Type: Boolean
+Values: Minimum = Off, Default = Off, Maximum = On
+Flags: Values Have Strings, Not Real Time, Readable, 
+  -parameter PASS
+
+Parameter ID:95
+Name: Slot D4 Sounding
+Parameter Type: Boolean
+Values: Minimum = Off, Default = Off, Maximum = On
+Flags: Values Have Strings, Not Real Time, Readable, 
+  -parameter PASS
+
+Parameter ID:96
+Name: Slot D5 Sounding
+Parameter Type: Boolean
+Values: Minimum = Off, Default = Off, Maximum = On
+Flags: Values Have Strings, Not Real Time, Readable, 
+  -parameter PASS
+
+Parameter ID:97
+Name: Slot D6 Sounding
+Parameter Type: Boolean
+Values: Minimum = Off, Default = Off, Maximum = On
+Flags: Values Have Strings, Not Real Time, Readable, 
+  -parameter PASS
+
+Parameter ID:98
+Name: Slot D7 Sounding
+Parameter Type: Boolean
+Values: Minimum = Off, Default = Off, Maximum = On
+Flags: Values Have Strings, Not Real Time, Readable, 
+  -parameter PASS
+
+Parameter ID:99
+Name: Slot D8 Sounding
+Parameter Type: Boolean
+Values: Minimum = Off, Default = Off, Maximum = On
+Flags: Values Have Strings, Not Real Time, Readable, 
+  -parameter PASS
+
+Parameter ID:100
+Name: Slot E1 Sounding
+Parameter Type: Boolean
+Values: Minimum = Off, Default = Off, Maximum = On
+Flags: Values Have Strings, Not Real Time, Readable, 
+  -parameter PASS
+
+Parameter ID:101
+Name: Slot E2 Sounding
+Parameter Type: Boolean
+Values: Minimum = Off, Default = Off, Maximum = On
+Flags: Values Have Strings, Not Real Time, Readable, 
+  -parameter PASS
+
+Parameter ID:102
+Name: Slot E3 Sounding
+Parameter Type: Boolean
+Values: Minimum = Off, Default = Off, Maximum = On
+Flags: Values Have Strings, Not Real Time, Readable, 
+  -parameter PASS
+
+Parameter ID:103
+Name: Slot E4 Sounding
+Parameter Type: Boolean
+Values: Minimum = Off, Default = Off, Maximum = On
+Flags: Values Have Strings, Not Real Time, Readable, 
+  -parameter PASS
+
+Parameter ID:104
+Name: Slot E5 Sounding
+Parameter Type: Boolean
+Values: Minimum = Off, Default = Off, Maximum = On
+Flags: Values Have Strings, Not Real Time, Readable, 
+  -parameter PASS
+
+Parameter ID:105
+Name: Slot E6 Sounding
+Parameter Type: Boolean
+Values: Minimum = Off, Default = Off, Maximum = On
+Flags: Values Have Strings, Not Real Time, Readable, 
+  -parameter PASS
+
+Parameter ID:106
+Name: Slot E7 Sounding
+Parameter Type: Boolean
+Values: Minimum = Off, Default = Off, Maximum = On
+Flags: Values Have Strings, Not Real Time, Readable, 
+  -parameter PASS
+
+Parameter ID:107
+Name: Slot E8 Sounding
+Parameter Type: Boolean
+Values: Minimum = Off, Default = Off, Maximum = On
+Flags: Values Have Strings, Not Real Time, Readable, 
+  -parameter PASS
+
+Parameter ID:108
+Name: Slot F1 Sounding
+Parameter Type: Boolean
+Values: Minimum = Off, Default = Off, Maximum = On
+Flags: Values Have Strings, Not Real Time, Readable, 
+  -parameter PASS
+
+Parameter ID:109
+Name: Slot F2 Sounding
+Parameter Type: Boolean
+Values: Minimum = Off, Default = Off, Maximum = On
+Flags: Values Have Strings, Not Real Time, Readable, 
+  -parameter PASS
+
+Parameter ID:110
+Name: Slot F3 Sounding
+Parameter Type: Boolean
+Values: Minimum = Off, Default = Off, Maximum = On
+Flags: Values Have Strings, Not Real Time, Readable, 
+  -parameter PASS
+
+Parameter ID:111
+Name: Slot F4 Sounding
+Parameter Type: Boolean
+Values: Minimum = Off, Default = Off, Maximum = On
+Flags: Values Have Strings, Not Real Time, Readable, 
+  -parameter PASS
+
+Parameter ID:112
+Name: Slot F5 Sounding
+Parameter Type: Boolean
+Values: Minimum = Off, Default = Off, Maximum = On
+Flags: Values Have Strings, Not Real Time, Readable, 
+  -parameter PASS
+
+Parameter ID:113
+Name: Slot F6 Sounding
+Parameter Type: Boolean
+Values: Minimum = Off, Default = Off, Maximum = On
+Flags: Values Have Strings, Not Real Time, Readable, 
+  -parameter PASS
+
+Parameter ID:114
+Name: Slot F7 Sounding
+Parameter Type: Boolean
+Values: Minimum = Off, Default = Off, Maximum = On
+Flags: Values Have Strings, Not Real Time, Readable, 
+  -parameter PASS
+
+Parameter ID:115
+Name: Slot F8 Sounding
+Parameter Type: Boolean
+Values: Minimum = Off, Default = Off, Maximum = On
+Flags: Values Have Strings, Not Real Time, Readable, 
+  -parameter PASS
+
+Parameter ID:116
+Name: Slot G1 Sounding
+Parameter Type: Boolean
+Values: Minimum = Off, Default = Off, Maximum = On
+Flags: Values Have Strings, Not Real Time, Readable, 
+  -parameter PASS
+
+Parameter ID:117
+Name: Slot G2 Sounding
+Parameter Type: Boolean
+Values: Minimum = Off, Default = Off, Maximum = On
+Flags: Values Have Strings, Not Real Time, Readable, 
+  -parameter PASS
+
+Parameter ID:118
+Name: Slot G3 Sounding
+Parameter Type: Boolean
+Values: Minimum = Off, Default = Off, Maximum = On
+Flags: Values Have Strings, Not Real Time, Readable, 
+  -parameter PASS
+
+Parameter ID:119
+Name: Slot G4 Sounding
+Parameter Type: Boolean
+Values: Minimum = Off, Default = Off, Maximum = On
+Flags: Values Have Strings, Not Real Time, Readable, 
+  -parameter PASS
+
+Parameter ID:120
+Name: Slot G5 Sounding
+Parameter Type: Boolean
+Values: Minimum = Off, Default = Off, Maximum = On
+Flags: Values Have Strings, Not Real Time, Readable, 
+  -parameter PASS
+
+Parameter ID:121
+Name: Slot G6 Sounding
+Parameter Type: Boolean
+Values: Minimum = Off, Default = Off, Maximum = On
+Flags: Values Have Strings, Not Real Time, Readable, 
+  -parameter PASS
+
+Parameter ID:122
+Name: Slot G7 Sounding
+Parameter Type: Boolean
+Values: Minimum = Off, Default = Off, Maximum = On
+Flags: Values Have Strings, Not Real Time, Readable, 
+  -parameter PASS
+
+Parameter ID:123
+Name: Slot G8 Sounding
+Parameter Type: Boolean
+Values: Minimum = Off, Default = Off, Maximum = On
+Flags: Values Have Strings, Not Real Time, Readable, 
+  -parameter PASS
+
+Parameter ID:124
+Name: Slot H1 Sounding
+Parameter Type: Boolean
+Values: Minimum = Off, Default = Off, Maximum = On
+Flags: Values Have Strings, Not Real Time, Readable, 
+  -parameter PASS
+
+Parameter ID:125
+Name: Slot H2 Sounding
+Parameter Type: Boolean
+Values: Minimum = Off, Default = Off, Maximum = On
+Flags: Values Have Strings, Not Real Time, Readable, 
+  -parameter PASS
+
+Parameter ID:126
+Name: Slot H3 Sounding
+Parameter Type: Boolean
+Values: Minimum = Off, Default = Off, Maximum = On
+Flags: Values Have Strings, Not Real Time, Readable, 
+  -parameter PASS
+
+Parameter ID:127
+Name: Slot H4 Sounding
+Parameter Type: Boolean
+Values: Minimum = Off, Default = Off, Maximum = On
+Flags: Values Have Strings, Not Real Time, Readable, 
+  -parameter PASS
+
+Parameter ID:128
+Name: Slot H5 Sounding
+Parameter Type: Boolean
+Values: Minimum = Off, Default = Off, Maximum = On
+Flags: Values Have Strings, Not Real Time, Readable, 
+  -parameter PASS
+
+Parameter ID:129
+Name: Slot H6 Sounding
+Parameter Type: Boolean
+Values: Minimum = Off, Default = Off, Maximum = On
+Flags: Values Have Strings, Not Real Time, Readable, 
+  -parameter PASS
+
+Parameter ID:130
+Name: Slot H7 Sounding
+Parameter Type: Boolean
+Values: Minimum = Off, Default = Off, Maximum = On
+Flags: Values Have Strings, Not Real Time, Readable, 
+  -parameter PASS
+
+Parameter ID:131
+Name: Slot H8 Sounding
+Parameter Type: Boolean
+Values: Minimum = Off, Default = Off, Maximum = On
+Flags: Values Have Strings, Not Real Time, Readable, 
+  -parameter PASS
+
+Parameter ID:132
+Name: Slot A1 Level
+Parameter Type: dB
+Values: Minimum = -40.0000, Default = 0.0000, Maximum = 12.0000
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:133
+Name: Slot A2 Level
+Parameter Type: dB
+Values: Minimum = -40.0000, Default = 0.0000, Maximum = 12.0000
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:134
+Name: Slot A3 Level
+Parameter Type: dB
+Values: Minimum = -40.0000, Default = 0.0000, Maximum = 12.0000
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:135
+Name: Slot A4 Level
+Parameter Type: dB
+Values: Minimum = -40.0000, Default = 0.0000, Maximum = 12.0000
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:136
+Name: Slot A5 Level
+Parameter Type: dB
+Values: Minimum = -40.0000, Default = 0.0000, Maximum = 12.0000
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:137
+Name: Slot A6 Level
+Parameter Type: dB
+Values: Minimum = -40.0000, Default = 0.0000, Maximum = 12.0000
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:138
+Name: Slot A7 Level
+Parameter Type: dB
+Values: Minimum = -40.0000, Default = 0.0000, Maximum = 12.0000
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:139
+Name: Slot A8 Level
+Parameter Type: dB
+Values: Minimum = -40.0000, Default = 0.0000, Maximum = 12.0000
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:140
+Name: Slot B1 Level
+Parameter Type: dB
+Values: Minimum = -40.0000, Default = 0.0000, Maximum = 12.0000
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:141
+Name: Slot B2 Level
+Parameter Type: dB
+Values: Minimum = -40.0000, Default = 0.0000, Maximum = 12.0000
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:142
+Name: Slot B3 Level
+Parameter Type: dB
+Values: Minimum = -40.0000, Default = 0.0000, Maximum = 12.0000
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:143
+Name: Slot B4 Level
+Parameter Type: dB
+Values: Minimum = -40.0000, Default = 0.0000, Maximum = 12.0000
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:144
+Name: Slot B5 Level
+Parameter Type: dB
+Values: Minimum = -40.0000, Default = 0.0000, Maximum = 12.0000
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:145
+Name: Slot B6 Level
+Parameter Type: dB
+Values: Minimum = -40.0000, Default = 0.0000, Maximum = 12.0000
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:146
+Name: Slot B7 Level
+Parameter Type: dB
+Values: Minimum = -40.0000, Default = 0.0000, Maximum = 12.0000
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:147
+Name: Slot B8 Level
+Parameter Type: dB
+Values: Minimum = -40.0000, Default = 0.0000, Maximum = 12.0000
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:148
+Name: Slot C1 Level
+Parameter Type: dB
+Values: Minimum = -40.0000, Default = 0.0000, Maximum = 12.0000
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:149
+Name: Slot C2 Level
+Parameter Type: dB
+Values: Minimum = -40.0000, Default = 0.0000, Maximum = 12.0000
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:150
+Name: Slot C3 Level
+Parameter Type: dB
+Values: Minimum = -40.0000, Default = 0.0000, Maximum = 12.0000
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:151
+Name: Slot C4 Level
+Parameter Type: dB
+Values: Minimum = -40.0000, Default = 0.0000, Maximum = 12.0000
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:152
+Name: Slot C5 Level
+Parameter Type: dB
+Values: Minimum = -40.0000, Default = 0.0000, Maximum = 12.0000
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:153
+Name: Slot C6 Level
+Parameter Type: dB
+Values: Minimum = -40.0000, Default = 0.0000, Maximum = 12.0000
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:154
+Name: Slot C7 Level
+Parameter Type: dB
+Values: Minimum = -40.0000, Default = 0.0000, Maximum = 12.0000
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:155
+Name: Slot C8 Level
+Parameter Type: dB
+Values: Minimum = -40.0000, Default = 0.0000, Maximum = 12.0000
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:156
+Name: Slot D1 Level
+Parameter Type: dB
+Values: Minimum = -40.0000, Default = 0.0000, Maximum = 12.0000
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:157
+Name: Slot D2 Level
+Parameter Type: dB
+Values: Minimum = -40.0000, Default = 0.0000, Maximum = 12.0000
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:158
+Name: Slot D3 Level
+Parameter Type: dB
+Values: Minimum = -40.0000, Default = 0.0000, Maximum = 12.0000
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:159
+Name: Slot D4 Level
+Parameter Type: dB
+Values: Minimum = -40.0000, Default = 0.0000, Maximum = 12.0000
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:160
+Name: Slot D5 Level
+Parameter Type: dB
+Values: Minimum = -40.0000, Default = 0.0000, Maximum = 12.0000
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:161
+Name: Slot D6 Level
+Parameter Type: dB
+Values: Minimum = -40.0000, Default = 0.0000, Maximum = 12.0000
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:162
+Name: Slot D7 Level
+Parameter Type: dB
+Values: Minimum = -40.0000, Default = 0.0000, Maximum = 12.0000
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:163
+Name: Slot D8 Level
+Parameter Type: dB
+Values: Minimum = -40.0000, Default = 0.0000, Maximum = 12.0000
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:164
+Name: Slot E1 Level
+Parameter Type: dB
+Values: Minimum = -40.0000, Default = 0.0000, Maximum = 12.0000
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:165
+Name: Slot E2 Level
+Parameter Type: dB
+Values: Minimum = -40.0000, Default = 0.0000, Maximum = 12.0000
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:166
+Name: Slot E3 Level
+Parameter Type: dB
+Values: Minimum = -40.0000, Default = 0.0000, Maximum = 12.0000
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:167
+Name: Slot E4 Level
+Parameter Type: dB
+Values: Minimum = -40.0000, Default = 0.0000, Maximum = 12.0000
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:168
+Name: Slot E5 Level
+Parameter Type: dB
+Values: Minimum = -40.0000, Default = 0.0000, Maximum = 12.0000
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:169
+Name: Slot E6 Level
+Parameter Type: dB
+Values: Minimum = -40.0000, Default = 0.0000, Maximum = 12.0000
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:170
+Name: Slot E7 Level
+Parameter Type: dB
+Values: Minimum = -40.0000, Default = 0.0000, Maximum = 12.0000
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:171
+Name: Slot E8 Level
+Parameter Type: dB
+Values: Minimum = -40.0000, Default = 0.0000, Maximum = 12.0000
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:172
+Name: Slot F1 Level
+Parameter Type: dB
+Values: Minimum = -40.0000, Default = 0.0000, Maximum = 12.0000
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:173
+Name: Slot F2 Level
+Parameter Type: dB
+Values: Minimum = -40.0000, Default = 0.0000, Maximum = 12.0000
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:174
+Name: Slot F3 Level
+Parameter Type: dB
+Values: Minimum = -40.0000, Default = 0.0000, Maximum = 12.0000
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:175
+Name: Slot F4 Level
+Parameter Type: dB
+Values: Minimum = -40.0000, Default = 0.0000, Maximum = 12.0000
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:176
+Name: Slot F5 Level
+Parameter Type: dB
+Values: Minimum = -40.0000, Default = 0.0000, Maximum = 12.0000
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:177
+Name: Slot F6 Level
+Parameter Type: dB
+Values: Minimum = -40.0000, Default = 0.0000, Maximum = 12.0000
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:178
+Name: Slot F7 Level
+Parameter Type: dB
+Values: Minimum = -40.0000, Default = 0.0000, Maximum = 12.0000
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:179
+Name: Slot F8 Level
+Parameter Type: dB
+Values: Minimum = -40.0000, Default = 0.0000, Maximum = 12.0000
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:180
+Name: Slot G1 Level
+Parameter Type: dB
+Values: Minimum = -40.0000, Default = 0.0000, Maximum = 12.0000
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:181
+Name: Slot G2 Level
+Parameter Type: dB
+Values: Minimum = -40.0000, Default = 0.0000, Maximum = 12.0000
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:182
+Name: Slot G3 Level
+Parameter Type: dB
+Values: Minimum = -40.0000, Default = 0.0000, Maximum = 12.0000
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:183
+Name: Slot G4 Level
+Parameter Type: dB
+Values: Minimum = -40.0000, Default = 0.0000, Maximum = 12.0000
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:184
+Name: Slot G5 Level
+Parameter Type: dB
+Values: Minimum = -40.0000, Default = 0.0000, Maximum = 12.0000
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:185
+Name: Slot G6 Level
+Parameter Type: dB
+Values: Minimum = -40.0000, Default = 0.0000, Maximum = 12.0000
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:186
+Name: Slot G7 Level
+Parameter Type: dB
+Values: Minimum = -40.0000, Default = 0.0000, Maximum = 12.0000
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:187
+Name: Slot G8 Level
+Parameter Type: dB
+Values: Minimum = -40.0000, Default = 0.0000, Maximum = 12.0000
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:188
+Name: Slot H1 Level
+Parameter Type: dB
+Values: Minimum = -40.0000, Default = 0.0000, Maximum = 12.0000
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:189
+Name: Slot H2 Level
+Parameter Type: dB
+Values: Minimum = -40.0000, Default = 0.0000, Maximum = 12.0000
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:190
+Name: Slot H3 Level
+Parameter Type: dB
+Values: Minimum = -40.0000, Default = 0.0000, Maximum = 12.0000
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:191
+Name: Slot H4 Level
+Parameter Type: dB
+Values: Minimum = -40.0000, Default = 0.0000, Maximum = 12.0000
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:192
+Name: Slot H5 Level
+Parameter Type: dB
+Values: Minimum = -40.0000, Default = 0.0000, Maximum = 12.0000
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:193
+Name: Slot H6 Level
+Parameter Type: dB
+Values: Minimum = -40.0000, Default = 0.0000, Maximum = 12.0000
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:194
+Name: Slot H7 Level
+Parameter Type: dB
+Values: Minimum = -40.0000, Default = 0.0000, Maximum = 12.0000
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:195
+Name: Slot H8 Level
+Parameter Type: dB
+Values: Minimum = -40.0000, Default = 0.0000, Maximum = 12.0000
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:196
+Name: Row A Level
+Parameter Type: dB
+Values: Minimum = -40.0000, Default = 0.0000, Maximum = 12.0000
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:197
+Name: Row B Level
+Parameter Type: dB
+Values: Minimum = -40.0000, Default = 0.0000, Maximum = 12.0000
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:198
+Name: Row C Level
+Parameter Type: dB
+Values: Minimum = -40.0000, Default = 0.0000, Maximum = 12.0000
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:199
+Name: Row D Level
+Parameter Type: dB
+Values: Minimum = -40.0000, Default = 0.0000, Maximum = 12.0000
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:200
+Name: Row E Level
+Parameter Type: dB
+Values: Minimum = -40.0000, Default = 0.0000, Maximum = 12.0000
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:201
+Name: Row F Level
+Parameter Type: dB
+Values: Minimum = -40.0000, Default = 0.0000, Maximum = 12.0000
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:202
+Name: Row G Level
+Parameter Type: dB
+Values: Minimum = -40.0000, Default = 0.0000, Maximum = 12.0000
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:203
+Name: Row H Level
+Parameter Type: dB
+Values: Minimum = -40.0000, Default = 0.0000, Maximum = 12.0000
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:204
+Name: Slot A1 Launch
+Parameter Type: 
+Values: Minimum = Bar, Default = Bar, Maximum = 1/8 bar
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:205
+Name: Slot A2 Launch
+Parameter Type: 
+Values: Minimum = Bar, Default = Bar, Maximum = 1/8 bar
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:206
+Name: Slot A3 Launch
+Parameter Type: 
+Values: Minimum = Bar, Default = Bar, Maximum = 1/8 bar
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:207
+Name: Slot A4 Launch
+Parameter Type: 
+Values: Minimum = Bar, Default = Bar, Maximum = 1/8 bar
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:208
+Name: Slot A5 Launch
+Parameter Type: 
+Values: Minimum = Bar, Default = Bar, Maximum = 1/8 bar
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:209
+Name: Slot A6 Launch
+Parameter Type: 
+Values: Minimum = Bar, Default = Bar, Maximum = 1/8 bar
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:210
+Name: Slot A7 Launch
+Parameter Type: 
+Values: Minimum = Bar, Default = Bar, Maximum = 1/8 bar
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:211
+Name: Slot A8 Launch
+Parameter Type: 
+Values: Minimum = Bar, Default = Bar, Maximum = 1/8 bar
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:212
+Name: Slot B1 Launch
+Parameter Type: 
+Values: Minimum = Bar, Default = Bar, Maximum = 1/8 bar
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:213
+Name: Slot B2 Launch
+Parameter Type: 
+Values: Minimum = Bar, Default = Bar, Maximum = 1/8 bar
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:214
+Name: Slot B3 Launch
+Parameter Type: 
+Values: Minimum = Bar, Default = Bar, Maximum = 1/8 bar
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:215
+Name: Slot B4 Launch
+Parameter Type: 
+Values: Minimum = Bar, Default = Bar, Maximum = 1/8 bar
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:216
+Name: Slot B5 Launch
+Parameter Type: 
+Values: Minimum = Bar, Default = Bar, Maximum = 1/8 bar
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:217
+Name: Slot B6 Launch
+Parameter Type: 
+Values: Minimum = Bar, Default = Bar, Maximum = 1/8 bar
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:218
+Name: Slot B7 Launch
+Parameter Type: 
+Values: Minimum = Bar, Default = Bar, Maximum = 1/8 bar
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:219
+Name: Slot B8 Launch
+Parameter Type: 
+Values: Minimum = Bar, Default = Bar, Maximum = 1/8 bar
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:220
+Name: Slot C1 Launch
+Parameter Type: 
+Values: Minimum = Bar, Default = Bar, Maximum = 1/8 bar
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:221
+Name: Slot C2 Launch
+Parameter Type: 
+Values: Minimum = Bar, Default = Bar, Maximum = 1/8 bar
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:222
+Name: Slot C3 Launch
+Parameter Type: 
+Values: Minimum = Bar, Default = Bar, Maximum = 1/8 bar
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:223
+Name: Slot C4 Launch
+Parameter Type: 
+Values: Minimum = Bar, Default = Bar, Maximum = 1/8 bar
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:224
+Name: Slot C5 Launch
+Parameter Type: 
+Values: Minimum = Bar, Default = Bar, Maximum = 1/8 bar
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:225
+Name: Slot C6 Launch
+Parameter Type: 
+Values: Minimum = Bar, Default = Bar, Maximum = 1/8 bar
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:226
+Name: Slot C7 Launch
+Parameter Type: 
+Values: Minimum = Bar, Default = Bar, Maximum = 1/8 bar
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:227
+Name: Slot C8 Launch
+Parameter Type: 
+Values: Minimum = Bar, Default = Bar, Maximum = 1/8 bar
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:228
+Name: Slot D1 Launch
+Parameter Type: 
+Values: Minimum = Bar, Default = Bar, Maximum = 1/8 bar
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:229
+Name: Slot D2 Launch
+Parameter Type: 
+Values: Minimum = Bar, Default = Bar, Maximum = 1/8 bar
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:230
+Name: Slot D3 Launch
+Parameter Type: 
+Values: Minimum = Bar, Default = Bar, Maximum = 1/8 bar
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:231
+Name: Slot D4 Launch
+Parameter Type: 
+Values: Minimum = Bar, Default = Bar, Maximum = 1/8 bar
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:232
+Name: Slot D5 Launch
+Parameter Type: 
+Values: Minimum = Bar, Default = Bar, Maximum = 1/8 bar
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:233
+Name: Slot D6 Launch
+Parameter Type: 
+Values: Minimum = Bar, Default = Bar, Maximum = 1/8 bar
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:234
+Name: Slot D7 Launch
+Parameter Type: 
+Values: Minimum = Bar, Default = Bar, Maximum = 1/8 bar
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:235
+Name: Slot D8 Launch
+Parameter Type: 
+Values: Minimum = Bar, Default = Bar, Maximum = 1/8 bar
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:236
+Name: Slot E1 Launch
+Parameter Type: 
+Values: Minimum = Bar, Default = Bar, Maximum = 1/8 bar
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:237
+Name: Slot E2 Launch
+Parameter Type: 
+Values: Minimum = Bar, Default = Bar, Maximum = 1/8 bar
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:238
+Name: Slot E3 Launch
+Parameter Type: 
+Values: Minimum = Bar, Default = Bar, Maximum = 1/8 bar
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:239
+Name: Slot E4 Launch
+Parameter Type: 
+Values: Minimum = Bar, Default = Bar, Maximum = 1/8 bar
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:240
+Name: Slot E5 Launch
+Parameter Type: 
+Values: Minimum = Bar, Default = Bar, Maximum = 1/8 bar
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:241
+Name: Slot E6 Launch
+Parameter Type: 
+Values: Minimum = Bar, Default = Bar, Maximum = 1/8 bar
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:242
+Name: Slot E7 Launch
+Parameter Type: 
+Values: Minimum = Bar, Default = Bar, Maximum = 1/8 bar
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:243
+Name: Slot E8 Launch
+Parameter Type: 
+Values: Minimum = Bar, Default = Bar, Maximum = 1/8 bar
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:244
+Name: Slot F1 Launch
+Parameter Type: 
+Values: Minimum = Bar, Default = Bar, Maximum = 1/8 bar
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:245
+Name: Slot F2 Launch
+Parameter Type: 
+Values: Minimum = Bar, Default = Bar, Maximum = 1/8 bar
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:246
+Name: Slot F3 Launch
+Parameter Type: 
+Values: Minimum = Bar, Default = Bar, Maximum = 1/8 bar
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:247
+Name: Slot F4 Launch
+Parameter Type: 
+Values: Minimum = Bar, Default = Bar, Maximum = 1/8 bar
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:248
+Name: Slot F5 Launch
+Parameter Type: 
+Values: Minimum = Bar, Default = Bar, Maximum = 1/8 bar
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:249
+Name: Slot F6 Launch
+Parameter Type: 
+Values: Minimum = Bar, Default = Bar, Maximum = 1/8 bar
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:250
+Name: Slot F7 Launch
+Parameter Type: 
+Values: Minimum = Bar, Default = Bar, Maximum = 1/8 bar
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:251
+Name: Slot F8 Launch
+Parameter Type: 
+Values: Minimum = Bar, Default = Bar, Maximum = 1/8 bar
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:252
+Name: Slot G1 Launch
+Parameter Type: 
+Values: Minimum = Bar, Default = Bar, Maximum = 1/8 bar
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:253
+Name: Slot G2 Launch
+Parameter Type: 
+Values: Minimum = Bar, Default = Bar, Maximum = 1/8 bar
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:254
+Name: Slot G3 Launch
+Parameter Type: 
+Values: Minimum = Bar, Default = Bar, Maximum = 1/8 bar
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:255
+Name: Slot G4 Launch
+Parameter Type: 
+Values: Minimum = Bar, Default = Bar, Maximum = 1/8 bar
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:256
+Name: Slot G5 Launch
+Parameter Type: 
+Values: Minimum = Bar, Default = Bar, Maximum = 1/8 bar
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:257
+Name: Slot G6 Launch
+Parameter Type: 
+Values: Minimum = Bar, Default = Bar, Maximum = 1/8 bar
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:258
+Name: Slot G7 Launch
+Parameter Type: 
+Values: Minimum = Bar, Default = Bar, Maximum = 1/8 bar
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:259
+Name: Slot G8 Launch
+Parameter Type: 
+Values: Minimum = Bar, Default = Bar, Maximum = 1/8 bar
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:260
+Name: Slot H1 Launch
+Parameter Type: 
+Values: Minimum = Bar, Default = Bar, Maximum = 1/8 bar
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:261
+Name: Slot H2 Launch
+Parameter Type: 
+Values: Minimum = Bar, Default = Bar, Maximum = 1/8 bar
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:262
+Name: Slot H3 Launch
+Parameter Type: 
+Values: Minimum = Bar, Default = Bar, Maximum = 1/8 bar
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:263
+Name: Slot H4 Launch
+Parameter Type: 
+Values: Minimum = Bar, Default = Bar, Maximum = 1/8 bar
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:264
+Name: Slot H5 Launch
+Parameter Type: 
+Values: Minimum = Bar, Default = Bar, Maximum = 1/8 bar
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:265
+Name: Slot H6 Launch
+Parameter Type: 
+Values: Minimum = Bar, Default = Bar, Maximum = 1/8 bar
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:266
+Name: Slot H7 Launch
+Parameter Type: 
+Values: Minimum = Bar, Default = Bar, Maximum = 1/8 bar
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:267
+Name: Slot H8 Launch
+Parameter Type: 
+Values: Minimum = Bar, Default = Bar, Maximum = 1/8 bar
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:268
+Name: Slot A1 Fit
+Parameter Type: 
+Values: Minimum = Off, Default = Off, Maximum = Keep pitch
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:269
+Name: Slot A2 Fit
+Parameter Type: 
+Values: Minimum = Off, Default = Off, Maximum = Keep pitch
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:270
+Name: Slot A3 Fit
+Parameter Type: 
+Values: Minimum = Off, Default = Off, Maximum = Keep pitch
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:271
+Name: Slot A4 Fit
+Parameter Type: 
+Values: Minimum = Off, Default = Off, Maximum = Keep pitch
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:272
+Name: Slot A5 Fit
+Parameter Type: 
+Values: Minimum = Off, Default = Off, Maximum = Keep pitch
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:273
+Name: Slot A6 Fit
+Parameter Type: 
+Values: Minimum = Off, Default = Off, Maximum = Keep pitch
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:274
+Name: Slot A7 Fit
+Parameter Type: 
+Values: Minimum = Off, Default = Off, Maximum = Keep pitch
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:275
+Name: Slot A8 Fit
+Parameter Type: 
+Values: Minimum = Off, Default = Off, Maximum = Keep pitch
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:276
+Name: Slot B1 Fit
+Parameter Type: 
+Values: Minimum = Off, Default = Off, Maximum = Keep pitch
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:277
+Name: Slot B2 Fit
+Parameter Type: 
+Values: Minimum = Off, Default = Off, Maximum = Keep pitch
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:278
+Name: Slot B3 Fit
+Parameter Type: 
+Values: Minimum = Off, Default = Off, Maximum = Keep pitch
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:279
+Name: Slot B4 Fit
+Parameter Type: 
+Values: Minimum = Off, Default = Off, Maximum = Keep pitch
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:280
+Name: Slot B5 Fit
+Parameter Type: 
+Values: Minimum = Off, Default = Off, Maximum = Keep pitch
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:281
+Name: Slot B6 Fit
+Parameter Type: 
+Values: Minimum = Off, Default = Off, Maximum = Keep pitch
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:282
+Name: Slot B7 Fit
+Parameter Type: 
+Values: Minimum = Off, Default = Off, Maximum = Keep pitch
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:283
+Name: Slot B8 Fit
+Parameter Type: 
+Values: Minimum = Off, Default = Off, Maximum = Keep pitch
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:284
+Name: Slot C1 Fit
+Parameter Type: 
+Values: Minimum = Off, Default = Off, Maximum = Keep pitch
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:285
+Name: Slot C2 Fit
+Parameter Type: 
+Values: Minimum = Off, Default = Off, Maximum = Keep pitch
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:286
+Name: Slot C3 Fit
+Parameter Type: 
+Values: Minimum = Off, Default = Off, Maximum = Keep pitch
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:287
+Name: Slot C4 Fit
+Parameter Type: 
+Values: Minimum = Off, Default = Off, Maximum = Keep pitch
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:288
+Name: Slot C5 Fit
+Parameter Type: 
+Values: Minimum = Off, Default = Off, Maximum = Keep pitch
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:289
+Name: Slot C6 Fit
+Parameter Type: 
+Values: Minimum = Off, Default = Off, Maximum = Keep pitch
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:290
+Name: Slot C7 Fit
+Parameter Type: 
+Values: Minimum = Off, Default = Off, Maximum = Keep pitch
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:291
+Name: Slot C8 Fit
+Parameter Type: 
+Values: Minimum = Off, Default = Off, Maximum = Keep pitch
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:292
+Name: Slot D1 Fit
+Parameter Type: 
+Values: Minimum = Off, Default = Off, Maximum = Keep pitch
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:293
+Name: Slot D2 Fit
+Parameter Type: 
+Values: Minimum = Off, Default = Off, Maximum = Keep pitch
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:294
+Name: Slot D3 Fit
+Parameter Type: 
+Values: Minimum = Off, Default = Off, Maximum = Keep pitch
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:295
+Name: Slot D4 Fit
+Parameter Type: 
+Values: Minimum = Off, Default = Off, Maximum = Keep pitch
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:296
+Name: Slot D5 Fit
+Parameter Type: 
+Values: Minimum = Off, Default = Off, Maximum = Keep pitch
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:297
+Name: Slot D6 Fit
+Parameter Type: 
+Values: Minimum = Off, Default = Off, Maximum = Keep pitch
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:298
+Name: Slot D7 Fit
+Parameter Type: 
+Values: Minimum = Off, Default = Off, Maximum = Keep pitch
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:299
+Name: Slot D8 Fit
+Parameter Type: 
+Values: Minimum = Off, Default = Off, Maximum = Keep pitch
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:300
+Name: Slot E1 Fit
+Parameter Type: 
+Values: Minimum = Off, Default = Off, Maximum = Keep pitch
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:301
+Name: Slot E2 Fit
+Parameter Type: 
+Values: Minimum = Off, Default = Off, Maximum = Keep pitch
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:302
+Name: Slot E3 Fit
+Parameter Type: 
+Values: Minimum = Off, Default = Off, Maximum = Keep pitch
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:303
+Name: Slot E4 Fit
+Parameter Type: 
+Values: Minimum = Off, Default = Off, Maximum = Keep pitch
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:304
+Name: Slot E5 Fit
+Parameter Type: 
+Values: Minimum = Off, Default = Off, Maximum = Keep pitch
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:305
+Name: Slot E6 Fit
+Parameter Type: 
+Values: Minimum = Off, Default = Off, Maximum = Keep pitch
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:306
+Name: Slot E7 Fit
+Parameter Type: 
+Values: Minimum = Off, Default = Off, Maximum = Keep pitch
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:307
+Name: Slot E8 Fit
+Parameter Type: 
+Values: Minimum = Off, Default = Off, Maximum = Keep pitch
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:308
+Name: Slot F1 Fit
+Parameter Type: 
+Values: Minimum = Off, Default = Off, Maximum = Keep pitch
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:309
+Name: Slot F2 Fit
+Parameter Type: 
+Values: Minimum = Off, Default = Off, Maximum = Keep pitch
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:310
+Name: Slot F3 Fit
+Parameter Type: 
+Values: Minimum = Off, Default = Off, Maximum = Keep pitch
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:311
+Name: Slot F4 Fit
+Parameter Type: 
+Values: Minimum = Off, Default = Off, Maximum = Keep pitch
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:312
+Name: Slot F5 Fit
+Parameter Type: 
+Values: Minimum = Off, Default = Off, Maximum = Keep pitch
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:313
+Name: Slot F6 Fit
+Parameter Type: 
+Values: Minimum = Off, Default = Off, Maximum = Keep pitch
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:314
+Name: Slot F7 Fit
+Parameter Type: 
+Values: Minimum = Off, Default = Off, Maximum = Keep pitch
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:315
+Name: Slot F8 Fit
+Parameter Type: 
+Values: Minimum = Off, Default = Off, Maximum = Keep pitch
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:316
+Name: Slot G1 Fit
+Parameter Type: 
+Values: Minimum = Off, Default = Off, Maximum = Keep pitch
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:317
+Name: Slot G2 Fit
+Parameter Type: 
+Values: Minimum = Off, Default = Off, Maximum = Keep pitch
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:318
+Name: Slot G3 Fit
+Parameter Type: 
+Values: Minimum = Off, Default = Off, Maximum = Keep pitch
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:319
+Name: Slot G4 Fit
+Parameter Type: 
+Values: Minimum = Off, Default = Off, Maximum = Keep pitch
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:320
+Name: Slot G5 Fit
+Parameter Type: 
+Values: Minimum = Off, Default = Off, Maximum = Keep pitch
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:321
+Name: Slot G6 Fit
+Parameter Type: 
+Values: Minimum = Off, Default = Off, Maximum = Keep pitch
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:322
+Name: Slot G7 Fit
+Parameter Type: 
+Values: Minimum = Off, Default = Off, Maximum = Keep pitch
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:323
+Name: Slot G8 Fit
+Parameter Type: 
+Values: Minimum = Off, Default = Off, Maximum = Keep pitch
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:324
+Name: Slot H1 Fit
+Parameter Type: 
+Values: Minimum = Off, Default = Off, Maximum = Keep pitch
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:325
+Name: Slot H2 Fit
+Parameter Type: 
+Values: Minimum = Off, Default = Off, Maximum = Keep pitch
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:326
+Name: Slot H3 Fit
+Parameter Type: 
+Values: Minimum = Off, Default = Off, Maximum = Keep pitch
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:327
+Name: Slot H4 Fit
+Parameter Type: 
+Values: Minimum = Off, Default = Off, Maximum = Keep pitch
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:328
+Name: Slot H5 Fit
+Parameter Type: 
+Values: Minimum = Off, Default = Off, Maximum = Keep pitch
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:329
+Name: Slot H6 Fit
+Parameter Type: 
+Values: Minimum = Off, Default = Off, Maximum = Keep pitch
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:330
+Name: Slot H7 Fit
+Parameter Type: 
+Values: Minimum = Off, Default = Off, Maximum = Keep pitch
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:331
+Name: Slot H8 Fit
+Parameter Type: 
+Values: Minimum = Off, Default = Off, Maximum = Keep pitch
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:332
+Name: Tempo
+Parameter Type: BPM
+Values: Minimum = 0.0000, Default = 0.0000, Maximum = 999.0000
+Flags: Values Have Strings, Not Real Time, Readable, 
+  -parameter PASS
+
+Parameter ID:333
+Name: Slot A1 Loop
+Parameter Type: Boolean
+Values: Minimum = One-shot, Default = One-shot, Maximum = Loop
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:334
+Name: Slot A2 Loop
+Parameter Type: Boolean
+Values: Minimum = One-shot, Default = One-shot, Maximum = Loop
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:335
+Name: Slot A3 Loop
+Parameter Type: Boolean
+Values: Minimum = One-shot, Default = One-shot, Maximum = Loop
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:336
+Name: Slot A4 Loop
+Parameter Type: Boolean
+Values: Minimum = One-shot, Default = One-shot, Maximum = Loop
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:337
+Name: Slot A5 Loop
+Parameter Type: Boolean
+Values: Minimum = One-shot, Default = One-shot, Maximum = Loop
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:338
+Name: Slot A6 Loop
+Parameter Type: Boolean
+Values: Minimum = One-shot, Default = One-shot, Maximum = Loop
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:339
+Name: Slot A7 Loop
+Parameter Type: Boolean
+Values: Minimum = One-shot, Default = One-shot, Maximum = Loop
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:340
+Name: Slot A8 Loop
+Parameter Type: Boolean
+Values: Minimum = One-shot, Default = One-shot, Maximum = Loop
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:341
+Name: Slot B1 Loop
+Parameter Type: Boolean
+Values: Minimum = One-shot, Default = One-shot, Maximum = Loop
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:342
+Name: Slot B2 Loop
+Parameter Type: Boolean
+Values: Minimum = One-shot, Default = One-shot, Maximum = Loop
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:343
+Name: Slot B3 Loop
+Parameter Type: Boolean
+Values: Minimum = One-shot, Default = One-shot, Maximum = Loop
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:344
+Name: Slot B4 Loop
+Parameter Type: Boolean
+Values: Minimum = One-shot, Default = One-shot, Maximum = Loop
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:345
+Name: Slot B5 Loop
+Parameter Type: Boolean
+Values: Minimum = One-shot, Default = One-shot, Maximum = Loop
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:346
+Name: Slot B6 Loop
+Parameter Type: Boolean
+Values: Minimum = One-shot, Default = One-shot, Maximum = Loop
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:347
+Name: Slot B7 Loop
+Parameter Type: Boolean
+Values: Minimum = One-shot, Default = One-shot, Maximum = Loop
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:348
+Name: Slot B8 Loop
+Parameter Type: Boolean
+Values: Minimum = One-shot, Default = One-shot, Maximum = Loop
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:349
+Name: Slot C1 Loop
+Parameter Type: Boolean
+Values: Minimum = One-shot, Default = One-shot, Maximum = Loop
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:350
+Name: Slot C2 Loop
+Parameter Type: Boolean
+Values: Minimum = One-shot, Default = One-shot, Maximum = Loop
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:351
+Name: Slot C3 Loop
+Parameter Type: Boolean
+Values: Minimum = One-shot, Default = One-shot, Maximum = Loop
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:352
+Name: Slot C4 Loop
+Parameter Type: Boolean
+Values: Minimum = One-shot, Default = One-shot, Maximum = Loop
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:353
+Name: Slot C5 Loop
+Parameter Type: Boolean
+Values: Minimum = One-shot, Default = One-shot, Maximum = Loop
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:354
+Name: Slot C6 Loop
+Parameter Type: Boolean
+Values: Minimum = One-shot, Default = One-shot, Maximum = Loop
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:355
+Name: Slot C7 Loop
+Parameter Type: Boolean
+Values: Minimum = One-shot, Default = One-shot, Maximum = Loop
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:356
+Name: Slot C8 Loop
+Parameter Type: Boolean
+Values: Minimum = One-shot, Default = One-shot, Maximum = Loop
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:357
+Name: Slot D1 Loop
+Parameter Type: Boolean
+Values: Minimum = One-shot, Default = One-shot, Maximum = Loop
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:358
+Name: Slot D2 Loop
+Parameter Type: Boolean
+Values: Minimum = One-shot, Default = One-shot, Maximum = Loop
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:359
+Name: Slot D3 Loop
+Parameter Type: Boolean
+Values: Minimum = One-shot, Default = One-shot, Maximum = Loop
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:360
+Name: Slot D4 Loop
+Parameter Type: Boolean
+Values: Minimum = One-shot, Default = One-shot, Maximum = Loop
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:361
+Name: Slot D5 Loop
+Parameter Type: Boolean
+Values: Minimum = One-shot, Default = One-shot, Maximum = Loop
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:362
+Name: Slot D6 Loop
+Parameter Type: Boolean
+Values: Minimum = One-shot, Default = One-shot, Maximum = Loop
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:363
+Name: Slot D7 Loop
+Parameter Type: Boolean
+Values: Minimum = One-shot, Default = One-shot, Maximum = Loop
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:364
+Name: Slot D8 Loop
+Parameter Type: Boolean
+Values: Minimum = One-shot, Default = One-shot, Maximum = Loop
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:365
+Name: Slot E1 Loop
+Parameter Type: Boolean
+Values: Minimum = One-shot, Default = One-shot, Maximum = Loop
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:366
+Name: Slot E2 Loop
+Parameter Type: Boolean
+Values: Minimum = One-shot, Default = One-shot, Maximum = Loop
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:367
+Name: Slot E3 Loop
+Parameter Type: Boolean
+Values: Minimum = One-shot, Default = One-shot, Maximum = Loop
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:368
+Name: Slot E4 Loop
+Parameter Type: Boolean
+Values: Minimum = One-shot, Default = One-shot, Maximum = Loop
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:369
+Name: Slot E5 Loop
+Parameter Type: Boolean
+Values: Minimum = One-shot, Default = One-shot, Maximum = Loop
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:370
+Name: Slot E6 Loop
+Parameter Type: Boolean
+Values: Minimum = One-shot, Default = One-shot, Maximum = Loop
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:371
+Name: Slot E7 Loop
+Parameter Type: Boolean
+Values: Minimum = One-shot, Default = One-shot, Maximum = Loop
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:372
+Name: Slot E8 Loop
+Parameter Type: Boolean
+Values: Minimum = One-shot, Default = One-shot, Maximum = Loop
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:373
+Name: Slot F1 Loop
+Parameter Type: Boolean
+Values: Minimum = One-shot, Default = One-shot, Maximum = Loop
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:374
+Name: Slot F2 Loop
+Parameter Type: Boolean
+Values: Minimum = One-shot, Default = One-shot, Maximum = Loop
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:375
+Name: Slot F3 Loop
+Parameter Type: Boolean
+Values: Minimum = One-shot, Default = One-shot, Maximum = Loop
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:376
+Name: Slot F4 Loop
+Parameter Type: Boolean
+Values: Minimum = One-shot, Default = One-shot, Maximum = Loop
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:377
+Name: Slot F5 Loop
+Parameter Type: Boolean
+Values: Minimum = One-shot, Default = One-shot, Maximum = Loop
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:378
+Name: Slot F6 Loop
+Parameter Type: Boolean
+Values: Minimum = One-shot, Default = One-shot, Maximum = Loop
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:379
+Name: Slot F7 Loop
+Parameter Type: Boolean
+Values: Minimum = One-shot, Default = One-shot, Maximum = Loop
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:380
+Name: Slot F8 Loop
+Parameter Type: Boolean
+Values: Minimum = One-shot, Default = One-shot, Maximum = Loop
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:381
+Name: Slot G1 Loop
+Parameter Type: Boolean
+Values: Minimum = One-shot, Default = One-shot, Maximum = Loop
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:382
+Name: Slot G2 Loop
+Parameter Type: Boolean
+Values: Minimum = One-shot, Default = One-shot, Maximum = Loop
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:383
+Name: Slot G3 Loop
+Parameter Type: Boolean
+Values: Minimum = One-shot, Default = One-shot, Maximum = Loop
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:384
+Name: Slot G4 Loop
+Parameter Type: Boolean
+Values: Minimum = One-shot, Default = One-shot, Maximum = Loop
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:385
+Name: Slot G5 Loop
+Parameter Type: Boolean
+Values: Minimum = One-shot, Default = One-shot, Maximum = Loop
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:386
+Name: Slot G6 Loop
+Parameter Type: Boolean
+Values: Minimum = One-shot, Default = One-shot, Maximum = Loop
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:387
+Name: Slot G7 Loop
+Parameter Type: Boolean
+Values: Minimum = One-shot, Default = One-shot, Maximum = Loop
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:388
+Name: Slot G8 Loop
+Parameter Type: Boolean
+Values: Minimum = One-shot, Default = One-shot, Maximum = Loop
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:389
+Name: Slot H1 Loop
+Parameter Type: Boolean
+Values: Minimum = One-shot, Default = One-shot, Maximum = Loop
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:390
+Name: Slot H2 Loop
+Parameter Type: Boolean
+Values: Minimum = One-shot, Default = One-shot, Maximum = Loop
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:391
+Name: Slot H3 Loop
+Parameter Type: Boolean
+Values: Minimum = One-shot, Default = One-shot, Maximum = Loop
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:392
+Name: Slot H4 Loop
+Parameter Type: Boolean
+Values: Minimum = One-shot, Default = One-shot, Maximum = Loop
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:393
+Name: Slot H5 Loop
+Parameter Type: Boolean
+Values: Minimum = One-shot, Default = One-shot, Maximum = Loop
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:394
+Name: Slot H6 Loop
+Parameter Type: Boolean
+Values: Minimum = One-shot, Default = One-shot, Maximum = Loop
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:395
+Name: Slot H7 Loop
+Parameter Type: Boolean
+Values: Minimum = One-shot, Default = One-shot, Maximum = Loop
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:396
+Name: Slot H8 Loop
+Parameter Type: Boolean
+Values: Minimum = One-shot, Default = One-shot, Maximum = Loop
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:397
+Name: Slot A1 Transpose
+Parameter Type: semitones
+Values: Minimum = -24, Default = 0, Maximum = 24
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:398
+Name: Slot A2 Transpose
+Parameter Type: semitones
+Values: Minimum = -24, Default = 0, Maximum = 24
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:399
+Name: Slot A3 Transpose
+Parameter Type: semitones
+Values: Minimum = -24, Default = 0, Maximum = 24
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:400
+Name: Slot A4 Transpose
+Parameter Type: semitones
+Values: Minimum = -24, Default = 0, Maximum = 24
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:401
+Name: Slot A5 Transpose
+Parameter Type: semitones
+Values: Minimum = -24, Default = 0, Maximum = 24
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:402
+Name: Slot A6 Transpose
+Parameter Type: semitones
+Values: Minimum = -24, Default = 0, Maximum = 24
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:403
+Name: Slot A7 Transpose
+Parameter Type: semitones
+Values: Minimum = -24, Default = 0, Maximum = 24
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:404
+Name: Slot A8 Transpose
+Parameter Type: semitones
+Values: Minimum = -24, Default = 0, Maximum = 24
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:405
+Name: Slot B1 Transpose
+Parameter Type: semitones
+Values: Minimum = -24, Default = 0, Maximum = 24
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:406
+Name: Slot B2 Transpose
+Parameter Type: semitones
+Values: Minimum = -24, Default = 0, Maximum = 24
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:407
+Name: Slot B3 Transpose
+Parameter Type: semitones
+Values: Minimum = -24, Default = 0, Maximum = 24
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:408
+Name: Slot B4 Transpose
+Parameter Type: semitones
+Values: Minimum = -24, Default = 0, Maximum = 24
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:409
+Name: Slot B5 Transpose
+Parameter Type: semitones
+Values: Minimum = -24, Default = 0, Maximum = 24
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:410
+Name: Slot B6 Transpose
+Parameter Type: semitones
+Values: Minimum = -24, Default = 0, Maximum = 24
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:411
+Name: Slot B7 Transpose
+Parameter Type: semitones
+Values: Minimum = -24, Default = 0, Maximum = 24
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:412
+Name: Slot B8 Transpose
+Parameter Type: semitones
+Values: Minimum = -24, Default = 0, Maximum = 24
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:413
+Name: Slot C1 Transpose
+Parameter Type: semitones
+Values: Minimum = -24, Default = 0, Maximum = 24
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:414
+Name: Slot C2 Transpose
+Parameter Type: semitones
+Values: Minimum = -24, Default = 0, Maximum = 24
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:415
+Name: Slot C3 Transpose
+Parameter Type: semitones
+Values: Minimum = -24, Default = 0, Maximum = 24
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:416
+Name: Slot C4 Transpose
+Parameter Type: semitones
+Values: Minimum = -24, Default = 0, Maximum = 24
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:417
+Name: Slot C5 Transpose
+Parameter Type: semitones
+Values: Minimum = -24, Default = 0, Maximum = 24
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:418
+Name: Slot C6 Transpose
+Parameter Type: semitones
+Values: Minimum = -24, Default = 0, Maximum = 24
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:419
+Name: Slot C7 Transpose
+Parameter Type: semitones
+Values: Minimum = -24, Default = 0, Maximum = 24
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:420
+Name: Slot C8 Transpose
+Parameter Type: semitones
+Values: Minimum = -24, Default = 0, Maximum = 24
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:421
+Name: Slot D1 Transpose
+Parameter Type: semitones
+Values: Minimum = -24, Default = 0, Maximum = 24
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:422
+Name: Slot D2 Transpose
+Parameter Type: semitones
+Values: Minimum = -24, Default = 0, Maximum = 24
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:423
+Name: Slot D3 Transpose
+Parameter Type: semitones
+Values: Minimum = -24, Default = 0, Maximum = 24
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:424
+Name: Slot D4 Transpose
+Parameter Type: semitones
+Values: Minimum = -24, Default = 0, Maximum = 24
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:425
+Name: Slot D5 Transpose
+Parameter Type: semitones
+Values: Minimum = -24, Default = 0, Maximum = 24
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:426
+Name: Slot D6 Transpose
+Parameter Type: semitones
+Values: Minimum = -24, Default = 0, Maximum = 24
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:427
+Name: Slot D7 Transpose
+Parameter Type: semitones
+Values: Minimum = -24, Default = 0, Maximum = 24
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:428
+Name: Slot D8 Transpose
+Parameter Type: semitones
+Values: Minimum = -24, Default = 0, Maximum = 24
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:429
+Name: Slot E1 Transpose
+Parameter Type: semitones
+Values: Minimum = -24, Default = 0, Maximum = 24
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:430
+Name: Slot E2 Transpose
+Parameter Type: semitones
+Values: Minimum = -24, Default = 0, Maximum = 24
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:431
+Name: Slot E3 Transpose
+Parameter Type: semitones
+Values: Minimum = -24, Default = 0, Maximum = 24
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:432
+Name: Slot E4 Transpose
+Parameter Type: semitones
+Values: Minimum = -24, Default = 0, Maximum = 24
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:433
+Name: Slot E5 Transpose
+Parameter Type: semitones
+Values: Minimum = -24, Default = 0, Maximum = 24
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:434
+Name: Slot E6 Transpose
+Parameter Type: semitones
+Values: Minimum = -24, Default = 0, Maximum = 24
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:435
+Name: Slot E7 Transpose
+Parameter Type: semitones
+Values: Minimum = -24, Default = 0, Maximum = 24
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:436
+Name: Slot E8 Transpose
+Parameter Type: semitones
+Values: Minimum = -24, Default = 0, Maximum = 24
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:437
+Name: Slot F1 Transpose
+Parameter Type: semitones
+Values: Minimum = -24, Default = 0, Maximum = 24
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:438
+Name: Slot F2 Transpose
+Parameter Type: semitones
+Values: Minimum = -24, Default = 0, Maximum = 24
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:439
+Name: Slot F3 Transpose
+Parameter Type: semitones
+Values: Minimum = -24, Default = 0, Maximum = 24
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:440
+Name: Slot F4 Transpose
+Parameter Type: semitones
+Values: Minimum = -24, Default = 0, Maximum = 24
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:441
+Name: Slot F5 Transpose
+Parameter Type: semitones
+Values: Minimum = -24, Default = 0, Maximum = 24
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:442
+Name: Slot F6 Transpose
+Parameter Type: semitones
+Values: Minimum = -24, Default = 0, Maximum = 24
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:443
+Name: Slot F7 Transpose
+Parameter Type: semitones
+Values: Minimum = -24, Default = 0, Maximum = 24
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:444
+Name: Slot F8 Transpose
+Parameter Type: semitones
+Values: Minimum = -24, Default = 0, Maximum = 24
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:445
+Name: Slot G1 Transpose
+Parameter Type: semitones
+Values: Minimum = -24, Default = 0, Maximum = 24
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:446
+Name: Slot G2 Transpose
+Parameter Type: semitones
+Values: Minimum = -24, Default = 0, Maximum = 24
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:447
+Name: Slot G3 Transpose
+Parameter Type: semitones
+Values: Minimum = -24, Default = 0, Maximum = 24
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:448
+Name: Slot G4 Transpose
+Parameter Type: semitones
+Values: Minimum = -24, Default = 0, Maximum = 24
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:449
+Name: Slot G5 Transpose
+Parameter Type: semitones
+Values: Minimum = -24, Default = 0, Maximum = 24
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:450
+Name: Slot G6 Transpose
+Parameter Type: semitones
+Values: Minimum = -24, Default = 0, Maximum = 24
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:451
+Name: Slot G7 Transpose
+Parameter Type: semitones
+Values: Minimum = -24, Default = 0, Maximum = 24
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:452
+Name: Slot G8 Transpose
+Parameter Type: semitones
+Values: Minimum = -24, Default = 0, Maximum = 24
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:453
+Name: Slot H1 Transpose
+Parameter Type: semitones
+Values: Minimum = -24, Default = 0, Maximum = 24
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:454
+Name: Slot H2 Transpose
+Parameter Type: semitones
+Values: Minimum = -24, Default = 0, Maximum = 24
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:455
+Name: Slot H3 Transpose
+Parameter Type: semitones
+Values: Minimum = -24, Default = 0, Maximum = 24
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:456
+Name: Slot H4 Transpose
+Parameter Type: semitones
+Values: Minimum = -24, Default = 0, Maximum = 24
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:457
+Name: Slot H5 Transpose
+Parameter Type: semitones
+Values: Minimum = -24, Default = 0, Maximum = 24
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:458
+Name: Slot H6 Transpose
+Parameter Type: semitones
+Values: Minimum = -24, Default = 0, Maximum = 24
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:459
+Name: Slot H7 Transpose
+Parameter Type: semitones
+Values: Minimum = -24, Default = 0, Maximum = 24
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Parameter ID:460
+Name: Slot H8 Transpose
+Parameter Type: semitones
+Values: Minimum = -24, Default = 0, Maximum = 24
+Flags: Values Have Strings, Readable, Writable 
+  -parameter PASS
+
+Testing that parameters retain value across reset and initialization
+  PASS
+
+* * PASS
+--------------------------------------------------
+FORMAT TESTS:
+
+Reported Channel Capabilities (explicit):
+      [0, 2]  
+
+No Input, Output Chans:
+0-1   0-2   0-4   0-5   0-6   0-7   0-8
+      X                                   
+
+* * PASS
+--------------------------------------------------
+RENDER TESTS:
+
+Output Format: AudioStreamBasicDescription:  2 ch,  44100 Hz, Float32, deinterleaved
+Render Test at 512 frames
+Slicing Render Test at 64 frames
+  PASS
+
+
+Render Test at 64 frames, sample rate: 22050 Hz
+Render Test at 137 frames, sample rate: 96000 Hz
+Render Test at 4096 frames, sample rate: 48000 Hz
+Render Test at 4096 frames, sample rate: 192000 Hz
+Render Test at 4096 frames, sample rate: 11025 Hz
+Render Test at 512 frames, sample rate: 44100 Hz
+  PASS
+
+Bad Max Frames - Render should fail
+  PASS
+
+Checking parameter setting
+Using AudioUnitSetParameter
+Using AudioUnitScheduleParameter
+  PASS
+
+Test MIDI
+  PASS
+
+* * PASS
+--------------------------------------------------
+AU VALIDATION SUCCEEDED.
+--------------------------------------------------

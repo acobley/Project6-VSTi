@@ -161,11 +161,64 @@ gain a **virtual** `MIDIEventList`. Flipping it for the wrapper alone gives
 compiled from, and every virtual call past that slot lands on the wrong
 function. Any fix on these lines has to change both halves or neither.
 
-### What has not been tried
+### auval, at last: AU VALIDATION SUCCEEDED
 
-`auval -v aumu Prj6 AECo` has still never been run. It is the one thing that
-can say whether the AU publishes MIDI output at all, from outside both Reaper
-and this plug-in, and it is on the checklist anyway.
+Run on the build from `f58e210`. **A clean pass, end to end** — open times,
+all nine output buses at every rate and block size, custom UI, class info,
+host callbacks, format tests, render tests, bad-max-frames, parameter
+setting, Test MIDI. No failures and no warnings.
+
+Worth having for its own sake: it is the first validator run this project has
+ever had, it confirms the nine-bus AU element mapping the `au-info.plist`
+comment worried about, and it lists **461 global parameters** — exactly
+`kNumParams` — ending at
+
+```
+Parameter ID:460
+Name: Slot H8 Transpose
+Values: Minimum = -24, Default = 0, Maximum = 24
+```
+
+so the transpose block is live and correct in the AU too.
+
+**But it does not answer the question.** auval 1.10 does not test
+`kAudioUnitProperty_MIDIOutputCallbackInfo` at all — its "Test MIDI" is MIDI
+*input* to a MusicDevice, and its optional-property list is `Bypass Effect`
+and nothing else. A plug-in whose MIDI output never reaches a host passes
+auval exactly like one whose does.
+
+### So the wrapper gets instrumented: tools/au-property-trace.py
+
+Everything between "the plug-in emitted it" and "Reaper did not get it"
+happens inside `auwrapper.mm`, and no log this plug-in can write reaches in
+there. Guessing is what has already cost four wrong fixes, so the wrapper is
+traced instead.
+
+`tools/au-property-trace.py` patches four fprintf sites into the wrapper —
+every `SetProperty` id, every `GetPropertyInfo` id (once each), whether
+`setCallbackInfo` is ever handed a real callback, and a single line from
+`fireAtTimeStamp` when it has events and nothing to send them to. It writes to
+`~/p6-au-properties.txt` and, like the MIDI log, only if that file **already
+exists**.
+
+It is a script rather than an edit because **`external/` is gitignored and
+re-cloned by the first cmake configure**: a hand edit is lost the next time
+anybody builds clean, silently, and the trace then comes back empty for a
+reason that has nothing to do with the bug. `--revert` restores Steinberg's
+original from the backup it takes, re-applying is a no-op, and a moved anchor
+is a hard error that writes nothing rather than a half-patched wrapper.
+
+Two details that are not fussiness: `p6auFirst` takes a mutex and is for the
+property thread only — the render-rate site in `fireAtTimeStamp` uses its own
+`std::atomic<bool>` exchange, because the audio thread must not take a lock
+and a diagnostic that crashes somebody's DAW is worse than no diagnostic.
+
+**What the trace will say.** `setCallbackInfo  REAL CALLBACK` means Reaper set
+it and the MIDI is going somewhere the project does not route.
+`fireAtTimeStamp  EVENTS WAITING AND NO CALLBACK` with no `setCallbackInfo`
+line means Reaper never set it — and then the `GetPropertyInfo` list says
+whether it even asked, which is what would confirm or kill the MIDI 2.0
+theory above.
 
 ## 0. OPEN: MIDI goes silent at a transport loop point
 
