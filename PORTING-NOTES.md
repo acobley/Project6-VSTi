@@ -18,6 +18,62 @@ processing loop.
 
 ---
 
+## 0. OPEN: MIDI goes silent at a transport loop point
+
+**NOT FIXED. NOT CONFIRMED FIXED. Do not close this without a test that
+reproduces the original failure and then does not.**
+
+*Reported:* in Reaper, with the transport in loop mode and a MIDI pad playing
+into Apple's AUMIDISynth, the synth falls completely silent at the loop point
+and stays silent. A drum machine (ICON) in the same place is fine. The MIDI
+goes on arriving. Stopping and restarting the **pad** does not bring it back;
+only a full transport stop does. With the transport **not** looping it plays
+indefinitely.
+
+*Four fixes have been shipped against it. None is confirmed to be the one.*
+
+| commit | what it fixed | was it the bug? |
+|---|---|---|
+| `2329ada` | four faults that made a pad stop permanently | no — still failed |
+| `459146a` | note-off sharing a sample with its own re-trigger | no — still failed |
+| `f3668fc` | notes stranded where the loop crosses its own anchor | no — still failed |
+| `ae7b4b0` | every event sent twice, on the merged bus and the row's | **unknown** |
+
+All four were real defects found on the way. The first three are known not to
+be *this* one.
+
+**What the evidence says.** A log taken inside Reaper with the fault
+reproduced (`PROJECT6_MIDI_LOG`, or create `~/p6-midi-log.txt`) showed the
+plug-in behaving perfectly across 6,432 blocks and both loop points: max five
+notes held at once against a file whose own polyphony is five, zero orphan
+note-offs, zero left sounding, zero out of sample order, zero refused by the
+host, and a note-on rate flat through both loops (8.5, 10.2, 11.2, 10.2 per
+second in the four regions either side). The pad stayed armed, launched and
+playing from first click to transport stop.
+
+**The one thing that log did expose** was 1202 notes handed over as 2404
+events — the doubling, fixed in `ae7b4b0`. That is the last thing this
+plug-in was doing that a synth could object to.
+
+**Where it stands.** It works in Logic Pro with the AU build. That result is
+**confounded**: the host changed (Reaper → Logic), the format changed (VST3 →
+AU), *and* the build contains `ae7b4b0`. It does not distinguish "the doubling
+was the bug" from "Reaper is the problem".
+
+**The next test, and it is cheap:** run the *current* build in Reaper again.
+
+* Reaper now works → the doubling was it. Close this.
+* Reaper still fails → take a log with the current build. If it looks like the
+  last one — balanced, nothing stranded, nothing refused — then identical
+  plug-in output producing different results in two hosts is conclusive that
+  the fault is host-side, and the next move is Reaper's MIDI routing settings,
+  not more changes here.
+
+**Do not make further speculative changes to the MIDI path without a log.**
+Three were made that way and all three were wrong.
+
+---
+
 ## 1. The four decisions
 
 | Decision | Choice | Why, and what it reaches |
