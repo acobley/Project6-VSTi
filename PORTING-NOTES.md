@@ -1280,6 +1280,52 @@ Two things came out of this beyond the fixes:
 a cycle running entirely before the launch point, the phase being kept across
 it, and the negative control that a mid-block launch is still not wrapped.
 
+### The bug a drum machine cannot show you
+
+Reported as a mystery, and it is a good one: *"with the transport looping, a
+drum machine is fine at the loop point, but Apple's AUMIDISynth goes silent —
+though the MIDI appears to still be received."*
+
+The two synths are the diagnosis. **A drum machine ignores note-offs**, and its
+notes are short enough to end mid-bar anyway. A sustaining synth does not. So
+whatever was wrong had to be about note-offs, and about notes that are still
+held when the loop comes round — which is what a pad, a string patch or a bass
+note is, and what a drum pattern never is.
+
+It was this: **a note-off and its own re-trigger landed on the same sample.**
+
+A note held to the bar line is cut off there and struck again at the start of
+the next pass. Both events were emitted at the identical sample offset, in two
+places — the pad's own loop boundary, and the flush when the host locates,
+which is the transport loop point where it was heard.
+
+Nothing in the list was *wrong*. The off is before the on, and a reader that
+respects list order gets it right. But a great deal downstream does not: a
+wrapper that sorts events by timestamp unstably, a host that merges two buses,
+a synth that processes one timestamp's events in its own order. Any of them
+can deliver the on first and the off second — and then the note is killed the
+instant it starts, for ever, every pass.
+
+The fix is what every sequencer does: separate them **in time** as well as in
+order. `MidiVoice` remembers the last sample it emitted a note-off at for each
+pitch in the block, and a note-on for that pitch is nudged one sample past it.
+One sample is unambiguous and far too short to hear. It is the **on** that
+moves, because a re-trigger a sample late is nothing and a note-off a sample
+early would shorten the note it belongs to.
+
+`MidiTests` §11 asserts the invariant directly — no note-on at or before a
+note-off of the same pitch — at the pad's loop point and at a locate, with a
+drum pattern as the control: it has no collisions to fix, and its downbeat is
+still exactly on the beat.
+
+The same commit closed the other way a synth can go silent while a drum
+machine does not. `queueMidi` dropped events when the block's queue filled,
+and **a dropped note-off is a note nobody can stop** — the voice that emitted
+it has already decremented its own count, so nothing will ever send it again.
+An off now displaces the most recently queued note-ON instead of being thrown
+away. A missing note is a hole in one bar; a stuck one is silence a few voices
+later.
+
 ### Nine event outputs, and why the merged one is not a luxury
 
 One `MIDI Out` carrying every row, then one per row — exactly the shape the

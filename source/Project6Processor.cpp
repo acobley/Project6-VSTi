@@ -251,8 +251,39 @@ double Project6Processor::quartersPerSample (const TransportInfo& transport) con
 //------------------------------------------------------------------------
 void Project6Processor::queueMidi (int row, const MidiEventOut* events, int count)
 {
-	for (int i = 0; i < count && mMidiQueued < kMaxBlockMidiEvents; ++i)
-		mMidiQueue[mMidiQueued++] = { row, events[i] };
+	for (int i = 0; i < count; ++i)
+	{
+		if (mMidiQueued < kMaxBlockMidiEvents)
+		{
+			mMidiQueue[mMidiQueued++] = { row, events[i] };
+			continue;
+		}
+
+		// THE QUEUE IS FULL, AND THE TWO KINDS OF EVENT ARE NOT EQUAL.
+		//
+		// A dropped note-ON is a note nobody hears - a hole in one bar.
+		// A dropped note-OFF is a note nobody can stop: the voice that
+		// emitted it has already decremented its own count, so nothing
+		// will ever send that off again, and on a synth with a voice
+		// limit a few of those is silence while the MIDI goes on
+		// arriving. Exactly the symptom this commit is about.
+		//
+		// So an off displaces the most recently queued ON rather than
+		// being thrown away. The sort afterwards puts it back in time
+		// order, and the note it displaces is the one least likely to be
+		// missed - the last one in.
+		if (events[i].noteOn)
+			continue;
+
+		for (int at = mMidiQueued - 1; at >= 0; --at)
+		{
+			if (mMidiQueue[at].event.noteOn)
+			{
+				mMidiQueue[at] = { row, events[i] };
+				break;
+			}
+		}
+	}
 }
 
 //------------------------------------------------------------------------

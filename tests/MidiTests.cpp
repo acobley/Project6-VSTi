@@ -953,6 +953,104 @@ int main ()
 	}
 
 	//--------------------------------------------------------------------
+	section ("11. A note-off is never simultaneous with its own re-trigger");
+	//--------------------------------------------------------------------
+	{
+		// THE BUG A DRUM MACHINE CANNOT SHOW YOU.
+		//
+		// A pad part holds its notes to the bar line. At the loop point
+		// the note is cut off there and struck again at the start of the
+		// next pass - and both landed on THE SAME SAMPLE. A drum machine
+		// never notices, because it ignores note-offs and its notes are
+		// short enough that they end mid-bar anyway; a sustaining synth
+		// gets an on and an off at one instant and it is anybody's guess
+		// which it acts on last.
+		//
+		// The rule this enforces: a note-on is never emitted at or before
+		// a note-off of the SAME PITCH already emitted in this block.
+		MidiEventOut out[kMaxMidiEventsPerBlock];
+		const double perSample = 1.0 / 1000.0;
+
+		const auto noCollision = [] (const MidiEventOut* events, int count)
+		{
+			int offAt[128];
+			for (int i = 0; i < 128; ++i)
+				offAt[i] = -1;
+
+			for (int i = 0; i < count; ++i)
+			{
+				const int pitch = events[i].note;
+				if (!events[i].noteOn)
+				{
+					offAt[pitch] = events[i].sampleOffset;
+					continue;
+				}
+				if (offAt[pitch] >= 0 && events[i].sampleOffset <= offAt[pitch])
+					return false;
+			}
+			return true;
+		};
+
+		// A NOTE HELD RIGHT ACROSS THE BAR - which is what a pad, a
+		// string patch or a bass note is, and what a drum pattern never
+		// is.
+		MidiClip held;
+		held.notes.push_back ({ 0.0, 4.0, 60, 100 });
+		held.content = 4.0;
+
+		// One block spanning the loop point: off at the bar line, on at
+		// the start of the next pass.
+		{
+			MidiVoice voice;
+			voice.start (0.0);
+
+			const int count = voice.render (&held, 4.0, 0.0, perSample, 8000, true, out,
+			                                kMaxMidiEventsPerBlock);
+			check (count >= 3, "a held note across a loop gives an on, an off and an on");
+			check (noCollision (out, count),
+			       "the re-trigger does not land on the same sample as its note-off");
+		}
+
+		// THE TRANSPORT LOOP POINT, which is where it was heard: the host
+		// jumps back, everything sounding is turned off at sample 0, and
+		// the pattern starts again at sample 0.
+		{
+			MidiVoice voice;
+			voice.start (0.0);
+			voice.render (&held, 4.0, 0.0, perSample, 2000, true, out,
+			              kMaxMidiEventsPerBlock);
+
+			// ...and the cycle wraps back to the top.
+			const int count = voice.render (&held, 4.0, 0.0, perSample, 1000, true, out,
+			                                kMaxMidiEventsPerBlock);
+			check (count >= 2, "a locate turns the held note off and starts it again");
+			check (noCollision (out, count),
+			       "and those two do not land on the same sample either");
+		}
+
+		// A DRUM PATTERN IS UNAFFECTED - its notes end well before the
+		// bar, so nothing ever collides and nothing is moved.
+		{
+			MidiClip drums;
+			drums.notes.push_back ({ 0.0, 0.25, 36, 110 });
+			drums.notes.push_back ({ 2.0, 2.25, 38, 100 });
+			drums.content = 4.0;
+
+			MidiVoice voice;
+			voice.start (0.0);
+			const int count = voice.render (&drums, 4.0, 0.0, perSample, 8000, true, out,
+			                                kMaxMidiEventsPerBlock);
+			check (noCollision (out, count), "a drum pattern has no collisions to fix");
+
+			bool onTheBeat = false;
+			for (int i = 0; i < count; ++i)
+				onTheBeat |= (out[i].noteOn && out[i].note == 36 && out[i].sampleOffset == 0);
+			check (onTheBeat,
+			       "NEGATIVE CONTROL: and its downbeat is still exactly on the beat");
+		}
+	}
+
+	//--------------------------------------------------------------------
 	std::printf ("\n%s  (%d failure%s)\n",
 	             gFailures == 0 ? "ALL TESTS PASSED" : "TESTS FAILED",
 	             gFailures, gFailures == 1 ? "" : "s");

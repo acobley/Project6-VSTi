@@ -446,6 +446,9 @@ void MidiVoice::reset ()
 	mHaveLast = false;
 	mProgress.store (0.f, std::memory_order_relaxed);
 
+	for (int note = 0; note < 128; ++note)
+		mOffAt[note] = -1;
+
 	// NOTHING EMITTED. This is the deactivate path, where there is no
 	// block to put note-offs in; the host silences what it is driving.
 	// Every other way a pad goes quiet goes through allNotesOff.
@@ -472,6 +475,14 @@ void MidiVoice::emitOn (MidiEventOut* out, int maxOut, int& count, int offset,
 {
 	if (note > 127 || count >= maxOut)
 		return;
+
+	// NOT ON TOP OF ITS OWN NOTE-OFF. See the header for the whole of
+	// why: at a loop point this pitch may have been turned off at this
+	// very sample, and an on and an off at one instant is a note some
+	// synths never sound at all. A sample later is unambiguous and
+	// inaudible.
+	if (mOffAt[note] >= 0 && offset <= mOffAt[note])
+		offset = std::min (std::max (0, mBlockSamples - 1), mOffAt[note] + 1);
 
 	out[count].sampleOffset = offset;
 	out[count].noteOn       = true;
@@ -501,6 +512,10 @@ void MidiVoice::emitOff (MidiEventOut* out, int maxOut, int& count, int offset,
 	out[count].note         = note;
 	out[count].velocity     = 0;
 	++count;
+
+	// Remembered so that a re-trigger of this pitch later in the block
+	// cannot land on top of it.
+	mOffAt[note] = std::max (mOffAt[note], offset);
 
 	--mSounding[note];
 }
@@ -550,6 +565,13 @@ int MidiVoice::render (const MidiClip* clip, double loopLength, double blockStar
 
 	if (!mPlaying)
 		return 0;
+
+	// A NEW BLOCK: nothing has been turned off in it yet. Reset BEFORE
+	// the jump handler below, which is itself one of the two places a
+	// note-off and its re-trigger used to collide.
+	for (int note = 0; note < 128; ++note)
+		mOffAt[note] = -1;
+	mBlockSamples = numSamples;
 
 	const double blockQuarters = quartersPerSample * static_cast<double> (numSamples);
 

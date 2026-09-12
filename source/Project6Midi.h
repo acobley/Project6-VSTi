@@ -320,6 +320,38 @@ private:
 	    the second off and hang the note. */
 	unsigned char mSounding[128] = {};
 
+	//--------------------------------------------------------------------
+	// A NOTE-OFF MUST NEVER SHARE A SAMPLE WITH ITS OWN RE-TRIGGER.
+	//
+	// At a loop point a note held to the bar line is cut off there and
+	// struck again at the start of the next pass, and both landed on the
+	// same sample. Nothing in the list is wrong - the off is before the
+	// on, and a reader that respects order gets it right - but a great
+	// deal downstream does not: a wrapper that sorts events by timestamp
+	// unstably, a host that merges two buses, a synth that processes a
+	// timestamp's events in its own order. Any one of them can deliver
+	// the on first and the off second, and then the note is killed the
+	// instant it starts.
+	//
+	// A DRUM MACHINE NEVER SHOWS YOU THIS. It ignores note-offs, and its
+	// notes are short enough to end mid-bar anyway. A sustaining synth
+	// goes silent while the MIDI goes on arriving, which is exactly what
+	// it looks like from outside.
+	//
+	// So the two are separated IN TIME as well as in order. One sample is
+	// enough to be unambiguous and is far too short to hear; the on is
+	// what moves, because a re-trigger a sample late is nothing and a
+	// note-off a sample early would shorten the note it belongs to.
+	//--------------------------------------------------------------------
+
+	/** The latest sample a note-off was emitted at for each pitch in the
+	    block being rendered, or -1. Reset at the top of every render. */
+	int mOffAt[128] = {};
+
+	/** How long the block being rendered is, so a nudged note-on can be
+	    kept inside it. */
+	int mBlockSamples = 0;
+
 	std::atomic<float> mProgress { 0.f };
 };
 
