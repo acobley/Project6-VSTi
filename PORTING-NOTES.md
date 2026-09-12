@@ -163,7 +163,8 @@ function. Any fix on these lines has to change both halves or neither.
 
 ### auval, at last: AU VALIDATION SUCCEEDED
 
-Run on the build from `f58e210`. **A clean pass, end to end** — open times,
+Run on the build from `f58e210`; the whole output is kept in
+`docs/auval-1.0.0.txt`. **A clean pass, end to end** — open times,
 all nine output buses at every rate and block size, custom UI, class info,
 host callbacks, format tests, render tests, bad-max-frames, parameter
 setting, Test MIDI. No failures and no warnings.
