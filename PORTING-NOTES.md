@@ -1403,7 +1403,7 @@ other things is a reason to ignore the position above.
 Both are now correct. Neither is a theory about the fault; both are simply
 false statements the plug-in was making.
 
-### PROJECT6_MIDI_LOG
+### Turning the log on
 
 Three fixes for one reported fault were wrong in a row — each reasoned from
 the code, each plausible, each shipped. That is the point at which guessing
@@ -1411,7 +1411,20 @@ again is the wrong thing to do. What was missing was never another theory. It
 was **evidence of what the plug-in actually sends, from inside the host where
 it goes wrong.**
 
-Set `PROJECT6_MIDI_LOG` to a file path and every block is written to it: the
+**Create `~/p6-midi-log.txt` and restart the host.** Delete it to stop. The
+file is its own switch *and* its own destination, and it is only ever opened
+if it already exists, so a plug-in nobody asked to log never creates
+anything. (`PROJECT6_MIDI_LOG=/some/path` also works, if the host is launched
+from a shell.)
+
+The environment variable was the first design and was nearly useless on
+macOS: `export` reaches the processes that terminal starts, and a DAW is
+started from the Dock, from Finder or from Spotlight, all of which inherit
+launchd's environment instead. It was set correctly and never arrived —
+**a diagnostic whose failure looks exactly like the thing it was meant to
+diagnose**, which is the worst way for one to fail.
+
+Every block is written to it: the
 transport's context flags, its position, tempo and meter; every MIDI pad's
 armed, launched, playing and loop state and where its playhead is; and every
 event with its sample offset, pitch, channel, project position and whether

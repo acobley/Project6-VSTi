@@ -256,11 +256,53 @@ void Project6Processor::openMidiLog ()
 	if (mMidiLog != nullptr)
 		return;
 
-	const char* path = std::getenv ("PROJECT6_MIDI_LOG");
-	if (path == nullptr || path[0] == '\0')
+	//--------------------------------------------------------------------
+	// TWO WAYS TO ASK FOR IT, and the second is the one that works.
+	//
+	// An environment variable is the obvious choice and is nearly useless
+	// on macOS: `export` in a terminal reaches the processes that
+	// terminal starts, and a DAW is started from the Dock, from Finder or
+	// from Spotlight, all of which inherit launchd's environment instead.
+	// It was set correctly and never arrived. That is a bad diagnostic -
+	// one whose failure looks exactly like the thing it was meant to
+	// diagnose.
+	//
+	// So the real trigger is A FILE THAT ALREADY EXISTS. Create
+	// ~/p6-midi-log.txt, restart the host, and it fills up; delete it and
+	// it stops. The file is its own switch AND its own destination, so
+	// there is nothing to remember and nothing to get out of step.
+	//
+	// It is only ever opened if it is ALREADY THERE, so a plug-in that
+	// nobody asked to log never creates anything.
+	//--------------------------------------------------------------------
+	std::string path;
+
+	if (const char* asked = std::getenv ("PROJECT6_MIDI_LOG"))
+	{
+		if (asked[0] != '\0')
+			path = asked;
+	}
+
+	if (path.empty ())
+	{
+		if (const char* home = std::getenv ("HOME"))
+		{
+			const std::string candidate = std::string (home) + "/p6-midi-log.txt";
+
+			// EXISTS ALREADY? Opened for reading first, so that asking
+			// the question cannot itself answer it.
+			if (std::FILE* probe = std::fopen (candidate.c_str (), "r"))
+			{
+				std::fclose (probe);
+				path = candidate;
+			}
+		}
+	}
+
+	if (path.empty ())
 		return;
 
-	mMidiLog = std::fopen (path, "w");
+	mMidiLog = std::fopen (path.c_str (), "w");
 	mLoggedBlocks = 0;
 
 	if (mMidiLog != nullptr)
@@ -780,6 +822,12 @@ tresult PLUGIN_API Project6Processor::canProcessSampleSize (int32 symbolicSample
 tresult PLUGIN_API Project6Processor::setupProcessing (ProcessSetup& setup)
 {
 	mSampleRate = setup.sampleRate;
+
+	// A SECOND CHANCE TO NOTICE THE LOG FILE. setActive is the first, but
+	// a host that was already running when the file appeared would not
+	// call it again; this one it does call on every start. Both are the
+	// UI thread.
+	openMidiLog ();
 
 	// ALLOCATION BELONGS HERE, not in process(). Both the SpaceDub and the
 	// ForTran DXis reallocated from inside their processing loops.
