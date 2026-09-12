@@ -105,6 +105,68 @@ a log OF.
 Note also that `openMidiLog` opens with `"w"`, so **two instances logging at
 once truncate and interleave**. One plug-in at a time.
 
+### The second capture, with the marker
+
+```
+Project6 MIDI log
+  host:    VST3-AU Wrapper
+```
+
+3,256 blocks, 2,020 of them playing, **158 flushes, 560 events, every one
+`ok`, the event list present every time.** So it is settled: **the AU emits,
+correctly, and Reaper receives none of it.** The plug-in is not the problem
+and no further change to the MIDI path can fix this.
+
+### Where it is lost, exactly
+
+`AUWrapper::Render` calls `processOutputEvents` unconditionally; that turns
+each VST3 event into `MIDIOutputCallbackHelper::addEvent` and then calls
+`fireAtTimeStamp`, whose first line is
+
+```objc
+if (!mMIDIMessageList.empty () && mMIDICallbackStruct.midiOutputCallback != nullptr)
+```
+
+`midiOutputCallback` is null until a host sets
+`kAudioUnitProperty_MIDIOutputCallback`. **That is the only gate left**, and
+the wrapper's handling of it is correct — scope checked, size checked,
+`setCallbackInfo` called, `return noErr`. So either Reaper never sets it, or
+it sets it and the MIDI is arriving somewhere the project does not route.
+
+**The prime suspect for why Reaper would not set it:** built against any
+current macOS SDK, `AUSDK_MIDI2_AVAILABLE` is 1 (`AUMIDIUtility.h` defines it
+from `__MAC_12_0`), and the wrapper then answers
+`kAudioUnitProperty_AudioUnitMIDIProtocol` with `kMIDIProtocol_2_0` — it
+tells the host it speaks MIDI 2.0. But it implements **no**
+`kAudioUnitProperty_MIDIOutputEventListCallback`: grep the whole of
+`auwrapper.mm` and the modern output path is simply absent. A host that
+believes the protocol answer and goes looking for the event-list output block
+finds nothing to attach, and never falls back to the legacy callback. The
+built `.component` does contain `handleMIDIEventPacket` and
+`MIDIEventList`, so the MIDI 2.0 path is compiled in on this machine.
+
+### DO NOT "just force MIDI 1.0". It is a trap.
+
+The obvious experiment is to compile the wrapper with
+`AUSDK_MIDI2_AVAILABLE=0` so it stops claiming 2.0. **It would crash**, and
+the reason is worth writing down because it is invisible from the CMakeLists:
+
+`SMTG_AddVST3AuV2.cmake` builds the `-au` target from `auwrapper.mm` and
+friends, but Apple's AudioUnitSDK is **not** in that target. It is built by a
+separate `xcodebuild` into `libAudioUnitSDK.a` and linked in — with the flag
+at its own default, which is 1. And the flag is not cosmetic: inside
+`#if AUSDK_MIDI2_AVAILABLE`, `AUBase`, `AUMIDIBase` and `MusicDeviceBase` each
+gain a **virtual** `MIDIEventList`. Flipping it for the wrapper alone gives
+`AUWrapper` a vtable one slot short of the base classes the static library was
+compiled from, and every virtual call past that slot lands on the wrong
+function. Any fix on these lines has to change both halves or neither.
+
+### What has not been tried
+
+`auval -v aumu Prj6 AECo` has still never been run. It is the one thing that
+can say whether the AU publishes MIDI output at all, from outside both Reaper
+and this plug-in, and it is on the checklist anyway.
+
 ## 0. OPEN: MIDI goes silent at a transport loop point
 
 **NOT FIXED. NOT CONFIRMED FIXED. Do not close this without a test that
