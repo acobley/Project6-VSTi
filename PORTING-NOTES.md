@@ -18,7 +18,7 @@ processing loop.
 
 ---
 
-## 0a. OPEN: the AU build sends no MIDI in Reaper at all
+## 0a. CLOSED, NOT OURS: Reaper does not take MIDI output from an AU
 
 Reported 12 Sep, against the build made from `5eb1e2e`. Two Reaper projects,
 same `.mid`, same routing: **the VST3 sends MIDI, the AU sends none.** Not a
@@ -214,12 +214,63 @@ property thread only — the render-rate site in `fireAtTimeStamp` uses its own
 `std::atomic<bool>` exchange, because the audio thread must not take a lock
 and a diagnostic that crashes somebody's DAW is worse than no diagnostic.
 
-**What the trace will say.** `setCallbackInfo  REAL CALLBACK` means Reaper set
-it and the MIDI is going somewhere the project does not route.
-`fireAtTimeStamp  EVENTS WAITING AND NO CALLBACK` with no `setCallbackInfo`
-line means Reaper never set it — and then the `GetPropertyInfo` list says
-whether it even asked, which is what would confirm or kill the MIDI 2.0
-theory above.
+### The trace, and the answer
+
+The whole of it (kept in `docs/au-property-trace-reaper.txt`):
+
+```
+GetPropertyInfo  60
+SetProperty      26
+SetProperty      37
+GetPropertyInfo  64
+GetPropertyInfo  31
+GetPropertyInfo  64000
+GetPropertyInfo  64001
+fireAtTimeStamp  0   EVENTS WAITING AND NO CALLBACK - the host never set one
+```
+
+Seven properties in the whole session, two of them Steinberg's own private
+ids (64000 is the edit controller pointer, 64001 the module). **No
+`setCallbackInfo` line at all**, and not one `<--` marker.
+
+That marker is the point of the design: the trace compares against
+`kAudioUnitProperty_MIDIOutputCallbackInfo` and
+`kAudioUnitProperty_MIDIOutputCallback` **as compile-time constants**, so the
+result needs no table of property numbers and cannot be misread. Their absence
+is positive evidence.
+
+And it reaches everything: `AUBase::DispatchGetPropertyInfo` handles only its
+own base properties and its `default:` delegates every other id to the virtual
+`GetPropertyInfo`, which is the wrapper's, which is traced. Grep the whole
+AudioUnitSDK and `MIDIOutputCallback` and `MIDIOutputEventListCallback` do not
+appear in it at all, so those ids could not have been answered anywhere else.
+
+**So: Reaper never asked whether this AU has MIDI output, and never set a
+callback for it — of either kind.** Not the legacy one, and not the event-list
+one either.
+
+### Which also kills the MIDI 2.0 theory
+
+The suspicion above was that Reaper believed the wrapper's
+`kMIDIProtocol_2_0` answer and went looking for an event-list output block
+that the wrapper does not implement. It did not: it asked for no output
+callback of any kind. Worth writing down, because that theory was about to
+justify implementing `kAudioUnitProperty_MIDIOutputEventListCallback` in
+somebody else's wrapper, and it would have changed nothing.
+
+### What this is, and what to do about it
+
+**Reaper does not take MIDI output from AU plug-ins.** Project6 emits
+correctly under the AU wrapper — two captures prove it, 560 events accepted,
+none refused — the wrapper converts every one of them, and then has nowhere to
+put them because the host never offered anywhere.
+
+Nothing in this plug-in can fix that, and nothing in it should try. **Use the
+VST3 in Reaper**, which is what the two projects that started this already
+show; the AU is for Logic, where it works.
+
+The trace patch has been reverted — `tools/au-property-trace.py --revert` — so
+the wrapper is Steinberg's again. Rebuild once to get a clean `.component`.
 
 ## 0. OPEN: MIDI goes silent at a transport loop point
 

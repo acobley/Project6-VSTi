@@ -30,6 +30,13 @@ bar, a MIDI pad has a **transpose**: up to two octaves either way, every note
 moved by the same interval — a pattern moved, not a key change. Double-click
 it to go back to the file's own pitch.
 
+**MIDI out and Reaper: use the VST3.** Reaper never asks an Audio Unit
+whether it has MIDI output and never sets a callback for one, so a MIDI pad's
+notes have nowhere to go there — the plug-in emits them and the host is not
+listening. This is Reaper's side, not the plug-in's: traced property by
+property, and written up in `PORTING-NOTES.md` §0a. The VST3 works in Reaper
+and the AU works in Logic.
+
 **Each row sums to a fader on the right.** The eight pads of a row go through
 their own levels, sum, pass that row's level, and the eight rows sum into the
 output trim.

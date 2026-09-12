@@ -1,0 +1,11 @@
+Project6 AU property trace
+  one line the first time the host touches each id
+
+GetPropertyInfo  60         
+SetProperty      26         
+SetProperty      37         
+GetPropertyInfo  64         
+GetPropertyInfo  31         
+GetPropertyInfo  64000      
+GetPropertyInfo  64001      
+fireAtTimeStamp  0          EVENTS WAITING AND NO CALLBACK - the host never set one
