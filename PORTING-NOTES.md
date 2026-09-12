@@ -1442,27 +1442,26 @@ default: a diagnostic that queued its lines through a lock-free ring would be
 a second thing that could be wrong, and the question is what the *first* one
 is doing. Expect glitches while it is on.
 
-### Nine event outputs, and why the merged one is not a luxury
+### Eight event outputs, and the merged one that had to go
 
-One `MIDI Out` carrying every row, then one per row — exactly the shape the
-audio side already has. Support for several event outputs is patchy: plenty of
-hosts show only the first, and an AU wrapper has one MIDI output callback and
-no more. A plug-in whose rows were reachable only as eight separate buses
-would be a plug-in whose rows most people could not reach at all.
+It was nine: a merged bus carrying every row, then one per row, so that a
+host showing only the first event output could still reach all eight. Every
+event was therefore **sent twice**.
 
-It works because **every pad's notes go out on its row's channel** — row A is
-channel 1, row H is channel 8 — so the merged bus is eight parts in one cable
-and a host with one MIDI input can split it by channel. That is also why
-`MidiNote` carries no channel of its own: keeping the file's would be keeping
-a number that is then overwritten, and a multi-channel file is merged onto its
-row's channel rather than half-honoured.
+A log taken inside Reaper settled it: **1202 notes handed over as 2404
+events.** And every host that matters merges them anyway — Steinberg's own AU
+wrapper ignores `Event::busIndex` completely and converts every event in the
+list to MIDI on its single output, and on this evidence so does Reaper.
 
-Events are **collected across the block and sorted at the end**. They are
-produced in two places — a pad stopping at a grid line part way through, and
-each pad's own sequencing run afterwards — so they arrive out of order, and a
-host is entitled to a sorted list. Stable, so a note-off and a note-on at the
-same sample keep the order they were made in: on the same pitch that is the
-difference between a re-strike and a silence.
+So the merge is what the **host** does, not something to do twice and hope.
+Eight buses, **bus index is the row**, one event each. In a host that flattens
+them you get every note once with its row on the channel — which is exactly
+what the merged bus was for, obtained by not fighting for it. In a host with
+real per-bus routing the rows stay separate, as before.
+
+The cost, stated plainly: a host that exposes only the *first* event output
+now reaches row A alone. That is the price of not sending everything twice to
+every host that does not.
 
 ### The reader
 

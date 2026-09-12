@@ -180,7 +180,7 @@ def main():
          f_small, fill=MUTED)
     text(draw, (48, 92),
          'Outputs: the main stereo mix plus %d aux stereo buses (one per row, tapped '
-         'before that row’s fader), and a merged MIDI out plus %d aux MIDI buses.'
+         'before that row’s fader), and %d MIDI buses, one per row.'
          % (rows, rows), f_small, fill=MUTED)
     draw.line((48, 112, W - 48, 112), fill=RULE, width=1)
 
@@ -387,26 +387,23 @@ def main():
     arrow(draw, rowlvl_x1, my + mh / 2, direct_x0 - 2, my + mh / 2)
 
     box(draw, (direct_x0, my, direct_x1, my + mh), (232, 238, 232), (90, 130, 100),
-        'Row C MIDI out', f_head, sub='event bus 3', subfnt=f_tiny)
+        'Row C MIDI out', f_head, sub='event bus 2', subfnt=f_tiny)
     # RIGHT-ALIGNED to the box: centred, this caption runs back under the
     # line that drops to the merged bus and the two collide.
     text(draw, (direct_x1, my + mh + 16),
-         'one per row — event buses 1–%d' % rows, f_small, fill=MUTED, anchor='rm')
+         'one per row — event buses 0–%d' % (rows - 1), f_small, fill=MUTED, anchor='rm')
 
-    # ...and the merged bus, which is the one most hosts will show.
-    merged_y = my + mh + 44
-    draw.line((rowlvl_x1 + 30, my + mh / 2, rowlvl_x1 + 30, merged_y + 22),
-              fill=SIGNAL, width=2)
-    draw.ellipse((rowlvl_x1 + 26, my + mh / 2 - 4, rowlvl_x1 + 34, my + mh / 2 + 4),
-                 fill=SIGNAL, outline=SIGNAL)
-    arrow(draw, rowlvl_x1 + 30, merged_y + 22, direct_x0 - 2, merged_y + 22)
-
-    box(draw, (direct_x0, merged_y, direct_x1, merged_y + mh),
-        (232, 238, 232), (90, 130, 100), 'MIDI Out (merged)', f_head,
-        sub='event bus 0', subfnt=f_tiny)
-    text(draw, ((direct_x0 + direct_x1) / 2, merged_y + mh + 16),
-         'every row, each on its own channel — the one most hosts will show',
-         f_small, fill=MUTED, anchor='mm')
+    # NO MERGED BUS: the host does the merging, and doing it here as well
+    # meant sending every note twice. See Project6Processor::initialize.
+    merged_y = my + mh + 26
+    text(draw, (direct_x0, merged_y + 12),
+         'A host that flattens the event buses — Steinberg’s AU wrapper does, and so '
+         'does Reaper — hands the synth',
+         f_small, fill=MUTED, anchor='lm')
+    text(draw, (direct_x0, merged_y + 30),
+         'every note ONCE, with the row on the channel. That is the merged output, '
+         'got by not sending it twice and hoping.',
+         f_small, fill=MUTED, anchor='lm')
 
     midi_notes = [
         ('Loop length', 'The file, run out to the end of the BAR — the project’s bar, '

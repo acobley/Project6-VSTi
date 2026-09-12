@@ -71,29 +71,36 @@ tresult PLUGIN_API Project6Processor::initialize (FUnknown* context)
 	addEventInput (STR16 ("Event In"), 16);
 
 	//--------------------------------------------------------------------
-	// MIDI OUT: one merged bus, then one per row - exactly the shape the
-	// audio side already has, and for the same reason.
+	// MIDI OUT: ONE BUS PER ROW, and each event sent to exactly one of
+	// them.
 	//
-	// THE MERGED BUS IS NOT A LUXURY. Support for several event outputs
-	// is patchy: plenty of hosts show only the first, and an AU wrapper
-	// has one MIDI output callback and no more. A plug-in whose rows were
-	// only reachable as eight separate buses would be a plug-in whose
-	// rows most people could not reach at all.
+	// It used to be nine - a merged bus carrying every row, then one per
+	// row - so that a host showing only the first event output could
+	// still reach all eight. Every event was therefore sent TWICE, and a
+	// log taken inside Reaper showed the consequence: 1202 notes handed
+	// over as 2404 events. Every host that matters merges them anyway.
+	// Steinberg's own AU wrapper ignores Event::busIndex completely and
+	// converts every event in the list to MIDI on its single output; so,
+	// on the evidence, does Reaper.
 	//
-	// It works because every pad's notes go out on ITS ROW'S CHANNEL -
-	// row A is channel 1, row H is channel 8 - so the merged bus is
-	// eight parts in one cable, and a host with one MIDI input can split
-	// it by channel. The per-row buses are then the tidy way to do the
-	// same thing where they are supported.
-	addEventOutput (STR16 ("MIDI Out"), kSlotRows);
-
+	// So the merge is what the host does, not something to do twice and
+	// hope. Eight buses, bus index IS the row, one event each. In a host
+	// that flattens them you get every note once with its row on the
+	// channel - which is exactly the merged bus, obtained by not fighting
+	// for it. In a host with real per-bus routing the rows are separate,
+	// as before.
+	//
+	// The cost, stated plainly: a host that exposes only the FIRST event
+	// output now reaches row A alone. That is the price of not sending
+	// everything twice to every host that does not.
+	//--------------------------------------------------------------------
 	static const char16_t* const kRowMidiNames[kSlotRows] = {
 		STR16 ("Row A MIDI"), STR16 ("Row B MIDI"), STR16 ("Row C MIDI"),
 		STR16 ("Row D MIDI"), STR16 ("Row E MIDI"), STR16 ("Row F MIDI"),
 		STR16 ("Row G MIDI"), STR16 ("Row H MIDI") };
 
 	for (int row = 0; row < kSlotRows; ++row)
-		addEventOutput (kRowMidiNames[row], 1, BusTypes::kAux, BusInfo::kDefaultActive);
+		addEventOutput (kRowMidiNames[row], 1, BusTypes::kMain, BusInfo::kDefaultActive);
 
 	for (int slot = 0; slot < kSlotCount; ++slot)
 		mLiveClips[slot].store (nullptr, std::memory_order_relaxed);
@@ -611,23 +618,17 @@ void Project6Processor::flushMidi (ProcessData& data, double blockStartPpq, doub
 			event.noteOff.noteId   = -1;
 		}
 
-		// TWICE: once on the merged bus and once on the row's own. The
-		// merged one is what makes the rows reachable in a host that
-		// shows a plug-in only its first event output - which is most of
-		// them, and every AU wrapper.
-		event.busIndex = 0;
-		const tresult merged = out->addEvent (event);
+		// ONCE, on this row's bus. See initialize() for why this used to
+		// be twice and why it must not be.
+		event.busIndex = pending.row;
+		const tresult sent = out->addEvent (event);
 
-		event.busIndex = 1 + pending.row;
-		const tresult perRow = out->addEvent (event);
-
-		logMidi ("   +%-6d %-4s %-4d v%-4d ch%-3d ppq %.5f  %s%s\n",
+		logMidi ("   +%-6d %-4s %-4d v%-4d ch%-3d bus%-2d ppq %.5f  %s\n",
 		         pending.event.sampleOffset, pending.event.noteOn ? "ON" : "off",
 		         static_cast<int> (pending.event.note),
 		         static_cast<int> (pending.event.velocity),
-		         midiChannelForRow (pending.row) + 1, event.ppqPosition,
-		         merged == kResultOk ? "bus0 " : "bus0-REFUSED ",
-		         perRow == kResultOk ? "busN" : "busN-REFUSED");
+		         midiChannelForRow (pending.row) + 1, pending.row, event.ppqPosition,
+		         sent == kResultOk ? "ok" : "REFUSED");
 	}
 
 	mMidiQueued = 0;
