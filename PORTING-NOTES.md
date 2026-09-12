@@ -18,6 +18,52 @@ processing loop.
 
 ---
 
+## 0a. OPEN: the AU build sends no MIDI in Reaper at all
+
+Reported 12 Sep, against the build made from `5eb1e2e`. Two Reaper projects,
+same `.mid`, same routing: **the VST3 sends MIDI, the AU sends none.** Not a
+drop-out — nothing at any point. The same AU plays MIDI in Logic Pro.
+
+**Eliminated by reading, not guessing:**
+
+* *The host asked before the wrapper knew.* `midiOutCount` is assigned in
+  `AUWrapper::ctor()`, not `Initialize()`, so
+  `kAudioUnitProperty_MIDIOutputCallbackInfo` is answered from the moment the
+  AU is instantiated. Not it.
+* *The wrapper was built without MIDI output.* `strings` on
+  `Project6.component/Contents/MacOS/Project6` finds `MIDI Callback`,
+  `error calling midiOutputCallback: %d` and the whole
+  `MIDIOutputCallbackHelper` symbol set, in both slices. It is there.
+* *A stale bundle.* Both bundles are dated 18:36, three minutes after
+  `5eb1e2e`. Current.
+* *Eight event buses confusing the wrapper.* `processOutputEvents` ignores
+  `busIndex` entirely and `MIDIOutputCallbackInfo` returns an array of one
+  name whatever `midiOutCount` is. Nothing there depends on the count beyond
+  `> 0`.
+
+**What is left, and it is two things the log separates in one capture:**
+
+1. **The plug-in emits nothing**, because the AU wrapper's whole transport
+   comes from AU host callbacks — `updateProcessContext` zeroes the context
+   each block and ORs in `kPlaying`, `kTempoValid`, `kProjectTimeMusicValid`
+   and `kTimeSigValid` only as `CallHostTransportState`,
+   `CallHostBeatAndTempo` and `CallHostMusicalTimeLocation` succeed. Any of
+   those failing under Reaper gives `play0` or `musical0`, and `renderMidi`
+   returns before emitting anything. An audio pad would still play, because
+   without a context it launches at once — which is exactly the asymmetry
+   reported.
+2. **The plug-in emits and the wrapper drops it**, because Reaper never set
+   `kAudioUnitProperty_MIDIOutputCallback`, so
+   `MIDIOutputCallbackHelper::fireAtTimeStamp` finds a null callback and
+   discards the packet list.
+
+The block header tells them apart: `ctx1 play0 musical0` is (1), a header with
+`play1 musical1` followed by `+N ON ... ok` lines is (2).
+
+**The log grew the line that made this ambiguous.** `flushMidi` returned
+silently when `data.outputEvents` was null, which logged identically to having
+nothing to send. It now says which.
+
 ## 0. OPEN: MIDI goes silent at a transport loop point
 
 **NOT FIXED. NOT CONFIRMED FIXED. Do not close this without a test that

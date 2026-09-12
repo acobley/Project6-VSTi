@@ -552,6 +552,15 @@ void Project6Processor::flushMidi (ProcessData& data, double blockStartPpq, doub
 		return;
 
 	IEventList* out = data.outputEvents;
+
+	// THE BLIND SPOT THIS LOG USED TO HAVE. A host that hands us no event
+	// list at all produced EXACTLY the same log as a plug-in that emitted
+	// nothing: silence either way, and no way to tell "we had nothing to
+	// say" from "we said it into a hole". Written before the early return,
+	// so the hole is what the log shows.
+	logMidi ("   flush %d queued, event list %s\n", mMidiQueued,
+	         out != nullptr ? "present" : "ABSENT - THE HOST GAVE US NOWHERE TO PUT THEM");
+
 	if (out == nullptr)
 	{
 		mMidiQueued = 0;
