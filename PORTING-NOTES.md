@@ -202,6 +202,14 @@ conversion, the envelope, the bar arithmetic in five time signatures, the
 parameter blocks' bounds, and the *measured pitch* out of both fit modes — is
 asserted rather than assumed.
 
+**The AU has now run.** Logic Pro is AU-only, so loading Project6 there
+exercises Steinberg's wrapper for the first time: nine audio buses built as AU
+elements, and MIDI out through `kAudioUnitProperty_MIDIOutputCallback`. It
+loaded and played a MIDI pad into a synth through a looping transport. That
+closes the longest-standing unknown in this file — though it is a report from
+one session, not a validator run, and `auval` is still the thing that says so
+properly.
+
 **Still to do on a Mac**, in this order:
 
 ```sh
