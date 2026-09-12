@@ -8,6 +8,9 @@
 
 #include "Project6Params.h"
 
+// For kMaxTransposeSemitones: how far two octaves is, stated once.
+#include "Project6Midi.h"
+
 #include <map>
 #include <string>
 #include <vector>
@@ -86,6 +89,28 @@ const ParamDef& slotLoopDef ()
 	static const ParamDef def =
 		{ kSlotLoopBase, "Slot Loop", "", ParamType::Bool,
 		  0.0, 1.0, 1.0, 0.0, 1.0, 1, false };
+	return def;
+}
+
+//------------------------------------------------------------------------
+const ParamDef& slotTransposeDef ()
+{
+	// FORTY-NINE STEPS, from -24 to +24, so every semitone is reachable
+	// from a host's own control and the middle one is exactly zero. An
+	// EVEN step count over a symmetric range is what puts a step on
+	// zero; fifty would straddle it and a pad could not be returned to
+	// its own pitch without typing.
+	//
+	// kMaxTransposeSemitones is Project6Midi.h's, so the panel, the
+	// parameter and the voice cannot come to different views about how
+	// far two octaves is.
+	static const ParamDef def =
+		{ kSlotTransposeBase, "Slot Transpose", "semitones", ParamType::Int,
+		  -static_cast<double> (kMaxTransposeSemitones),
+		   static_cast<double> (kMaxTransposeSemitones), 0.0,
+		  -static_cast<double> (kMaxTransposeSemitones),
+		   static_cast<double> (kMaxTransposeSemitones),
+		  2 * kMaxTransposeSemitones, false };
 	return def;
 }
 
@@ -222,11 +247,12 @@ const std::vector<std::string>& rowNames ()
 //------------------------------------------------------------------------
 static_assert (kNumTableParams == 1, "one described parameter: the output trim");
 static_assert (kNumParams == kNumTableParams + kSlotCount + 3 + kSlotCount + kSlotCount
-                                 + kSlotRows + kSlotCount + kSlotCount + 1 + kSlotCount,
+                                 + kSlotRows + kSlotCount + kSlotCount + 1 + kSlotCount
+                                 + kSlotCount,
                "the trim, 64 triggers, the transport, the bar phase, the beats per "
                "bar, 64 published slot states, 64 slot levels, 8 row levels, 64 "
-               "launch divisions, 64 tempo fits, the published tempo and 64 loop "
-               "switches is every parameter there is");
+               "launch divisions, 64 tempo fits, the published tempo, 64 loop "
+               "switches and 64 MIDI transposes is every parameter there is");
 // THE APPEND THE BOUND WAS WRITTEN FOR. The published block now sits
 // after the triggers, so isSlotPlayParam's upper bound is load-bearing
 // rather than merely careful.
@@ -257,7 +283,20 @@ static_assert (kLiveTempo == kSlotFitEnd, "the published tempo is what follows t
 static_assert (kLiveTempo + 1 < kNumParams, "and the loop switches follow it");
 static_assert (kSlotLoopBase == kLiveTempo + 1,
                "the loop switches start where the published tempo ends");
-static_assert (kSlotLoopEnd == kNumParams, "and currently run to the end");
+static_assert (kSlotLoopEnd < kNumParams,
+               "the transposes follow the loop switches, so isSlotLoopParam must "
+               "be bounded by kSlotLoopEnd and never by kNumParams");
+static_assert (kSlotTransposeBase == kSlotLoopEnd,
+               "the transposes start where the loop switches end");
+static_assert (kSlotTransposeEnd == kNumParams, "and currently run to the end");
+static_assert (! isSlotLoopParam (slotTransposeParam (0)),
+               "a transpose is not a loop switch");
+static_assert (! isLiveParam (slotTransposeParam (0)), "nor a published value");
+static_assert (! isSlotPlayParam (slotTransposeParam (0)), "nor a trigger");
+static_assert (slotOfTransposeParam (slotTransposeParam (63)) == 63,
+               "the two directions agree");
+static_assert (isSlotTransposeParam (slotTransposeParam (kSlotCount - 1)),
+               "the last one is in the block");
 static_assert (! isLiveParam (slotLoopParam (0)),
                "a loop switch is not a published value");
 static_assert (! isSlotFitParam (slotLoopParam (0)), "nor a tempo fit");
@@ -335,6 +374,8 @@ const ParamDef& paramDef (Steinberg::Vst::ParamID id)
 		return liveTempoDef ();
 	if (isSlotLoopParam (id))
 		return slotLoopDef ();
+	if (isSlotTransposeParam (id))
+		return slotTransposeDef ();
 
 	return kParams[kOutputTrim];
 }
@@ -370,6 +411,10 @@ const char* paramTitle (Steinberg::Vst::ParamID id)
 	if (isSlotLoopParam (id))
 		return slotNames ("Loop")[
 			static_cast<std::size_t> (slotOfLoopParam (id))].c_str ();
+
+	if (isSlotTransposeParam (id))
+		return slotNames ("Transpose")[
+			static_cast<std::size_t> (slotOfTransposeParam (id))].c_str ();
 
 	if (id == kLiveTransport)
 		return liveTransportDef ().title;

@@ -1358,6 +1358,15 @@ tresult PLUGIN_API Project6Processor::process (ProcessData& data)
 		// holds either kind of file and the MIDI side needs it too.
 		mLoop[slot] = mParams[slotLoopParam (slot)] >= 0.5;
 		mDsp.setSlotLoop (slot, mLoop[slot]);
+
+		// And how far this pad's MIDI is moved. Pushed every block, into
+		// the voice rather than the DSP, because the voice is what turns
+		// a clip into events - and the voice only ADOPTS it at the top
+		// of a rendered block, after flushing whatever it has sounding,
+		// so setting it sixty-four times a block is free and changing it
+		// mid-note is impossible. See MidiVoice::setTranspose.
+		mMidiVoices[slot].setTranspose (static_cast<int> (
+			slotTransposeDef ().toInternal (mParams[slotTransposeParam (slot)])));
 	}
 
 	// And the eight row buses, the same way.
@@ -1597,6 +1606,7 @@ tresult PLUGIN_API Project6Processor::getState (IBStream* state)
 	writeValueBlock (streamer, &mParams[kSlotDivisionBase], kSlotCount);
 	writeValueBlock (streamer, &mParams[kSlotFitBase], kSlotCount);
 	writeValueBlock (streamer, &mParams[kSlotLoopBase], kSlotCount);
+	writeValueBlock (streamer, &mParams[kSlotTransposeBase], kSlotCount);
 
 	return kResultOk;
 }
@@ -1661,6 +1671,8 @@ tresult PLUGIN_API Project6Processor::setState (IBStream* state)
 	                slotFitDef ().defaultNormalized ());
 	readValueBlock (streamer, &mParams[kSlotLoopBase], kSlotCount,
 	                slotLoopDef ().defaultNormalized ());
+	readValueBlock (streamer, &mParams[kSlotTransposeBase], kSlotCount,
+	                slotTransposeDef ().defaultNormalized ());
 
 	// The paths are back; now read the files. setState is not the audio
 	// thread, so this is where sixty-four disk reads belong - and a slot

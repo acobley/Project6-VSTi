@@ -345,6 +345,23 @@ bool PLUGIN_API Project6Editor::open (void* parent, const PlatformType& platform
 			mLevels[index] = level;
 			frame->addView (level);
 
+			// AND THE TRANSPOSE, IN THE SAME RECTANGLE. The two are never
+			// both shown - a pad holds a wav or a mid - so the strip
+			// under a cell keeps its shape and the window keeps its
+			// width. refreshSlots is what swaps them, on the same pass
+			// that tells the pad which kind it is.
+			auto* transpose = new SpySlotTranspose (
+				levelCell (column, row), this,
+				static_cast<int32_t> (slotTransposeParam (index)), index);
+
+			mControls[slotTransposeParam (index)] = transpose;
+			if (mController)
+				showValue (transpose,
+				           mController->getParamNormalized (slotTransposeParam (index)));
+
+			mTransposes[index] = transpose;
+			frame->addView (transpose);
+
 			// And the box beside it, saying which grid line this pad
 			// waits for. Its own parameter, so a host can automate a
 			// pad's quantisation like everything else here.
@@ -590,8 +607,23 @@ void Project6Editor::refreshSlots ()
 		const SlotFileKind kind = mController->slotKind (index);
 		mSlots[index]->setKind (kind);
 
+		// ONE RECTANGLE, TWO CONTROLS, and exactly one of them visible.
+		// A MIDI pad has no audio for a level to scale and an audio pad
+		// has no notes to move, so showing both would mean showing one
+		// that does nothing - which is the failure this panel keeps
+		// coming back to. Hidden rather than dimmed because they are in
+		// the same place and would otherwise be drawn on top of each
+		// other.
+		const bool midi = (kind == SlotFileKind::Midi);
+
 		if (mLevels[index])
-			mLevels[index]->setApplies (kind != SlotFileKind::Midi);
+		{
+			mLevels[index]->setApplies (!midi);
+			mLevels[index]->setVisible (!midi);
+		}
+
+		if (mTransposes[index])
+			mTransposes[index]->setVisible (midi);
 
 		refreshFit (index);
 	}

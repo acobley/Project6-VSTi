@@ -150,7 +150,7 @@ def main():
      declick, smoothing,
      fit_modes, fit_min, fit_max,
      bpm_min, bpm_max,
-     max_quarters, max_notes) = require(
+     max_quarters, max_notes, max_transpose) = require(
         values,
         'kSlotColumns', 'kSlotRows', 'kSlotCount',
         'kSlotLevelMinDb', 'kSlotLevelMaxDb', 'kSlotLevelDefaultDb',
@@ -159,9 +159,9 @@ def main():
         'kVoiceDeclickSeconds', 'kTrimSmoothingSeconds',
         'kFitModeCount', 'kMinFitSpeed', 'kMaxFitSpeed',
         'kMinInferredBpm', 'kMaxInferredBpm',
-        'kMaxMidiQuarters', 'kMaxMidiNotes')
+        'kMaxMidiQuarters', 'kMaxMidiNotes', 'kMaxTransposeSemitones')
 
-    W, H = 1620, 1520
+    W, H = 1620, 1548
     image = Image.new('RGB', (W, H), WHITE)
     draw = ImageDraw.Draw(image)
 
@@ -378,8 +378,11 @@ def main():
         'no fit', f_body, sub='notes are musical', subfnt=f_tiny)
     arrow(draw, fit_x1, my + mh / 2, lvl_x0 - 2, my + mh / 2)
 
-    box(draw, (lvl_x0, my, lvl_x1, my + mh), BOX_FILL, (170, 170, 175),
-        'no level', f_body, sub='nothing to scale', subfnt=f_tiny)
+    # THE LEVEL BAR'S PLACE, on the panel as well as on this diagram: a
+    # MIDI pad shows a transpose where an audio pad shows its level, and
+    # the two are never both visible.
+    box(draw, (lvl_x0, my, lvl_x1, my + mh), (232, 228, 244), (140, 120, 170),
+        'transpose', f_body, sub='±%d semitones' % max_transpose, subfnt=f_tiny)
     arrow(draw, lvl_x1, my + mh / 2, rowlvl_x0 - 2, my + mh / 2)
 
     box(draw, (rowlvl_x0, my, rowlvl_x1, my + mh), (222, 236, 226), BUS_EDGE,
@@ -412,6 +415,10 @@ def main():
                         'at the project’s tempo by construction and needs no fitting.'),
         ('Notes only',  'No CC, no program change, nothing with state to unwind. Anything '
                         'running past the loop end is cut off there.'),
+        ('Transpose',   '±%d semitones per pad, in the level bar’s place — a MIDI pad has no '
+                        'level, an audio pad has no transpose.' % max_transpose),
+        ('',            'EVERY note moves by the same interval: a pattern moved, not a key '
+                        'change. One pushed outside 0–127 is dropped, not clamped.'),
         ('Caps',        'At most %.0f quarter notes and %d notes per file; formats 0 and 1, '
                         'ticks-per-quarter division only.' % (max_quarters, max_notes)),
         ('Transport',   'A MIDI pad needs the host’s TEMPO and POSITION — without them there '

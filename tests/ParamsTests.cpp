@@ -26,6 +26,9 @@
 
 #include "Project6Params.h"
 
+// For kMaxTransposeSemitones.
+#include "Project6Midi.h"
+
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -678,7 +681,9 @@ int main ()
 	{
 		check (kSlotLoopBase == kLiveTempo + 1, "it starts after the published tempo");
 		check (kSlotLoopEnd - kSlotLoopBase == kSlotCount, "one per slot");
-		check (kSlotLoopEnd == kNumParams, "and currently runs to the end");
+		check (kSlotLoopEnd < kNumParams, "and something follows it");
+		check (kSlotLoopEnd == kSlotTransposeBase,
+		       "namely the MIDI transposes");
 
 		bool roundTrips = true, classified = true, notOthers = true;
 		for (int slot = 0; slot < kSlotCount; ++slot)
@@ -733,6 +738,104 @@ int main ()
 		for (int slot = 0; slot < kSlotCount; ++slot)
 			routed &= (&paramDef (slotLoopParam (slot)) == &slotLoopDef ());
 		check (routed, "paramDef routes every one of the 64 to the loop definition");
+	}
+
+	//--------------------------------------------------------------------
+	section ("15. The MIDI transpose block");
+	//--------------------------------------------------------------------
+	{
+		check (kSlotTransposeBase == kSlotLoopEnd,
+		       "it starts where the loop switches end");
+		check (kSlotTransposeEnd - kSlotTransposeBase == kSlotCount, "one per slot");
+		check (kSlotTransposeEnd == kNumParams, "and currently runs to the end");
+
+		bool roundTrips = true, classified = true, notOthers = true;
+		for (int slot = 0; slot < kSlotCount; ++slot)
+		{
+			const ParamID id = slotTransposeParam (slot);
+			roundTrips &= (slotOfTransposeParam (id) == slot);
+			classified &= isSlotTransposeParam (id);
+			notOthers  &= ! isSlotLoopParam (id) && ! isSlotFitParam (id)
+			              && ! isSlotDivisionParam (id) && ! isSlotLevelParam (id)
+			              && ! isRowLevelParam (id) && ! isSlotPlayParam (id)
+			              && ! isLiveParam (id);
+		}
+		check (roundTrips, "slot -> transpose id -> slot round-trips for all 64");
+		check (classified, "and all 64 are classified as transposes");
+		check (notOthers, "NEGATIVE CONTROL: and none of them as anything else");
+
+		const ParamDef& tr = slotTransposeDef ();
+		check (tr.type == ParamType::Int, "it is an integer parameter");
+		check (tr.plainMin == -static_cast<double> (kMaxTransposeSemitones),
+		       "two octaves down");
+		check (tr.plainMax ==  static_cast<double> (kMaxTransposeSemitones),
+		       "two octaves up");
+		check (tr.stepCount == 2 * kMaxTransposeSemitones,
+		       "with one step per semitone");
+
+		// THE DEFAULT IS ZERO, so a project saved before this parameter
+		// existed reopens sounding exactly as it did.
+		check (tr.plainDefault == 0.0, "and it defaults to no transposition");
+		check (tr.toInternal (tr.defaultNormalized ()) == 0.0,
+		       "which survives the normalised round trip");
+
+		// EVERY SEMITONE IS REACHABLE, and lands on itself. This is the
+		// test that the rounding in toInternal is right for a range that
+		// goes NEGATIVE: `(long) (v + 0.5)` truncates towards zero, so
+		// -24 came back as -23 and the bottom of the range could never
+		// be reached.
+		bool exact = true;
+		int distinct = 0;
+		double previous = -1e9;
+		for (int semitone = -kMaxTransposeSemitones; semitone <= kMaxTransposeSemitones;
+		     ++semitone)
+		{
+			const double normalized = tr.toNormalized (static_cast<double> (semitone));
+			const double back = tr.toInternal (normalized);
+			exact &= (back == static_cast<double> (semitone));
+			if (back != previous)
+			{
+				++distinct;
+				previous = back;
+			}
+		}
+		check (exact, "all 49 semitones round-trip through normalised exactly");
+		check (distinct == 2 * kMaxTransposeSemitones + 1,
+		       "and all 49 are distinct - none collapses onto its neighbour");
+
+		check (tr.toInternal (0.0) == -static_cast<double> (kMaxTransposeSemitones),
+		       "normalised 0 is the bottom of the range");
+		check (tr.toInternal (1.0) ==  static_cast<double> (kMaxTransposeSemitones),
+		       "and normalised 1 is the top");
+		check (tr.toInternal (0.5) == 0.0, "with zero exactly in the middle");
+
+		// NEGATIVE CONTROL on the rounding fix: every range that existed
+		// before this one starts at zero, and must be unchanged by it.
+		check (slotDivisionDef ().toInternal (0.0) == 0.0,
+		       "NEGATIVE CONTROL: the launch divisions still start at 0");
+		check (slotFitDef ().toInternal (1.0)
+		           == static_cast<double> (kFitModeCount - 1),
+		       "and the tempo fits still end where they did");
+
+		check (std::string (paramTitle (slotTransposeParam (0)))  == "Slot A1 Transpose",
+		       "a transpose is named for its cell");
+		check (std::string (paramTitle (slotTransposeParam (63))) == "Slot H8 Transpose",
+		       "at both ends");
+		check (std::string (paramTitle (slotTransposeParam (0)))
+		           != std::string (paramTitle (slotLoopParam (0))),
+		       "and is not the same name as its loop switch");
+
+		// NEVER NULL, because RangeParameter dereferences both without a
+		// check and the symptom is the VALIDATOR segfaulting.
+		check (tr.title != nullptr && tr.units != nullptr,
+		       "its title and units are not null");
+
+		bool routedTranspose = true;
+		for (int slot = 0; slot < kSlotCount; ++slot)
+			routedTranspose &= (&paramDef (slotTransposeParam (slot))
+			                        == &slotTransposeDef ());
+		check (routedTranspose,
+		       "paramDef routes every one of the 64 to the transpose definition");
 	}
 
 	//--------------------------------------------------------------------

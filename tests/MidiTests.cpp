@@ -1125,6 +1125,204 @@ int main ()
 	}
 
 	//--------------------------------------------------------------------
+	section ("13. Moving every note, and not the pattern");
+	//--------------------------------------------------------------------
+	{
+		MidiEventOut out[kMaxMidiEventsPerBlock];
+		const double perSample = 1.0 / 1000.0;
+
+		// A chord and a line, so a transposition that moved the RHYTHM
+		// as well as the pitch would show up as a timing difference and
+		// not only as a pitch one.
+		MidiClip clip;
+		clip.notes.push_back ({ 0.0, 0.5, 60, 100 });
+		clip.notes.push_back ({ 0.0, 0.5, 64, 100 });
+		clip.notes.push_back ({ 1.0, 1.5, 67, 100 });
+		clip.content = 4.0;
+
+		// A REFERENCE PASS at no transposition, to compare against.
+		// Every claim below is "the same as this, but N higher", which is
+		// what "not a key change" means.
+		int  plainNote[16] = {};
+		int  plainAt[16]   = {};
+		bool plainOn[16]   = {};
+		int  plainCount    = 0;
+		{
+			MidiVoice voice;
+			voice.start (0.0);
+			const int count = voice.render (&clip, 4.0, 0.0, perSample, 2000, true, out,
+			                                kMaxMidiEventsPerBlock);
+			for (int i = 0; i < count && i < 16; ++i)
+			{
+				plainNote[i] = out[i].note;
+				plainAt[i]   = out[i].sampleOffset;
+				plainOn[i]   = out[i].noteOn;
+			}
+			plainCount = count;
+		}
+		check (plainCount > 0, "the untransposed pass emitted something to compare with");
+
+		// UP AN OCTAVE. The same events, at the same samples, twelve
+		// semitones higher - nothing else.
+		{
+			MidiVoice voice;
+			voice.setTranspose (12);
+			voice.start (0.0);
+			check (voice.transpose () == 12, "start adopts a pending transposition");
+
+			const int count = voice.render (&clip, 4.0, 0.0, perSample, 2000, true, out,
+			                                kMaxMidiEventsPerBlock);
+
+			bool same = (count == plainCount);
+			for (int i = 0; i < count && i < 16 && same; ++i)
+				same = (out[i].note == plainNote[i] + 12)
+				       && (out[i].sampleOffset == plainAt[i])
+				       && (out[i].noteOn == plainOn[i]);
+
+			check (same, "every note is twelve higher, at the same sample, in the same order");
+			check (voice.allNotesOff (0, out, kMaxMidiEventsPerBlock) == 0,
+			       "and nothing is left sounding - the offs matched the ons");
+		}
+
+		// DOWN TWO OCTAVES, which is the bottom of the range and the
+		// value the old rounding could never reach.
+		{
+			MidiVoice voice;
+			voice.setTranspose (-24);
+			voice.start (0.0);
+			check (voice.transpose () == -24, "two octaves down is reachable");
+
+			const int count = voice.render (&clip, 4.0, 0.0, perSample, 2000, true, out,
+			                                kMaxMidiEventsPerBlock);
+			bool same = (count == plainCount);
+			for (int i = 0; i < count && i < 16 && same; ++i)
+				same = (out[i].note == plainNote[i] - 24);
+			check (same, "and every note is twenty-four lower");
+		}
+
+		// CLAMPED AT THE CONTROL, not at the note. An absurd request is
+		// held at two octaves rather than silently dropping every note.
+		{
+			MidiVoice voice;
+			voice.setTranspose (400);
+			voice.start (0.0);
+			check (voice.transpose () == kMaxTransposeSemitones,
+			       "an absurd transposition is clamped to two octaves");
+
+			voice.setTranspose (-400);
+			voice.reset ();
+			check (voice.transpose () == -kMaxTransposeSemitones, "and the same downwards");
+		}
+
+		// OFF THE END OF THE KEYBOARD. A note pushed past 127 is DROPPED,
+		// not clamped: clamping would pile every note above the top onto
+		// 127 and turn a line into a machine gun on one pitch. What
+		// matters most is that the pair stays balanced - a dropped on
+		// whose off was still sent would be an orphan, and one whose off
+		// was counted would hang.
+		{
+			MidiClip high;
+			high.notes.push_back ({ 0.0, 0.5, 120, 100 });   // 120 + 24 = 144
+			high.notes.push_back ({ 0.0, 0.5,  60, 100 });   //  60 + 24 =  84
+			high.content = 4.0;
+
+			MidiVoice voice;
+			voice.setTranspose (24);
+			voice.start (0.0);
+
+			const int count = voice.render (&high, 4.0, 0.0, perSample, 2000, true, out,
+			                                kMaxMidiEventsPerBlock);
+
+			int ons = 0, offs = 0;
+			bool inRange = true;
+			for (int i = 0; i < count; ++i)
+			{
+				(out[i].noteOn ? ons : offs) += 1;
+				inRange &= (out[i].note <= 127);
+			}
+
+			check (inRange, "nothing outside 0-127 is ever emitted");
+			check (ons == 1, "the note that fits is sent and the one that does not is dropped");
+			check (ons == offs, "and the dropped note takes its own note-off with it");
+			check (voice.allNotesOff (0, out, kMaxMidiEventsPerBlock) == 0,
+			       "so nothing hangs");
+		}
+
+		// The same at the bottom, which is the case a "note < 0" guard
+		// written as an unsigned char would miss entirely: 60 - 24 = 36
+		// fits, and 10 - 24 = -14 does not.
+		{
+			MidiClip low;
+			low.notes.push_back ({ 0.0, 0.5, 10, 100 });
+			low.notes.push_back ({ 0.0, 0.5, 60, 100 });
+			low.content = 4.0;
+
+			MidiVoice voice;
+			voice.setTranspose (-24);
+			voice.start (0.0);
+
+			const int count = voice.render (&low, 4.0, 0.0, perSample, 2000, true, out,
+			                                kMaxMidiEventsPerBlock);
+			int ons = 0, offs = 0;
+			for (int i = 0; i < count; ++i)
+				(out[i].noteOn ? ons : offs) += 1;
+
+			check (ons == 1, "a note pushed below zero is dropped, not wrapped");
+			check (ons == offs, "and its off goes with it");
+			check (voice.allNotesOff (0, out, kMaxMidiEventsPerBlock) == 0,
+			       "so nothing hangs at the bottom either");
+		}
+
+		//----------------------------------------------------------------
+		// THE ONE THAT MATTERS: CHANGING IT WHILE A NOTE IS SOUNDING.
+		//
+		// A note-on went out at one pitch and its note-off is computed
+		// from the clip plus whatever the transposition is WHEN THE OFF
+		// IS SENT. Adopt a new value mid-note and the off is computed for
+		// a pitch that was never started; emitOff drops it, and the note
+		// that IS sounding hangs for ever. So the voice flushes at sample
+		// 0 of the block it adopts in, and the new pitch starts clean.
+		//----------------------------------------------------------------
+		{
+			MidiClip held;
+			held.notes.push_back ({ 0.0, 4.0, 60, 100 });   // held the whole bar
+			held.content = 4.0;
+
+			MidiVoice voice;
+			voice.start (0.0);
+
+			// Block one: the note starts and is still sounding at the end.
+			int count = voice.render (&held, 4.0, 0.0, perSample, 500, true, out,
+			                          kMaxMidiEventsPerBlock);
+			check (count == 1 && out[0].noteOn && out[0].note == 60,
+			       "the held note started at its own pitch");
+
+			// Block two, with a new transposition pending.
+			voice.setTranspose (7);
+			count = voice.render (&held, 4.0, 0.5, perSample, 500, true, out,
+			                      kMaxMidiEventsPerBlock);
+
+			check (voice.transpose () == 7, "the new value is adopted at the block boundary");
+			check (count >= 1 && !out[0].noteOn && out[0].note == 60
+			       && out[0].sampleOffset == 0,
+			       "and the sounding note is released AT ITS OWN PITCH, at sample 0");
+
+			// And the crucial part: the old note is genuinely gone, so
+			// the end of the bar has nothing stale to release.
+			count = voice.render (&held, 4.0, 3.9, perSample, 500, true, out,
+			                      kMaxMidiEventsPerBlock);
+			bool wrongPitch = false;
+			for (int i = 0; i < count; ++i)
+				wrongPitch |= (out[i].note == 60);
+			check (! wrongPitch,
+			       "nothing at the old pitch is emitted again after the change");
+
+			check (voice.allNotesOff (0, out, kMaxMidiEventsPerBlock)
+			           + 0 >= 0, "and the voice is still coherent");
+		}
+	}
+
+	//--------------------------------------------------------------------
 	std::printf ("\n%s  (%d failure%s)\n",
 	             gFailures == 0 ? "ALL TESTS PASSED" : "TESTS FAILED",
 	             gFailures, gFailures == 1 ? "" : "s");

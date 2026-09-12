@@ -1660,7 +1660,82 @@ Loop, as specified, for every file.
 Stream **version 7**: a fifth value block, through the same
 `writeValueBlock`/`readValueBlock` the other four use.
 
-## 15. The SDK
+## 15. Moving a MIDI pad's notes
+
+Two octaves either way, per pad, as `kSlotTransposeBase` — 64 more appended
+ids, `ParamType::Int`, −24 to +24 semitones, 49 steps, default 0. **Not a key
+change**: every note moves by the same interval, so the pattern is the pattern
+and only its pitch differs.
+
+### It lives in the level bar's rectangle
+
+`kSlotWidth` is spoken for three times over — the bar, the launch division, the
+tempo fit, the loop switch — and a hundred and twelve pixels times eight
+columns is the width of the window. So `SpySlotTranspose` is built at exactly
+`levelCell(column, row)` and `refreshSlots` shows **one or the other**: the
+level on an audio pad, the transpose on a MIDI one. The level was already dead
+on a MIDI pad and the transpose is dead on an audio one, so nothing that does
+nothing is ever on screen, and the strip under a cell keeps its shape.
+
+It is centre-zero, drawn from the middle outwards, with the signed number
+lettered over the bar — three pixels per semitone on a drag, one semitone per
+wheel click, twelve with shift, and a **double click returns the pad to its own
+pitch**, which is the one value a three-pixel drag is least likely to land on
+by hand.
+
+### The change is adopted at a block boundary, never mid-note
+
+This is the whole of why `MidiVoice` has a *pending* transposition as well as a
+current one.
+
+A note-on goes out at one pitch. Its note-off is computed later, from the clip
+plus **whatever the transposition is when the off is sent**. Change it while a
+note is sounding and the off is computed for a pitch that was never started —
+`emitOff`'s "nothing sounding, nothing to stop" guard drops it, and the note
+that *is* sounding hangs for ever. On a sustaining synth that is a drone
+nothing but a transport stop will clear, which is the same failure mode as §13
+and was worth not shipping twice.
+
+So `setTranspose` only ever writes `mPendingTranspose`, and `render` adopts it
+at the top of a block, **after flushing everything sounding at sample 0** — and
+only if that flush actually emptied the voice, because a full event buffer
+leaves notes held at the old pitch and taking the new value then would strand
+them. A change therefore costs one re-attack of whatever was held, which is
+what moving a pattern's pitch sounds like anyway.
+
+`reset()` and `start()` adopt immediately: nothing is sounding, so there is
+nothing to strand.
+
+### The pitch is an `int`, and out of range is DROPPED
+
+`emitOn` and `emitOff` now take `int` rather than `unsigned char`, because the
+sum can be negative and `unsigned char` would wrap 10 − 24 into 246 — a note at
+the wrong end of the keyboard rather than no note at all. The arithmetic is
+done **once**, by the caller, as `sent = note.note + mTranspose`, and the same
+`sent` is passed to both halves of the pair: `mSounding`, `mOffAt` and the
+boundary flush are all indexed by what actually went out, so a note is always
+stopped at the pitch it was started at.
+
+Out of 0–127 it is **dropped, not clamped**. Clamping would pile every note
+below the bottom onto note 0 and turn a transposed bass line into a machine gun
+on one pitch. A dropped on is never counted as sounding, so its off is dropped
+by the same test and the pair stays balanced — MidiTests §13 asserts exactly
+that at both ends of the keyboard.
+
+### A rounding bug this uncovered
+
+`ParamDef::toInternal` rounded with `static_cast<long>(v + 0.5)`. A cast
+truncates **towards zero**, so −23.5 became −23: the transpose could never
+reach −24, and the bottom two steps collapsed onto one. Every range that
+existed before this one starts at zero, which is why the old form was right for
+all of them and wrong the moment one did not. It now rounds away from zero,
+with ParamsTests §15 checking all 49 semitones round-trip exactly and stay
+distinct, and negative controls that the launch divisions and tempo fits are
+unchanged.
+
+Stream **version 8**: a sixth value block, the same way as the other five.
+
+## 16. The SDK
 
 **In-tree clone**, chosen deliberately over pointing at a sibling project's
 checkout. The first `cmake` configure clones the VST3 SDK (~250 MB) into

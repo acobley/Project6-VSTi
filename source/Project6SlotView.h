@@ -293,13 +293,17 @@ public:
 	/** False on a MIDI pad, where there is no audio for a level to
 	    scale.
 
-	    THE BAR IS DIMMED RATHER THAN HIDDEN, and it still works: it is a
-	    real parameter, it is saved with the project, and it will do
-	    something the moment an audio file is dropped here. What it must
-	    not do is look live while doing nothing, which is the failure this
-	    project keeps coming back to. A bar that vanished would also make
-	    the strip under a MIDI pad a different shape from every other
-	    strip, which is a worse way to say the same thing. */
+	    THE BAR IS ALSO HIDDEN THERE, by the editor, because
+	    SpySlotTranspose now occupies this same rectangle on a MIDI pad -
+	    the strip keeps its shape, but what fills it depends on what the
+	    pad holds. The dimming stays for the moment between the two and
+	    for any future state where the bar is shown without applying: a
+	    control must never look live while doing nothing, which is the
+	    failure this project keeps coming back to.
+
+	    The parameter itself is untouched either way - real, saved with
+	    the project, and doing something again the moment an audio file is
+	    dropped here. */
 	void setApplies (bool applies);
 
 	void draw (VSTGUI::CDrawContext* context) override;
@@ -317,6 +321,67 @@ private:
 	bool mApplies = true;
 	bool mDragging = false;
 	VSTGUI::CPoint mLastPoint;
+};
+
+//------------------------------------------------------------------------
+/** The MIDI transpose control, IN THE LEVEL BAR'S PLACE.
+
+    IT SHARES THE LEVEL BAR'S RECTANGLE and the two are never both shown:
+    a pad holds a wav or a mid, the level bar is dead on a MIDI pad and
+    this is dead on an audio one, so the strip under a cell stays exactly
+    the shape it was and the panel does not grow by a pixel. That is the
+    whole reason it lives here rather than in a fourth box: kSlotWidth is
+    already spoken for three times over, and a hundred and twelve pixels
+    times eight columns is the width of the window.
+
+    CENTRE-ZERO, AND IT SAYS THE NUMBER. The bar fills from the middle
+    outwards - right for up, left for down - so which way a pad has been
+    moved is readable without counting, and the semitones are lettered
+    over the top because "up a bit" is not something anybody wants to
+    guess at. Zero draws no fill at all, which is what makes an untouched
+    pad look untouched.
+
+    DRAGGED IN SEMITONES, NOT IN PERCENT. Unlike the level bar, whose
+    units are arbitrary and relative, every value here is a real musical
+    interval and all forty-nine of them matter; the drag law is therefore
+    pixels-per-semitone, so a drag lands on the semitone it looks like it
+    landed on. A shift-drag is finer, a wheel click is one semitone and a
+    double click returns the pad to its own pitch - which is the one
+    value a person will want back in a hurry. */
+class SpySlotTranspose : public VSTGUI::CControl
+{
+public:
+	SpySlotTranspose (const VSTGUI::CRect& size, VSTGUI::IControlListener* listener,
+	                  int32_t tag, int index);
+
+	int index () const { return mIndex; }
+
+	void draw (VSTGUI::CDrawContext* context) override;
+
+	void onMouseDownEvent (VSTGUI::MouseDownEvent& event) override;
+	void onMouseMoveEvent (VSTGUI::MouseMoveEvent& event) override;
+	void onMouseUpEvent (VSTGUI::MouseUpEvent& event) override;
+	void onMouseCancelEvent (VSTGUI::MouseCancelEvent& event) override;
+	void onMouseWheelEvent (VSTGUI::MouseWheelEvent& event) override;
+
+	CLASS_METHODS (SpySlotTranspose, VSTGUI::CControl)
+
+private:
+	/** The value as a person reads it: semitones, -24 to +24. The ONLY
+	    place the normalised form is turned into semitones or back, so the
+	    drawing and the dragging cannot come to different views about what
+	    a step is. */
+	int semitones () const;
+	void setSemitones (int value);
+
+	int mIndex = 0;
+	bool mDragging = false;
+	/** Where the drag started and what the value was there. ABSOLUTE from
+	    the start of the drag rather than accumulated per move, so a drag
+	    that wanders back to where it began ends on the value it began
+	    on. */
+	VSTGUI::CPoint mPressPoint;
+	int mPressSemitones = 0;
 };
 
 //------------------------------------------------------------------------

@@ -157,7 +157,25 @@ enum Param : Steinberg::Vst::ParamID
 	kSlotLoopBase = kLiveTempo + 1,
 	kSlotLoopEnd  = kSlotLoopBase + kSlotCount,
 
-	kNumParams = kSlotLoopEnd
+	/** MOVE THIS PAD'S MIDI, in semitones, up to two octaves either way.
+	    Zero by default, so a project saved before this parameter existed
+	    reopens sounding exactly as it did.
+
+	    APPENDED, like everything else, and one per SLOT rather than one
+	    per row: the eight pads in a row are eight different patterns and
+	    a transposition that moved all of them would be a transposition
+	    of the row's channel, which is the host's job and not this
+	    plug-in's.
+
+	    It exists for every slot, not only the MIDI ones, because a pad's
+	    kind changes when a file is dropped on it and a parameter that
+	    appeared and disappeared with the file would be a parameter a
+	    host could not keep an automation lane for. On an audio pad it is
+	    simply unused - and the panel hides it there. */
+	kSlotTransposeBase = kSlotLoopEnd,
+	kSlotTransposeEnd  = kSlotTransposeBase + kSlotCount,
+
+	kNumParams = kSlotTransposeEnd
 };
 
 /** What kLiveTransport carries. */
@@ -268,6 +286,25 @@ constexpr bool isSlotLoopParam (Steinberg::Vst::ParamID id)
 constexpr int slotOfLoopParam (Steinberg::Vst::ParamID id)
 {
 	return static_cast<int> (id - kSlotLoopBase);
+}
+
+//------------------------------------------------------------------------
+// The MIDI transpose block
+//------------------------------------------------------------------------
+
+constexpr Steinberg::Vst::ParamID slotTransposeParam (int slot)
+{
+	return static_cast<Steinberg::Vst::ParamID> (kSlotTransposeBase + slot);
+}
+
+constexpr bool isSlotTransposeParam (Steinberg::Vst::ParamID id)
+{
+	return id >= kSlotTransposeBase && id < kSlotTransposeEnd;
+}
+
+constexpr int slotOfTransposeParam (Steinberg::Vst::ParamID id)
+{
+	return static_cast<int> (id - kSlotTransposeBase);
 }
 
 //------------------------------------------------------------------------
@@ -402,7 +439,18 @@ struct ParamDef
 
 		const double v = internalMin + normalized * (internalMax - internalMin);
 		if (type == ParamType::Enum || type == ParamType::Int)
-			return static_cast<double> (static_cast<long> (v + 0.5));
+		{
+			// AWAY FROM ZERO, not `(long) (v + 0.5)`. A cast truncates
+			// TOWARDS zero, so -23.5 becomes -23 and a range that goes
+			// negative loses its bottom step entirely: the MIDI
+			// transpose could never reach -24. Every range that existed
+			// before this one starts at zero, which is why the old form
+			// was right for all of them and wrong the moment one did
+			// not. std::lround would do the same; this keeps the header
+			// free of <cmath>.
+			const double rounded = (v < 0.0) ? v - 0.5 : v + 0.5;
+			return static_cast<double> (static_cast<long> (rounded));
+		}
 		return v;
 	}
 
@@ -449,6 +497,13 @@ const ParamDef& slotFitDef ();
 /** The definition every loop switch shares: a two-state parameter reading
     "One-shot" and "Loop" in a host's own list, defaulting to Loop. */
 const ParamDef& slotLoopDef ();
+
+/** The definition every MIDI transpose shares: an integer in semitones
+    from -kMaxTransposeSemitones to +kMaxTransposeSemitones, zero by
+    default. Integer rather than enumerated because the host should show
+    "-12 semitones" and let a person type it, not offer forty-nine names
+    that are all numbers. */
+const ParamDef& slotTransposeDef ();
 
 /** The widest bar the panel will draw a grid for. Beyond it the grid is
     noise rather than information, and a host reporting something sillier

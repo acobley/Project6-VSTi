@@ -21,6 +21,15 @@ in time with each other. Press it again to stop them.
 Drag it the way the VocalFilter sliders drag — relative, not jump-to-pointer —
 and the pad above shows the value in decibels while you do.
 
+**A slot can hold a `.mid` instead of a `.wav`.** It loops the same way, on
+the same grid, and plays out of that row's **MIDI output** — row A on channel
+1 through row H on channel 8 — for a synth in the host to answer. A file that
+does not end on a bar line has its loop run out to the end of the bar, so a
+pattern repeats in time rather than drifting. Where an audio pad has its level
+bar, a MIDI pad has a **transpose**: up to two octaves either way, every note
+moved by the same interval — a pattern moved, not a key change. Double-click
+it to go back to the file's own pitch.
+
 **Each row sums to a fader on the right.** The eight pads of a row go through
 their own levels, sum, pass that row's level, and the eight rows sum into the
 output trim.
@@ -41,9 +50,10 @@ wide, ruled into beats, with a playhead showing how long that wait has left.
 
 Every pad is also a host parameter, so a DAW can automate, record and undo it.
 Underneath, it is still the shell a bigger instrument goes inside — buses,
-parameter plumbing, event handling, state and five test suites, with the traps
-already handled. There is no note handling yet: the event input exists and
-consumes events, but nothing is pitched.
+parameter plumbing, event handling, state and seven test suites, with the
+traps already handled. There is no *synthesis* yet: a MIDI pad emits notes for
+something else to play, and the event input consumes what arrives without
+sounding it.
 
 * **`PORTING-NOTES.md`** — the decisions, the permanent identity values, what
   was measured, what was deliberately left out and the trap behind each. Read

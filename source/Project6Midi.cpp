@@ -446,6 +446,10 @@ void MidiVoice::reset ()
 	mHaveLast = false;
 	mProgress.store (0.f, std::memory_order_relaxed);
 
+	// Nothing is sounding after this, so a pending transposition can be
+	// taken now rather than waiting for a block that may never come.
+	mTranspose = mPendingTranspose;
+
 	for (int note = 0; note < 128; ++note)
 		mOffAt[note] = -1;
 
@@ -467,13 +471,33 @@ void MidiVoice::start (double atPpq)
 	// The jump detector is armed by the first render after this, not
 	// here: this IS the jump, and it is a deliberate one.
 	mHaveLast = false;
+
+	// A launch starts from nothing sounding, so the same reasoning as
+	// reset applies: take the pending value rather than re-attacking a
+	// note in the first block for no reason.
+	mTranspose = mPendingTranspose;
+}
+
+//------------------------------------------------------------------------
+void MidiVoice::setTranspose (int semitones)
+{
+	// CLAMPED HERE, ONCE, rather than trusted from a parameter. The
+	// pitch arithmetic in render adds this to a note and tests the sum
+	// against 0-127; an absurd value would not break that, but it would
+	// silently drop every note and look exactly like a broken pad.
+	mPendingTranspose = std::min (kMaxTransposeSemitones,
+	                              std::max (-kMaxTransposeSemitones, semitones));
 }
 
 //------------------------------------------------------------------------
 void MidiVoice::emitOn (MidiEventOut* out, int maxOut, int& count, int offset,
-                        unsigned char note, unsigned char velocity)
+                        int note, unsigned char velocity)
 {
-	if (note > 127 || count >= maxOut)
+	// OFF THE END OF THE KEYBOARD. Transposition pushed this note past
+	// 0 or 127; it is dropped and NOT counted as sounding, so the off
+	// that follows it is dropped by the same test in emitOff and the
+	// pair stays balanced. See the header for why it is not clamped.
+	if (note < 0 || note > 127 || count >= maxOut)
 		return;
 
 	// NOT ON TOP OF ITS OWN NOTE-OFF. See the header for the whole of
@@ -486,7 +510,7 @@ void MidiVoice::emitOn (MidiEventOut* out, int maxOut, int& count, int offset,
 
 	out[count].sampleOffset = offset;
 	out[count].noteOn       = true;
-	out[count].note         = note;
+	out[count].note         = static_cast<unsigned char> (note);
 	out[count].velocity     = velocity;
 	++count;
 
@@ -498,18 +522,18 @@ void MidiVoice::emitOn (MidiEventOut* out, int maxOut, int& count, int offset,
 
 //------------------------------------------------------------------------
 void MidiVoice::emitOff (MidiEventOut* out, int maxOut, int& count, int offset,
-                         unsigned char note)
+                         int note)
 {
 	// NOTHING SOUNDING, NOTHING TO STOP. This is what keeps a pad that
 	// launched half way through its loop from sending an orphan note-off
 	// for a note it never started - which some instruments answer by
 	// cutting off a note another pad is playing.
-	if (note > 127 || mSounding[note] == 0 || count >= maxOut)
+	if (note < 0 || note > 127 || mSounding[note] == 0 || count >= maxOut)
 		return;
 
 	out[count].sampleOffset = offset;
 	out[count].noteOn       = false;
-	out[count].note         = note;
+	out[count].note         = static_cast<unsigned char> (note);
 	out[count].velocity     = 0;
 	++count;
 
@@ -531,7 +555,7 @@ int MidiVoice::allNotesOff (int sampleOffset, MidiEventOut* out, int maxOut)
 	for (int note = 0; note < 128; ++note)
 	{
 		while (mSounding[note] > 0 && count < maxOut)
-			emitOff (out, maxOut, count, sampleOffset, static_cast<unsigned char> (note));
+			emitOff (out, maxOut, count, sampleOffset, note);
 
 		// If the buffer filled, the count is left standing so the next
 		// block finishes the job rather than forgetting it.
@@ -591,7 +615,29 @@ int MidiVoice::render (const MidiClip* clip, double loopLength, double blockStar
 	{
 		for (int note = 0; note < 128; ++note)
 			while (mSounding[note] > 0 && count < maxOut)
-				emitOff (out, maxOut, count, 0, static_cast<unsigned char> (note));
+				emitOff (out, maxOut, count, 0, note);
+	}
+
+	// THE TRANSPOSITION CHANGES HERE OR NOWHERE. Everything sounding was
+	// started at the OLD pitch and can only be stopped at the old pitch,
+	// so it is stopped now, at sample 0, before a single note is walked.
+	// The header has the whole of why this cannot be done mid-block.
+	if (mPendingTranspose != mTranspose)
+	{
+		for (int note = 0; note < 128; ++note)
+			while (mSounding[note] > 0 && count < maxOut)
+				emitOff (out, maxOut, count, 0, note);
+
+		// Only once the flush actually emptied it. A buffer that filled
+		// leaves notes held at the old pitch, and taking the new value
+		// now would strand them; the next block finishes the job and
+		// adopts then.
+		bool held = false;
+		for (int note = 0; note < 128 && !held; ++note)
+			held = mSounding[note] > 0;
+
+		if (!held)
+			mTranspose = mPendingTranspose;
 	}
 
 	mLastPpq  = blockStartPpq + blockQuarters;
@@ -704,13 +750,20 @@ int MidiVoice::render (const MidiClip* clip, double loopLength, double blockStar
 			// other convention puts every off one sample early and is a
 			// different rule for ons and offs, which is the kind of
 			// asymmetry that hides an off-by-one for years.
+			// THE PITCH ACTUALLY SENT, computed ONCE and used for both
+			// halves of the pair. Everything downstream - mSounding,
+			// mOffAt, the boundary flush - is indexed by what went out,
+			// not by what the file says, so a note is always stopped at
+			// the pitch it was started at.
+			const int sent = static_cast<int> (note.note) + mTranspose;
+
 			if (note.start >= local && note.start < localEnd)
 				emitOn (out, maxOut, count, sampleFor (cursor + (note.start - local)),
-				        note.note, note.velocity);
+				        sent, note.velocity);
 
 			if (noteEnd >= local && noteEnd < localEnd)
 				emitOff (out, maxOut, count, sampleFor (cursor + (noteEnd - local)),
-				         note.note);
+				         sent);
 		}
 
 		cursor += piece;
@@ -728,7 +781,7 @@ int MidiVoice::render (const MidiClip* clip, double loopLength, double blockStar
 			const int at = sampleFor (cursor);
 			for (int note = 0; note < 128; ++note)
 				while (mSounding[note] > 0 && count < maxOut)
-					emitOff (out, maxOut, count, at, static_cast<unsigned char> (note));
+					emitOff (out, maxOut, count, at, note);
 		}
 	}
 

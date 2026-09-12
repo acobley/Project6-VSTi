@@ -84,6 +84,15 @@ constexpr int midiChannelForRow (int row) { return row; }
 constexpr int midiChannelNumberForRow (int row) { return midiChannelForRow (row) + 1; }
 
 //------------------------------------------------------------------------
+/** How far a pad's MIDI can be moved, in semitones, either way.
+
+    TWO OCTAVES. Not a key change and not a scale: every note moves by the
+    same number of semitones, so the pattern is the pattern and only its
+    pitch is different. A bass line dropped an octave is the same bass
+    line; a bass line put into a key is a different file. */
+constexpr int kMaxTransposeSemitones = 24;
+
+//------------------------------------------------------------------------
 /** One note, in quarter notes from the start of the clip.
 
     NO CHANNEL. Every pad's notes go out on ITS ROW'S channel - row A is
@@ -269,6 +278,32 @@ public:
 	    from the difference. */
 	void start (double atPpq);
 
+	//--------------------------------------------------------------------
+	// TRANSPOSITION IS ADOPTED AT A BLOCK BOUNDARY, NOT WHEN IT IS SET.
+	//
+	// Every note-on this voice sends is matched by a note-off computed
+	// from the clip and the transposition IN FORCE WHEN THE OFF IS SENT.
+	// Change the transposition part way through a sounding note and the
+	// off is computed for a pitch that was never started: emitOff's
+	// "nothing sounding, nothing to stop" guard drops it, and the note
+	// that IS sounding hangs for ever.
+	//
+	// So a new value is PENDING until the top of a block, where the
+	// voice can flush everything it has sounding at sample 0 and start
+	// the new pitch from clean. A change therefore costs one re-attack
+	// of whatever was held - which is what moving a pattern's pitch
+	// sounds like anyway, and is the only honest thing to do with a note
+	// whose pitch changed underneath it.
+	//--------------------------------------------------------------------
+
+	/** Semitones to move every note by, clamped to +/-kMaxTransposeSemitones.
+	    Takes effect at the start of the next rendered block. */
+	void setTranspose (int semitones);
+
+	/** What is actually in force - the adopted value, not the pending
+	    one, so a caller sees what the events are being sent at. */
+	int transpose () const { return mTranspose; }
+
 	/** Emit note-offs for everything this voice has sounding, at
 	    `sampleOffset`, and stop. Returns how many were written.
 
@@ -299,12 +334,26 @@ public:
 	            MidiEventOut* out, int maxOut);
 
 private:
-	/** Emit, and count. */
+	/** Emit, and count.
+
+	    THE PITCH IS AN int AND MAY BE OUT OF RANGE. Transposition can
+	    push a note off either end of the keyboard, and the arithmetic is
+	    done by the caller so that BOTH the on and the off are computed
+	    from the same sum. A pitch outside 0-127 is DROPPED - not
+	    clamped, because clamping would pile every note below the bottom
+	    onto note 0 and turn a transposed bass line into a machine gun on
+	    one pitch. A dropped on is never counted as sounding, so its off
+	    is dropped by the same test and nothing hangs. */
 	void emitOn (MidiEventOut* out, int maxOut, int& count, int offset,
-	             unsigned char note, unsigned char velocity);
-	void emitOff (MidiEventOut* out, int maxOut, int& count, int offset, unsigned char note);
+	             int note, unsigned char velocity);
+	void emitOff (MidiEventOut* out, int maxOut, int& count, int offset, int note);
 
 	bool   mPlaying   = false;
+
+	/** In force, and waiting to be adopted. See setTranspose. */
+	int    mTranspose        = 0;
+	int    mPendingTranspose = 0;
+
 	double mStartPpq  = 0.0;
 	double mPosition  = 0.0;
 

@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 #include <cstring>
 #include <string>
 
@@ -835,6 +836,221 @@ void SpySlotLevel::onMouseWheelEvent (MouseWheelEvent& event)
 	endEdit ();
 	invalid ();
 	event.consumed = true;
+}
+
+//------------------------------------------------------------------------
+// SpySlotTranspose
+//------------------------------------------------------------------------
+
+namespace {
+
+/** How far the pointer travels for one semitone. Three pixels puts the
+    whole two-octave range in a hundred and forty-four pixels of travel -
+    about four times the control's own width, which is the usual ratio for
+    a small control and is close enough that a drag feels attached to the
+    thing it is dragging. */
+constexpr double kPixelsPerSemitone = 3.;
+
+} // namespace
+
+SpySlotTranspose::SpySlotTranspose (const CRect& size, IControlListener* listener,
+                                    int32_t tag, int index)
+: CControl (size, listener, tag)
+, mIndex (index)
+{
+	setMouseEnabled (true);
+	setMin (0.f);
+	setMax (1.f);
+}
+
+//------------------------------------------------------------------------
+int SpySlotTranspose::semitones () const
+{
+	// THROUGH THE PARAMETER'S OWN DEFINITION, not through arithmetic
+	// written out a second time here. toInternal is what the processor
+	// calls with the identical normalised value, so the number on the
+	// panel is the number the notes are moved by - which is the house
+	// rule about one shared function, applied to the smallest control on
+	// the panel because that is exactly where a second opinion would go
+	// unnoticed longest.
+	return static_cast<int> (slotTransposeDef ().toInternal (
+		std::clamp (static_cast<double> (getValueNormalized ()), 0.0, 1.0)));
+}
+
+//------------------------------------------------------------------------
+void SpySlotTranspose::setSemitones (int value)
+{
+	const ParamDef& def = slotTransposeDef ();
+	const int clamped = std::clamp (value,
+	                                static_cast<int> (def.plainMin),
+	                                static_cast<int> (def.plainMax));
+
+	setValueNormalized (static_cast<float> (
+		std::clamp (def.toNormalized (static_cast<double> (clamped)), 0.0, 1.0)));
+}
+
+//------------------------------------------------------------------------
+void SpySlotTranspose::draw (CDrawContext* context)
+{
+	const CRect r = getViewSize ();
+	const int value = semitones ();
+
+	context->setFillColor (Colours::kLampOff);
+	context->drawRect (r, kDrawFilled);
+
+	CRect inner (r);
+	inner.inset (1., 1.);
+
+	// THE MIDDLE OF THE INNER RECT, to a whole pixel. A centre that
+	// landed on a half would make +1 and -1 draw different widths, and on
+	// a bar this small that reads as the control being wrong rather than
+	// as rounding.
+	const CCoord centre = std::floor (inner.left + inner.getWidth () * 0.5);
+
+	if (value != 0 && inner.getHeight () > 0.)
+	{
+		const ParamDef& def = slotTransposeDef ();
+		const double reach = inner.getWidth () * 0.5
+		                     * (std::fabs (static_cast<double> (value)) / def.plainMax);
+
+		// AT LEAST ONE PIXEL. A single semitone out of twenty-four is
+		// less than a pixel of an eighteen-pixel half-width, and a bar
+		// that drew nothing would say "not transposed" about a pad that
+		// is.
+		const CCoord width = std::max (1., reach);
+
+		CRect fill (inner);
+		fill.left  = (value > 0) ? centre : centre - width;
+		fill.right = (value > 0) ? centre + width : centre;
+
+		context->setFillColor (Colours::kBarFill);
+		context->drawRect (fill, kDrawFilled);
+	}
+
+	// THE NUMBER, over the bar. The bar says which way and roughly how
+	// far at a glance; the number is what somebody actually reads when
+	// they want to know. Signed, because "12" and "-12" are two octaves
+	// apart and an unsigned one would be a trap.
+	char text[8] = {};
+	if (value > 0)
+		std::snprintf (text, sizeof (text), "+%d", value);
+	else
+		std::snprintf (text, sizeof (text), "%d", value);
+
+	context->setFont (panelFontTiny ());
+	context->setFontColor (value == 0 ? kSlotTextIdle : kSlotText);
+
+	const CCoord height = panelFontTiny ()->getSize () + 2.;
+	const CRect line (r.left,
+	                  r.top + (r.getHeight () - height) * 0.5,
+	                  r.right,
+	                  r.top + (r.getHeight () - height) * 0.5 + height);
+	context->drawString (text, line, kCenterText, true);
+
+	drawWell (context, r, Colours::kBarLight, Colours::kBarHigh);
+
+	setDirty (false);
+}
+
+//------------------------------------------------------------------------
+void SpySlotTranspose::onMouseDownEvent (MouseDownEvent& event)
+{
+	if (! event.buttonState.isLeft ())
+		return;
+
+	event.consumed = true;
+
+	// BACK TO ITS OWN PITCH. The one value somebody will want in a hurry,
+	// and the one a three-pixels-per-semitone drag is least likely to
+	// land on by hand.
+	if (event.clickCount > 1)
+	{
+		beginEdit ();
+		setSemitones (0);
+		valueChanged ();
+		endEdit ();
+		invalid ();
+		return;
+	}
+
+	mDragging      = true;
+	mPressPoint    = event.mousePosition;
+	mPressSemitones = semitones ();
+	beginEdit ();
+}
+
+//------------------------------------------------------------------------
+void SpySlotTranspose::onMouseMoveEvent (MouseMoveEvent& event)
+{
+	if (! mDragging)
+		return;
+
+	// FROM THE PRESS, not from the last move. Accumulating per move
+	// throws away the sub-semitone remainder on every call, so a slow
+	// drag moves less far than a fast one over the same distance - which
+	// is the kind of thing that feels broken without ever being wrong
+	// enough to report.
+	const double dx = event.mousePosition.x - mPressPoint.x;
+	const double scale = event.modifiers.has (ModifierKey::Shift) ? 3. : 1.;
+	const double steps = dx / (kPixelsPerSemitone * scale);
+
+	// Away from zero, so the first semitone is reached in one direction
+	// as easily as the other.
+	const int moved = static_cast<int> (steps < 0. ? steps - 0.5 : steps + 0.5);
+	const int wanted = mPressSemitones + moved;
+
+	if (wanted == semitones ())
+	{
+		event.consumed = true;
+		return;
+	}
+
+	setSemitones (wanted);
+	valueChanged ();
+	invalid ();
+	event.consumed = true;
+}
+
+//------------------------------------------------------------------------
+void SpySlotTranspose::onMouseUpEvent (MouseUpEvent& event)
+{
+	if (! mDragging)
+		return;
+
+	mDragging = false;
+	endEdit ();
+	event.consumed = true;
+}
+
+//------------------------------------------------------------------------
+void SpySlotTranspose::onMouseCancelEvent (MouseCancelEvent&)
+{
+	// A cancelled drag still has to end its edit, or the host is left
+	// holding a gesture open for ever.
+	if (! mDragging)
+		return;
+
+	mDragging = false;
+	endEdit ();
+}
+
+//------------------------------------------------------------------------
+void SpySlotTranspose::onMouseWheelEvent (MouseWheelEvent& event)
+{
+	event.consumed = true;
+	if (event.deltaY == 0.)
+		return;
+
+	// ONE SEMITONE PER CLICK, and twelve with shift: the two intervals
+	// anybody reaches for. A percentage step here would be unusable -
+	// every value is a real interval and there are only forty-nine.
+	const int step = event.modifiers.has (ModifierKey::Shift) ? 12 : 1;
+
+	beginEdit ();
+	setSemitones (semitones () + (event.deltaY > 0. ? step : -step));
+	valueChanged ();
+	endEdit ();
+	invalid ();
 }
 
 //------------------------------------------------------------------------

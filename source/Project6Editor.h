@@ -364,6 +364,10 @@ private:
 	SpyDisplay* mDisplay = nullptr;
 	SpySampleSlot* mSlots[kSlotCount] = { nullptr };
 	SpySlotLevel* mLevels[kSlotCount] = { nullptr };
+
+	/** In the level bars' rectangles, one shown where the other is not.
+	    See refreshSlots. */
+	SpySlotTranspose* mTransposes[kSlotCount] = { nullptr };
 	SpySlotFit* mFits[kSlotCount] = { nullptr };
 	SpySlotLoop* mLoops[kSlotCount] = { nullptr };
 	SpyColumnButton* mColumns[kSlotColumns] = { nullptr };
