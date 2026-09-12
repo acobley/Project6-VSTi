@@ -804,6 +804,13 @@ int main ()
 			MidiVoice voice;
 			voice.start (16.0);
 
+			// One block at the anchor first: what follows is a LOCATE,
+			// and a locate is only a locate if there was a block before
+			// it. Without this the voice has never rendered and the
+			// first block would be its launch.
+			voice.render (&clip, 4.0, 16.0, perSample, 1000, true, out,
+			              kMaxMidiEventsPerBlock);
+
 			int total = 0;
 			for (int beat = 0; beat < 8; ++beat)
 			{
@@ -826,11 +833,18 @@ int main ()
 		{
 			MidiVoice voice;
 			voice.start (16.0);
+			voice.render (&clip, 4.0, 16.0, perSample, 1000, true, out,
+			              kMaxMidiEventsPerBlock);
 
 			const int count = voice.render (&clip, 4.0, 8.0, perSample, 1000, true, out,
 			                                kMaxMidiEventsPerBlock);
-			check (count == 1 && out[0].noteOn && out[0].note == 60
-			           && out[0].sampleOffset == 0,
+			// AT THE TOP OF THE BLOCK - sample 0, or sample 1 when the
+			// locate's own note-off for this pitch is sitting on sample 0
+			// and section 11's rule has moved the re-trigger clear of it.
+			bool topOfLoop = false;
+			for (int i = 0; i < count; ++i)
+				topOfLoop |= (out[i].noteOn && out[i].note == 60 && out[i].sampleOffset <= 1);
+			check (topOfLoop,
 			       "two bars before the launch point is still the top of the loop");
 		}
 
@@ -1048,6 +1062,66 @@ int main ()
 			check (onTheBeat,
 			       "NEGATIVE CONTROL: and its downbeat is still exactly on the beat");
 		}
+	}
+
+	//--------------------------------------------------------------------
+	section ("12. Notes stranded where the loop crosses its own anchor");
+	//--------------------------------------------------------------------
+	{
+		// THE ONE THAT SILENCED A SYNTH AND LEFT A DRUM MACHINE ALONE.
+		//
+		// Nobody starts the transport and the pad at the same instant.
+		// You roll the transport, click a pad, and it comes in on the
+		// next bar line - so its ANCHOR is after the start of the cycle,
+		// and every cycle wrap lands before it.
+		//
+		// A block entirely behind the anchor wraps round to the end of
+		// the loop; a block that CONTAINS the anchor did not - it clamped
+		// to loop position zero instead, because that clamp is how a pad
+		// launching part way through a block starts at its own sample.
+		// The two are indistinguishable from `from` alone, and the pad
+		// jumped from near the end of its loop straight to the beginning
+		// WITHOUT passing the boundary - so the note-offs waiting at the
+		// boundary were never sent.
+		//
+		// A drum machine frees its own voices when the sample ends and
+		// never notices. A synth with a voice limit runs out and goes
+		// completely silent, and a transport stop brings it back because
+		// the host sends a panic. Which is exactly what was reported.
+		MidiEventOut out[kMaxMidiEventsPerBlock];
+		const double perSample = 1.0 / 1000.0;
+
+		MidiClip clip;
+		clip.notes.push_back ({ 3.5, 4.0, 60, 100 });   // last sixteenth of the bar
+		clip.content = 4.0;
+
+		MidiVoice voice;
+		voice.start (4.0);          // the pad came in on the bar line at ppq 4
+
+		// One block AT the anchor, so the voice is genuinely running -
+		// this is what makes the blocks below a locate and not a launch.
+		voice.render (&clip, 4.0, 4.0, perSample, 300, true, out, kMaxMidiEventsPerBlock);
+
+		// The transport wraps back to the top of the cycle, which is
+		// before the anchor. The pad plays the tail of its loop.
+		int ons = 0, offs = 0;
+		for (const double ppq : { 3.5, 3.8 })
+		{
+			const int count = voice.render (&clip, 4.0, ppq, perSample, 300, true, out,
+			                                kMaxMidiEventsPerBlock);
+			for (int i = 0; i < count; ++i)
+				(out[i].noteOn ? ons : offs) += 1;
+		}
+
+		check (ons >= 1, "the tail of the loop plays when the transport is behind the anchor");
+		check (ons == offs,
+		       "and every note it started is stopped - none is stranded at the crossing");
+
+		// The proof that nothing is left standing: a stop now has nothing
+		// to send. Before the fix this reported a note still held, and
+		// one of those per cycle is what exhausts a synth.
+		check (voice.allNotesOff (0, out, kMaxMidiEventsPerBlock) == 0,
+		       "nothing at all is left sounding");
 	}
 
 	//--------------------------------------------------------------------

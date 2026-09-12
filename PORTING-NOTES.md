@@ -1326,6 +1326,62 @@ An off now displaces the most recently queued note-ON instead of being thrown
 away. A missing note is a hole in one bar; a stuck one is silence a few voices
 later.
 
+### Notes stranded where the loop crosses its own anchor
+
+The second half of the same report, and the half that was actually causing
+it. The symptom that gave it away was not the silence but the **recovery**:
+*stop the transport and it plays again.* A host sends a panic on stop, and a
+panic frees notes somebody stranded.
+
+**Nobody starts the transport and the pad at the same instant.** You roll the
+transport, click a pad, and it comes in on the next bar line — so its anchor
+is *after* the start of the cycle, and every cycle wrap lands *before* it.
+That is not an edge case, it is what happens every single time.
+
+A negative `from` — the project earlier than the pad's anchor — means two
+completely different things that cannot be told apart from `from` alone:
+
+* the pad is **launching part way through this very block**, which is the
+  normal case on every launch, and it must start at its own sample;
+* the project has **moved back**, and the loop (being anchored rather than
+  started) should repeat backwards and play its own tail.
+
+The old test was "is the whole block behind the anchor". True of a rewind by
+more than a block; **false of a rewind by less** — and in that gap the pad
+clamped to loop position zero and jumped there from wherever it was, *without
+passing the loop boundary*. The note-offs waiting at that boundary were never
+sent. One or two notes stranded on every cycle.
+
+`mHaveLast` is the honest answer: it is false only on the first block after
+`start()`, which is the only block that can be a launch. Everything else with
+a negative `from` is a locate.
+
+A drum machine frees its own voices when the sample ends and never notices. A
+synth with a voice limit runs out and goes **completely silent** while the
+MIDI goes on arriving — and comes back the moment the transport stops.
+
+### How it was actually found
+
+`tools/midi-trace.cpp` — it loads a real `.mid` through the real reader,
+drives a real `MidiVoice` with a looping transport, and prints every event
+with the sample it lands on. It asserts nothing and nothing runs it; it is
+for the question a unit test is bad at.
+
+The measurement that caught this was **held notes against the file's own
+polyphony**. The reported file never has more than five notes sounding at
+once. The trace showed **six** — and six is not a timing bug or a taste
+question, it is a note that should have ended and did not. After the fix it
+shows five, exactly.
+
+It also showed the thing that explains why nobody had seen it before: with the
+pad launched at bar 1 — the anchor on the cycle start — the count never
+exceeds three, before or after. **The bug needs the pad to have been clicked
+after the transport started**, which is why it was invisible to every test
+written from the inside.
+
+The trace has a `--launch` option for exactly that reason. It is the detail a
+test written from the inside never thinks of.
+
 ### Nine event outputs, and why the merged one is not a luxury
 
 One `MIDI Out` carrying every row, then one per row — exactly the shape the

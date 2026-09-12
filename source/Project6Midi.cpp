@@ -573,6 +573,12 @@ int MidiVoice::render (const MidiClip* clip, double loopLength, double blockStar
 		mOffAt[note] = -1;
 	mBlockSamples = numSamples;
 
+	// IS THIS THE FIRST BLOCK SINCE THE PAD LAUNCHED? Captured before the
+	// jump detector below sets mHaveLast, because it is what tells a
+	// launch apart from a locate - see the wrap further down, where
+	// getting the two confused stranded notes.
+	const bool firstBlock = !mHaveLast;
+
 	const double blockQuarters = quartersPerSample * static_cast<double> (numSamples);
 
 	// A HOST THAT JUMPED. The playhead was dragged, or a cycle wrapped,
@@ -597,26 +603,50 @@ int MidiVoice::render (const MidiClip* clip, double loopLength, double blockStar
 	double from = blockStartPpq - mStartPpq;
 	double to   = from + blockQuarters;
 
-	// THE PROJECT IS ENTIRELY BEHIND THIS PAD'S LAUNCH POINT - somebody
-	// rewound past it, or a cycle wrapped to a point before it.
+	//--------------------------------------------------------------------
+	// BEHIND THE ANCHOR, and the two reasons for it are not the same.
 	//
-	// This used to return, and the pad went silent AND STAYED SILENT: not
-	// stopped, still playing, still counted as launched, simply never
-	// emitting anything again until the project crawled back past the
-	// point it had been launched at. It was found in a session, not here,
-	// which is what section 9 of the tests is for.
+	// A NEGATIVE `from` means the project is earlier than the point this
+	// pad was launched at, and that happens in two completely different
+	// situations which cannot be told apart from `from` alone:
 	//
-	// THE LOOP REPEATS IN BOTH DIRECTIONS. It is anchored at the launch
-	// point rather than started there, so rewinding plays the same loop
-	// in the same phase - which is what "locked to the project's
-	// timeline" has to mean if it is to mean anything.
+	//   * THE PAD IS LAUNCHING PART WAY THROUGH THIS VERY BLOCK. A grid
+	//     line lands at some sample inside it, so the pad starts there
+	//     and `from` is a fraction negative. This is the normal case on
+	//     every launch.
 	//
-	// Only when the whole block is behind it, so that a pad launching
-	// PART WAY THROUGH this block - `from` a fraction negative, the
-	// normal case - still starts at its own sample rather than being
-	// wrapped round to the end of the loop.
-	if (to <= 0.0)
+	//   * THE PROJECT HAS MOVED BACK. Somebody rewound, or - far more
+	//     often - the transport is cycling and the cycle starts before
+	//     the pad was clicked, which is what happens every single time,
+	//     because nobody starts the transport and the pad at the same
+	//     instant. The loop is ANCHORED at its launch point rather than
+	//     started there, so it repeats backwards too and the pad plays
+	//     the tail of its loop.
+	//
+	// TELLING THEM APART IS THE WHOLE OF THIS. The old test was "is the
+	// whole block behind the anchor" - which is true of a rewind by more
+	// than a block and false of a rewind by less. In that gap the pad
+	// clamped to loop position zero and jumped there from wherever it
+	// was, WITHOUT passing the loop boundary, so the note-offs waiting at
+	// the boundary were never sent. One or two notes stranded on every
+	// cycle: inaudible on a drum machine, which frees its own voices, and
+	// eventually total silence on a synth with a voice limit.
+	//
+	// mHaveLast is the honest answer: it is false only on the first block
+	// after start(), which is the only block that can be a launch.
+	//--------------------------------------------------------------------
+	if (firstBlock)
 	{
+		// A launch. `from` may be negative, and the clamp below starts
+		// the pad at its own sample inside this block.
+		if (to <= 0.0)
+			return count;               // launches in a later block
+	}
+	else if (from < 0.0)
+	{
+		// A locate. The loop repeats in both directions, in the same
+		// phase, which is what "locked to the project's timeline" has to
+		// mean if it is to mean anything.
 		from = std::fmod (from, loopLength);
 		if (from < 0.0)
 			from += loopLength;
