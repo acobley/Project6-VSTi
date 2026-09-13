@@ -2016,7 +2016,61 @@ unchanged.
 
 Stream **version 8**: a sixth value block, the same way as the other five.
 
-## 16. The SDK
+## 16. Reopening with the same pads armed
+
+Stream **version 9** adds a seventh value block: the sixty-four triggers.
+
+### This reverses a decision, and the decision was wrong
+
+Two comments used to say the triggers were *deliberately* out of the stream,
+so that a project could not reopen "with whatever pads the previous one left
+playing". That fear does not survive contact with the rest of the design:
+
+* **Nothing sounds while the transport is stopped.** Opening a project cannot
+  make a noise whatever the triggers say.
+* **An armed pad is ARMED, not playing.** It lights, it waits, and it comes in
+  on its own grid line when the transport rolls — which is the behaviour the
+  whole launch design exists to provide.
+
+So the guard was protecting against something that could not happen, at the
+cost of the thing a pad bank is for: reopening a set with the same eight pads
+lit, instead of re-arming them by hand every time.
+
+### Armed and playing are the same saved state
+
+Playing is just armed plus a rolling transport, so there is one thing to store
+and not two. `mLaunched` is deliberately **not** stored: it would claim a pad
+is part way through a loop at a position nobody saved, and the honest restore
+is "waiting for the next bar line", which is what an armed pad already means.
+
+### An armed pad with nothing to play is not armed
+
+A project moves between machines, a sample gets deleted, a slot was empty when
+it was saved. A pad left armed for any of those would sit lit and waiting for
+ever, promising a sound that can never arrive — the one failure this panel
+keeps coming back to.
+
+So `setState` clears the arming for every slot whose `mStatus` is not
+`Loaded`, **after** `loadAllSlots()` rather than before, because only the
+loading knows. The controller reaches the same conclusion from the same fact,
+in `notify()`, when the slot's status comes back — it cannot decide it in
+`setComponentState`, because that side does not read files.
+
+And the host has to be told, or its copy of the trigger stays on while this
+side believes it is off. `setState` has no `outputParameterChanges`, so it
+raises `mAnnounceTrigger[slot]` and `announceClearedTriggers` sends it from
+the next process block — the same route, for the same reason, as a one-shot
+that turns its own trigger off when it finishes.
+
+### Backward compatibility is free, and it rests on one property
+
+Both sides reset **every** parameter to its default before reading anything,
+so a version 8 stream — which has no trigger block — reopens with nothing
+armed, exactly as it always did. That only holds while a trigger's default is
+*stopped*, which ParamsTests §5 asserts along with the round trip that a saved
+*armed* comes back armed.
+
+## 17. The SDK
 
 **In-tree clone**, chosen deliberately over pointing at a sibling project's
 checkout. The first `cmake` configure clones the VST3 SDK (~250 MB) into

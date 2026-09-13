@@ -155,10 +155,14 @@ tresult PLUGIN_API Project6Controller::setComponentState (IBStream* state)
 		return kResultFalse;
 
 	// EVERY parameter back to its default first, not just the saved ones.
-	// The sixty-four slot triggers live past kNumStoredParams and are
-	// deliberately not in the stream, so this loop is the only thing that
-	// stops a project reopening with whatever pads the previous one left
-	// playing.
+	// A project saved before a parameter existed carries a shorter stream,
+	// and whatever it does not mention must go back to its default rather
+	// than keeping what the previous patch left in this instance.
+	//
+	// That now includes the sixty-four triggers: they ARE in the stream
+	// as of version 9, in a block of their own past kNumStoredParams, so
+	// a version 8 project reopens with nothing armed because this loop
+	// defaulted them and nothing read over it.
 	for (ParamID id = 0; id < kNumParams; ++id)
 		setParamNormalized (id, paramDef (id).defaultNormalized ());
 	setParamNormalized (kBypass, 0.0);
@@ -220,6 +224,19 @@ tresult PLUGIN_API Project6Controller::setComponentState (IBStream* state)
 		                slotTransposeDef ().defaultNormalized ());
 		for (int slot = 0; slot < kSlotCount; ++slot)
 			setParamNormalized (slotTransposeParam (slot), transposes[slot]);
+
+		// WHICH PADS ARE ARMED. The identical block the processor writes,
+		// read by the identical function, in the identical order - which
+		// is the only reason the two sides cannot drift.
+		//
+		// A pad whose file turns out not to load is un-armed when its
+		// status comes back from the processor; see notify(). It cannot
+		// be decided here, because this side does not read files.
+		double triggers[kSlotCount] = {};
+		readValueBlock (streamer, triggers, kSlotCount,
+		                slotPlayDef ().defaultNormalized ());
+		for (int slot = 0; slot < kSlotCount; ++slot)
+			setParamNormalized (slotPlayParam (slot), triggers[slot]);
 	}
 
 	// The processor is reading the files right now and will report each
@@ -544,6 +561,14 @@ tresult PLUGIN_API Project6Controller::notify (IMessage* message)
 		    && isSlotIndex (static_cast<int> (index)))
 		{
 			mSlotStatus[index] = static_cast<SampleStatus> (status);
+
+			// AN ARMED PAD WITH NOTHING TO PLAY IS NOT ARMED. The
+			// processor reached the same conclusion from the same fact
+			// and has already cleared its own copy; this is the panel
+			// side of it, so a restored pad whose file has gone does not
+			// sit lit and waiting for a sound that cannot arrive.
+			if (mSlotStatus[index] != SampleStatus::Loaded)
+				setParamNormalized (slotPlayParam (static_cast<int> (index)), 0.0);
 
 			// The tempo rides along. Absent attributes leave the defaults
 			// in place rather than failing the whole message: an older

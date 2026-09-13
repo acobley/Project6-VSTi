@@ -284,6 +284,11 @@ private:
 	    finished during it has only finished by then. */
 	void clearFinishedOneShots (Steinberg::Vst::ProcessData& data);
 
+	/** Tell the host about any trigger setState turned off because the
+	    pad's file did not load. setState has no outputParameterChanges of
+	    its own, so it flags and this sends. */
+	void announceClearedTriggers (Steinberg::Vst::ProcessData& data);
+
 	void publishLiveValues (Steinberg::Vst::ProcessData& data);
 	void publishOne (Steinberg::Vst::IParameterChanges* changes,
 	                 Steinberg::Vst::ParamID id, double normalized);
@@ -413,6 +418,11 @@ private:
 	//--------------------------------------------------------------------
 	bool mArmed[kSlotCount] = {};
 	bool mLaunched[kSlotCount] = {};
+
+	/** A trigger setState turned off because the pad's file did not load,
+	    waiting for a block with an outputParameterChanges to say so on.
+	    See announceClearedTriggers. */
+	bool mAnnounceTrigger[kSlotCount] = {};
 
 	/** Which grid line each slot is waiting for, read off its parameter
 	    once a block. */

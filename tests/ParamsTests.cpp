@@ -228,19 +228,26 @@ int main ()
 		check (kNumStoredParams == kNumTableParams,
 		       "only the trim is saved");
 		check (kNumStoredParams < kNumParams,
-		       "the triggers are deliberately outside the saved block");
+		       "the triggers are outside the contiguous saved block");
 		check (kNumStoredParams <= kNumParams,
 		       "and the saved block never runs past the end");
 
-		// A project that reopened with six pads looping would be a
-		// project nobody could open quietly. The triggers stay out of the
-		// stream, and BOTH sides reset every parameter past the saved
-		// block to its default before reading - which only works if the
-		// default is "stopped".
+		// THE TRIGGERS ARE SAVED AS OF VERSION 9 - in a block of their
+		// own, because they are past kNumStoredParams and cannot ride the
+		// contiguous rule. This is the property the BACKWARD
+		// COMPATIBILITY rests on: both sides reset every parameter to its
+		// default before reading, so a version 8 stream, which has no
+		// trigger block, reopens with nothing armed. That is only true
+		// while the default is "stopped".
 		check (slotPlayDef ().plainDefault == 0.0,
-		       "a trigger defaults to stopped, so a loaded project is quiet");
+		       "a trigger defaults to stopped, so an older project reopens unarmed");
 		check (slotPlayDef ().defaultNormalized () == 0.0,
 		       "in normalised terms too");
+
+		// And a saved "armed" has to survive the round trip through
+		// normalised form, or a restored pad would come back dark.
+		check (slotPlayDef ().toInternal (slotPlayDef ().toNormalized (1.0)) == 1.0,
+		       "and an ARMED pad round-trips through normalised as armed");
 	}
 
 	//--------------------------------------------------------------------

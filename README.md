@@ -56,7 +56,11 @@ balances the mix without touching what leaves for the desk.
 `docs/routing.png` is the whole path drawn out, and it is generated from the
 headers, so it cannot quietly disagree with the code.
 
-Levels are saved with the project and automatable like everything else.
+Levels are saved with the project and automatable like everything else, and
+so is **which pads are armed** — reopen a project and the same cells are lit
+and waiting, coming in together on the next bar line when you roll the
+transport. A pad whose file has gone missing since it was saved comes back
+dark rather than lit and silent.
 
 An armed slot glows amber while it waits and red while it plays, so the wait
 is visible rather than mysterious, and **a bar along the bottom of a playing

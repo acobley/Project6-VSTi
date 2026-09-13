@@ -695,6 +695,34 @@ void Project6Processor::silenceForTransport ()
 }
 
 //------------------------------------------------------------------------
+void Project6Processor::announceClearedTriggers (ProcessData& data)
+{
+	IParameterChanges* changes = data.outputParameterChanges;
+
+	for (int slot = 0; slot < kSlotCount; ++slot)
+	{
+		if (!mAnnounceTrigger[slot])
+			continue;
+
+		// CLEARED EITHER WAY. A host that gave us nowhere to say so does
+		// not get told, and must not be told later out of order - the
+		// plug-in's own copy is already off, which is what decides the
+		// sound.
+		mAnnounceTrigger[slot] = false;
+
+		if (changes == nullptr)
+			continue;
+
+		int32 index = 0;
+		if (auto* queue = changes->addParameterData (slotPlayParam (slot), index))
+		{
+			int32 point = 0;
+			queue->addPoint (0, 0.0, point);
+		}
+	}
+}
+
+//------------------------------------------------------------------------
 void Project6Processor::clearFinishedOneShots (ProcessData& data)
 {
 	IParameterChanges* changes = data.outputParameterChanges;
@@ -1616,6 +1644,7 @@ tresult PLUGIN_API Project6Processor::process (ProcessData& data)
 	}
 
 	clearFinishedOneShots (data);
+	announceClearedTriggers (data);
 	publishLiveValues (data);
 
 	return kResultOk;
@@ -1646,6 +1675,24 @@ tresult PLUGIN_API Project6Processor::getState (IBStream* state)
 	writeValueBlock (streamer, &mParams[kSlotFitBase], kSlotCount);
 	writeValueBlock (streamer, &mParams[kSlotLoopBase], kSlotCount);
 	writeValueBlock (streamer, &mParams[kSlotTransposeBase], kSlotCount);
+
+	// WHICH PADS ARE ARMED, and this block REVERSES A DELIBERATE DECISION
+	// that used to be recorded in two places, so it is worth saying why.
+	//
+	// The triggers were kept out of the stream so that a project could
+	// not reopen "with whatever pads the previous one left playing". The
+	// fear does not survive contact with the rest of the design: nothing
+	// sounds while the transport is stopped, and an armed pad is ARMED,
+	// not playing - lit, waiting, and coming in on the next grid line
+	// when the transport rolls. Reopening a set with the same eight pads
+	// lit is the whole point of a pad bank, and re-arming them by hand
+	// every time was the actual defect.
+	//
+	// ARMED AND PLAYING ARE THE SAME SAVED STATE here, because playing is
+	// just armed plus a rolling transport. There is no second thing to
+	// store, and mLaunched is deliberately NOT stored: it would claim a
+	// pad is part way through a loop at a position nobody saved.
+	writeValueBlock (streamer, &mParams[kSlotPlayBase], kSlotCount);
 
 	return kResultOk;
 }
@@ -1713,11 +1760,48 @@ tresult PLUGIN_API Project6Processor::setState (IBStream* state)
 	readValueBlock (streamer, &mParams[kSlotTransposeBase], kSlotCount,
 	                slotTransposeDef ().defaultNormalized ());
 
+	// The armed pads. A stream from before version 9 has nothing here, so
+	// readValueBlock leaves every trigger at its default of OFF and an old
+	// project reopens exactly as it always did.
+	readValueBlock (streamer, &mParams[kSlotPlayBase], kSlotCount,
+	                slotPlayDef ().defaultNormalized ());
+
 	// The paths are back; now read the files. setState is not the audio
 	// thread, so this is where sixty-four disk reads belong - and a slot
 	// whose file has moved since the project was saved gets a status
 	// rather than silence.
 	loadAllSlots ();
+
+	//--------------------------------------------------------------------
+	// AN ARMED PAD WITH NOTHING TO PLAY IS NOT ARMED.
+	//
+	// The files are read above, and some of them will not be there: a
+	// project moved between machines, a sample deleted, a slot that was
+	// empty when it was saved. A pad left armed for one of those would
+	// sit lit and waiting for ever, promising a sound that can never
+	// arrive - which is the one failure this panel keeps coming back to.
+	//
+	// So the arming is cleared HERE, after the loading rather than
+	// before it, because only the loading knows. mStatus is what it
+	// knows by.
+	//--------------------------------------------------------------------
+	for (int slot = 0; slot < kSlotCount; ++slot)
+	{
+		if (mStatus[slot] == SampleStatus::Loaded)
+			continue;
+
+		if (mParams[slotPlayParam (slot)] < 0.5)
+			continue;
+
+		mParams[slotPlayParam (slot)] = 0.0;
+
+		// AND THE HOST HAS TO BE TOLD, or its own copy of the trigger
+		// stays on and the pad is lit in the automation lane while this
+		// side believes it is off. setState is not the audio thread and
+		// has no outputParameterChanges, so it cannot say so here - the
+		// next process block does, exactly as a finished one-shot does.
+		mAnnounceTrigger[slot] = true;
+	}
 
 	return kResultOk;
 }
