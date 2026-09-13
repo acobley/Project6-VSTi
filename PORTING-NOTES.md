@@ -272,59 +272,86 @@ show; the AU is for Logic, where it works.
 The trace patch has been reverted — `tools/au-property-trace.py --revert` — so
 the wrapper is Steinberg's again. Rebuild once to get a clean `.component`.
 
-## 0. OPEN: MIDI goes silent at a transport loop point
+## 0. CLOSED, NOT OURS: AUMIDISynth goes silent at a transport loop point
 
-**NOT FIXED. NOT CONFIRMED FIXED. Do not close this without a test that
-reproduces the original failure and then does not.**
+**Closed 13 September 2026 by a control experiment**, after four fixes, two
+plug-in-side logs and a downstream MIDI capture. The fault is in **Apple's
+AUMIDISynth**, not in Project6 and not in Reaper.
 
-*Reported:* in Reaper, with the transport in loop mode and a MIDI pad playing
-into Apple's AUMIDISynth, the synth falls completely silent at the loop point
+*As reported:* in Reaper, with the transport in loop mode and a MIDI pad
+playing into AUMIDISynth, the synth falls completely silent at the loop point
 and stays silent. A drum machine (ICON) in the same place is fine. The MIDI
 goes on arriving. Stopping and restarting the **pad** does not bring it back;
 only a full transport stop does. With the transport **not** looping it plays
 indefinitely.
 
-*Four fixes have been shipped against it. None is confirmed to be the one.*
+### How it was closed
+
+**The control experiment.** ForTran — another plug-in of ours — put in the
+same FX chain, on the same track, fed the same stream, **survives the loop
+point**. One variable changed, and it was the synth. Everything upstream is
+therefore exonerated by construction, which is what four rounds of reasoning
+had failed to do.
+
+**What the MIDI reaching the synth actually looks like.** Cockos's
+`js:MidiLogger` sitting immediately before the synth in the chain — it
+re-sends everything it receives, so it is safe in line — showed, across the
+loop point:
+
+* **Every row green or red. Not one white row.** So Reaper injects *nothing*
+  of its own at a loop point: no CC 123 All Notes Off, no CC 120 All Sound
+  Off, no reset. That was the strongest remaining hypothesis and the logger
+  killed it outright.
+* At the boundary, where the time column steps from 16.0000 back to 0.0000,
+  two note-offs: `87 29 00` and `87 2a 00` — channel 8, notes 41 and 42,
+  release velocity 0. Which is **Project6's own boundary flush**, doing
+  exactly what `MidiVoice` is written to do: everything still sounding is cut
+  at the loop end so a pass is self-contained.
+
+So the stream arriving at the synth is clean, balanced, and continues across
+the loop point — and one synth plays it while another dies on it.
+
+### The four fixes, and what they were worth
 
 | commit | what it fixed | was it the bug? |
 |---|---|---|
-| `2329ada` | four faults that made a pad stop permanently | no — still failed |
-| `459146a` | note-off sharing a sample with its own re-trigger | no — still failed |
-| `f3668fc` | notes stranded where the loop crosses its own anchor | no — still failed |
-| `ae7b4b0` | every event sent twice, on the merged bus and the row's | **unknown** |
+| `2329ada` | four faults that made a pad stop permanently | no |
+| `459146a` | note-off sharing a sample with its own re-trigger | no |
+| `f3668fc` | notes stranded where the loop crosses its own anchor | no |
+| `ae7b4b0` | every event sent twice, on the merged bus and the row's | no |
 
-All four were real defects found on the way. The first three are known not to
-be *this* one.
+**All four were real defects** and all four are worth having. None of them was
+this. That is the whole lesson of this section: a bug hunt that keeps finding
+real faults can still be hunting the wrong animal, and four in a row should
+have been the signal to go and measure the other end of the wire instead of
+reasoning harder about our own.
 
-**What the evidence says.** A log taken inside Reaper with the fault
-reproduced (`PROJECT6_MIDI_LOG`, or create `~/p6-midi-log.txt`) showed the
-plug-in behaving perfectly across 6,432 blocks and both loop points: max five
-notes held at once against a file whose own polyphony is five, zero orphan
-note-offs, zero left sounding, zero out of sample order, zero refused by the
-host, and a note-on rate flat through both loops (8.5, 10.2, 11.2, 10.2 per
-second in the four regions either side). The pad stayed armed, launched and
-playing from first click to transport stop.
+### What the plug-in-side logs had already established
 
-**The one thing that log did expose** was 1202 notes handed over as 2404
-events — the doubling, fixed in `ae7b4b0`. That is the last thing this
-plug-in was doing that a synth could object to.
+A log taken inside Reaper with the fault reproduced showed Project6 behaving
+perfectly across 6,432 blocks and both loop points: max five notes held at
+once against a file whose own polyphony is five, zero orphan note-offs, zero
+left sounding, zero out of sample order, zero refused by the host, and a
+note-on rate flat through both loops (8.5, 10.2, 11.2, 10.2 per second in the
+four regions either side). The pad stayed armed, launched and playing from
+first click to transport stop.
 
-**Where it stands.** It works in Logic Pro with the AU build. That result is
-**confounded**: the host changed (Reaper → Logic), the format changed (VST3 →
-AU), *and* the build contains `ae7b4b0`. It does not distinguish "the doubling
-was the bug" from "Reaper is the problem".
+That was correct and it was not believed hard enough. **A log proves what we
+hand to the host; it cannot prove what the host hands onward.** The missing
+measurement was always downstream, and it took one JSFX in the chain to get
+it.
 
-**The next test, and it is cheap:** run the *current* build in Reaper again.
+### What not to do about it
 
-* Reaper now works → the doubling was it. Close this.
-* Reaper still fails → take a log with the current build. If it looks like the
-  last one — balanced, nothing stranded, nothing refused — then identical
-  plug-in output producing different results in two hosts is conclusive that
-  the fault is host-side, and the next move is Reaper's MIDI routing settings,
-  not more changes here.
+Nothing. There is no note stream Project6 could send that would be more
+correct than the one it sends. Do not add an all-notes-off at the loop point,
+do not re-send note-offs defensively, do not stagger the boundary further:
+every one of those makes the plug-in worse for every correct synth in order to
+paper over one incorrect one. The README says to use a different synth.
 
-**Do not make further speculative changes to the MIDI path without a log.**
-Three were made that way and all three were wrong.
+**And the rule that came out of it, which still holds: do not make
+speculative changes to the MIDI path without a log.** Three were made that way
+and all three were wrong.
 
 ---
 

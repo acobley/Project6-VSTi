@@ -30,6 +30,15 @@ bar, a MIDI pad has a **transpose**: up to two octaves either way, every note
 moved by the same interval — a pattern moved, not a key change. Double-click
 it to go back to the file's own pitch.
 
+**Apple's AUMIDISynth and a looping transport: use a different synth.**
+AUMIDISynth goes completely silent at a transport loop point and stays silent
+until the transport is stopped — while the MIDI goes on arriving. It is the
+synth, not this plug-in and not the host: a MIDI monitor in the chain
+immediately in front of it shows a clean, balanced note stream continuing
+across the loop point with nothing injected by the host, and another synth
+fed the identical stream in the identical slot plays on through it.
+`PORTING-NOTES.md` §0 has the whole investigation.
+
 **MIDI out and Reaper: use the VST3.** Reaper never asks an Audio Unit
 whether it has MIDI output and never sets a callback for one, so a MIDI pad's
 notes have nowhere to go there — the plug-in emits them and the host is not
