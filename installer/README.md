@@ -77,6 +77,62 @@ xcrun notarytool store-credentials my-notary-profile \
 Both certificates come from a paid Apple Developer account. Without one, an
 installer can be built and used locally but cannot be distributed cleanly.
 
+## Before handing it to a tester
+
+**"It installed on another Mac" is not the same as "it is ready".** Two
+different things have to be true, and a second machine of your own usually
+tests only the first.
+
+### 1. Does the payload actually work there?
+
+The installer finishing means files were copied. It says nothing about whether
+they load. Run this on the far machine:
+
+```sh
+pkgutil --pkgs | grep -i project6
+ls -ld /Library/Audio/Plug-Ins/VST3/Project6.vst3
+ls -ld /Library/Audio/Plug-Ins/Components/Project6.component/Contents/Resources/plugin.vst3
+auval -v aumu Prj6 AECo
+```
+
+The third line is the important one. **It must be a directory, not a symlink.**
+If it shows an `l` and an arrow, the AU is carrying a link into a build tree
+that does not exist there, and it will fail to load however clean the install
+looked. That is the whole reason `build-installer.sh` exists.
+
+Then open a DAW and load both formats. An AU that installs and does not
+instantiate is the failure this is guarding against.
+
+### 2. Was Gatekeeper ever actually asked?
+
+An unsigned package is only refused if it arrives **quarantined**, and files
+that travel by iCloud Drive, a local copy, or a shared volume usually are not.
+Signing into the same Apple ID makes no difference either way — Gatekeeper
+looks at the file's attributes, not at who is logged in.
+
+```sh
+xattr -p com.apple.quarantine /path/to/Project6-<version>.pkg
+```
+
+* **`No such xattr`** — the file was never quarantined, Gatekeeper never
+  engaged, and this install proved nothing about how it behaves for somebody
+  who downloads it.
+* **A value is printed** — it *was* quarantined and it installed anyway, which
+  is the real test.
+
+To test it honestly, send the package the way a tester will actually receive
+it: a download link, or email. Then try it on a Mac that has never had the
+build tree.
+
+### So is it ready for another user?
+
+* **A colleague or friend who will take a phone call** — yes, unsigned, as long
+  as you tell them up front that macOS will object and how to allow it. Verify
+  §1 above on a machine that has never built it first.
+* **Anyone else** — no. Sign and notarise it. Asking a stranger to override
+  Gatekeeper for an unsigned installer is asking them to do the exact thing
+  they should refuse, and it teaches a habit worth not teaching.
+
 ## If it fails on someone else's Mac
 
 `com.apple.installer.pagecontroller error -1` means Installer could not set up
