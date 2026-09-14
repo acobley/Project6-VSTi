@@ -239,6 +239,43 @@ set(SMTG_CREATE_PLUGIN_LINK           1 CACHE BOOL "" FORCE)
 
 set(SMTG_VSTGUI_ROOT "${VST3_SDK_ROOT}")
 
+#-----------------------------------------------------------------------------
+# KEEP THE BUILD MACHINE'S PATHS OUT OF THE SHIPPED BINARY
+#
+# VSTGUI's assert macros embed __FILE__, so a release build carries about
+# fifty absolute source paths - every one of them naming the home directory it
+# was built in. Harmless, and completely standard across shipped plug-ins, but
+# it is public the moment the installer is published, and `strings` on the
+# binary hands a stranger your username and directory layout.
+#
+# -ffile-prefix-map REWRITES THE PREFIX AT COMPILE TIME, so __FILE__ becomes
+# "Project6/external/..." instead. Note that -fdebug-prefix-map, which is the
+# one people reach for, does NOT do this: it rewrites debug info only and
+# leaves __FILE__ exactly as it was. -ffile-prefix-map is the superset of that
+# and -fmacro-prefix-map, and the macro half is the half that matters here.
+#
+# THIS MUST COME BEFORE add_subdirectory BELOW. The paths are baked into
+# VSTGUI's translation units, not into ours, so a target_compile_options on
+# the plug-in target would strip almost nothing. add_compile_options at
+# directory scope reaches every target created after it, the SDK's included.
+#
+# Guarded, because an unknown flag is a hard error on an older toolchain and
+# this is cosmetic - never worth failing a build over.
+#-----------------------------------------------------------------------------
+include(CheckCXXCompilerFlag)
+check_cxx_compiler_flag("-ffile-prefix-map=/a=b" PORT_HAVE_FILE_PREFIX_MAP)
+
+if(PORT_HAVE_FILE_PREFIX_MAP)
+    add_compile_options(
+        "-ffile-prefix-map=${CMAKE_SOURCE_DIR}=${PLUGIN_NAME}"
+        "-ffile-prefix-map=${VST3_SDK_ROOT}=vst3sdk"
+        "-ffile-prefix-map=${CMAKE_BINARY_DIR}=build")
+    message(STATUS "${PLUGIN_NAME}: build paths will be stripped from the binary")
+else()
+    message(STATUS "${PLUGIN_NAME}: this compiler has no -ffile-prefix-map, so "
+                   "the binary will carry absolute build paths")
+endif()
+
 add_subdirectory(${VST3_SDK_ROOT} ${PROJECT_BINARY_DIR}/vst3sdk)
 smtg_enable_vst3_sdk()
 

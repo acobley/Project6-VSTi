@@ -443,11 +443,19 @@ it, silently. This is the last cheap moment to be sure.
 * **Notarisation is not endorsement.** It means an automated scan found no
   malware. It says nothing about whether the plug-in is any good, and it will
   not help if a bug costs somebody a session.
-* **The binary carries your build paths.** VSTGUI's assert macros bake absolute
-  source paths into the executable — around fifty of them, all naming the home
-  directory it was built in. Harmless, and standard across shipped plug-ins,
-  but it is public once published. `-ffile-prefix-map=$(PWD)=.` removes them if
-  that matters.
+* **The binary used to carry your build paths.** VSTGUI's assert macros bake
+  `__FILE__` into the executable — around fifty absolute paths, all naming the
+  home directory it was built in. Harmless, and standard across shipped
+  plug-ins, but public once published. `CMakeLists.txt` now passes
+  `-ffile-prefix-map` so they read `Project6/external/...` instead. Check it
+  after a rebuild:
+
+  ```sh
+  strings -a build/VST3/Release/Project6.vst3/Contents/MacOS/Project6       | grep -c "$HOME"        # want 0
+  ```
+
+  (`-fdebug-prefix-map` will *not* do this — it rewrites debug info and leaves
+  `__FILE__` alone.)
 * **The licence starts binding other people.** CC BY-SA 4.0 is what this
   inherited from VocalFilter; Creative Commons themselves advise against CC
   licences for software, since the terms are written for creative works and
