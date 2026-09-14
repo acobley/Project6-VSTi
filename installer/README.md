@@ -12,13 +12,32 @@ gets only that one.
 
 **macOS only.** `pkgbuild`, `productbuild` and `codesign` are Apple's and exist
 nowhere else, so this cannot be run from the Linux side of a remote session.
-Build the plug-in first:
+
+The whole sequence for a release:
 
 ```sh
-./setup-xcode.sh --no-open
+tools/run-tests.sh                              # 1. before anything is built
+./setup-xcode.sh --no-open --clean              # 2. clean, if compile flags changed
 cmake --build build --config Release
-installer/build-installer.sh
+
+strings -a build/VST3/Release/Project6.vst3/Contents/MacOS/Project6 \
+    | grep -c "$HOME"                           # 3. want 0
+
+installer/build-installer.sh \                  # 4. ONCE, signed
+    --sign-app       "Developer ID Application: Your Name (TEAMID)" \
+    --sign-installer "Developer ID Installer: Your Name (TEAMID)" \
+    --notarize       your-notary-profile
 ```
+
+**Run the installer build once, not twice.** An unsigned run writes the same
+`installer/Project6-<version>.pkg` that a signed run does, so building
+unsigned "to check it works" and then signing means that if the signed run
+fails part way — a notarisation timeout, a wrong identity — the **unsigned**
+package is still sitting at the final path, looking finished. Nothing in the
+name distinguishes them. `pkgutil --check-signature` is the only way to tell,
+and it is not a habit worth needing.
+
+For a local build with no certificates, run it with no arguments instead.
 
 The version comes out of `PLUGIN_VERSION` in `CMakeLists.txt`. There is no
 second copy of it to forget.
