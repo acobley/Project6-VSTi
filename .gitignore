@@ -5,4 +5,19 @@ external/
 # Installer outputs. The machinery is tracked; what it produces is not.
 installer/build/
 installer/*.pkg
+
+# SIGNING MATERIAL NEVER GOES IN THE REPO.
+#
+# The .cer and .certSigningRequest are PUBLIC - a certificate is what gets
+# embedded in everything you sign, and a CSR carries only a public key - so
+# committing them is untidy rather than dangerous. The rest of this list is
+# not public at all: a .p12 carries the PRIVATE KEY, and an App Store Connect
+# AuthKey_*.p8 authenticates as you to the notary service and downloads
+# exactly once. Either of those in a repo is somebody else signing as you.
+*.cer
+*.certSigningRequest
+*.p12
+*.pfx
+*.p8
+AuthKey_*
 .DS_Store
