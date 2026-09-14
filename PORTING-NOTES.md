@@ -2085,3 +2085,59 @@ To use an existing checkout anyway:
 ```sh
 cmake -B build -G Xcode -DVST3_SDK_ROOT=/path/to/vst3sdk
 ```
+
+## 18. Shipping it: the installer, and the symlink that breaks it
+
+`installer/build-installer.sh` builds `installer/Project6-<version>.pkg`: two
+component packages, one per format, behind a `productbuild` choice pane, so
+somebody who only wants the VST3 gets only the VST3. The version is read out
+of `CMakeLists.txt` rather than kept a second time.
+
+**macOS only.** `pkgbuild`, `productbuild` and `codesign` are Apple's; nothing
+about this can be done from the Linux side of a remote session, which is where
+most of this project has been written.
+
+### The trap, and it is a silent one
+
+**Pointing `pkgbuild` at `build/VST3/Release` produces a `.pkg` that works
+perfectly on the machine that built it and installs a DEAD AUDIO UNIT
+everywhere else.**
+
+Steinberg's AU wrapper has no plug-in code of its own — it loads the VST3 out
+of its own bundle, at `Contents/Resources/plugin.vst3`. CMake puts a **symlink**
+there, to an absolute path in the build tree:
+
+```
+Project6.component/Contents/Resources/plugin.vst3
+    -> /Users/<you>/DXi-DEv/Project6-VSTi/build/VST3/Release/Project6.vst3
+```
+
+Which is exactly right for development — rebuild the VST3 and the AU follows —
+and fatal in a payload. On another machine the link dangles, the wrapper finds
+nothing to load, and the AU fails to instantiate with nothing useful said about
+why. Every test you can run on your own machine passes.
+
+So the script replaces the link with a **real copy** of the VST3 bundle, and
+the `.component` becomes self-contained. Two consequences worth knowing:
+
+* **Re-sign innermost first.** The nested `plugin.vst3` is signed before the
+  `.component` that contains it, or sealing the outer bundle and then signing
+  the inner one invalidates what was just sealed.
+* **A guard, not just a fix.** The script then fails the build if *any* symlink
+  in the payload points at an absolute path. The fix handles the link we know
+  about; the guard handles the one somebody adds in two years.
+
+### Signing is not optional for the thing that was actually asked for
+
+Unsigned, the `.pkg` installs fine locally and travels fine on a USB stick. A
+`.pkg` **downloaded** is quarantined, and an unsigned, un-notarised one is
+refused by Gatekeeper — the person has to allow it by hand in System Settings,
+which is precisely what a malicious installer asks of them. Do not ask
+strangers to do that.
+
+Distribution needs both halves of a Developer ID (`Developer ID Application`
+for the payload and `Developer ID Installer` for the package — two different
+certificates) and a notarisation pass. The script takes `--sign-app`,
+`--sign-installer` and `--notarize` and does the lot, including `stapler`. All
+of it needs a paid Apple Developer account; without one the installer is a
+local convenience and not a distributable.

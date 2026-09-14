@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    The product archive: the panes the installer shows and the two things a
+    person can choose to install. __VERSION__ is substituted by
+    build-installer.sh from CMakeLists.txt, so the version lives in one place.
+-->
+<installer-gui-script minSpecVersion="2">
+
+    <title>Project6</title>
+    <organization>audio.project6</organization>
+
+    <!-- customize="always" so the choice pane is always shown: somebody who
+         only uses one format should not have the other installed silently. -->
+    <options customize="always"
+             require-scripts="false"
+             rootVolumeOnly="true"
+             hostArchitectures="x86_64,arm64"/>
+
+    <welcome    file="welcome.html"    mime-type="text/html"/>
+    <license    file="license.txt"     mime-type="text/plain"/>
+    <conclusion file="conclusion.html" mime-type="text/html"/>
+
+    <choices-outline>
+        <line choice="choice.vst3"/>
+        <line choice="choice.au"/>
+    </choices-outline>
+
+    <choice id="choice.vst3"
+            title="VST3"
+            description="Project6.vst3, installed into /Library/Audio/Plug-Ins/VST3. Works in any VST3 host.">
+        <pkg-ref id="audio.project6.vst3.pkg"/>
+    </choice>
+
+    <choice id="choice.au"
+            title="Audio Unit"
+            description="Project6.component, installed into /Library/Audio/Plug-Ins/Components. For Logic Pro and other AU hosts. Note that REAPER does not accept MIDI output from an Audio Unit - use the VST3 there.">
+        <pkg-ref id="audio.project6.audiounit.pkg"/>
+    </choice>
+
+    <pkg-ref id="audio.project6.vst3.pkg"
+             version="__VERSION__"
+             onConclusion="none">Project6-VST3.pkg</pkg-ref>
+
+    <pkg-ref id="audio.project6.audiounit.pkg"
+             version="__VERSION__"
+             onConclusion="none">Project6-AU.pkg</pkg-ref>
+
+</installer-gui-script>

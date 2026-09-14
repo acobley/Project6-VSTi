@@ -1,4 +1,8 @@
 build/
 build-make/
 external/
+
+# Installer outputs. The machinery is tracked; what it produces is not.
+installer/build/
+installer/*.pkg
 .DS_Store

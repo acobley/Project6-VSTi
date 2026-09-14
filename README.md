@@ -116,6 +116,22 @@ compiles the old file list.** The symptom is *"Bundle does not export the
 required 'GetPluginFactory' function"*. Re-run `./setup-xcode.sh --no-open`
 and build again.
 
+## Installer
+
+`installer/build-installer.sh` builds a `.pkg` that installs the VST3 and the
+Audio Unit system-wide, as two separately choosable components. macOS only —
+`pkgbuild` and `productbuild` are Apple's. Build the plug-in first, then:
+
+```sh
+installer/build-installer.sh
+```
+
+Read `installer/README.md` before sending the result to anyone: unsigned it is
+fine on a USB stick and refused by Gatekeeper if it is downloaded, and there is
+a symlink in the AU bundle that makes a naive `pkgbuild` ship a dead Audio
+Unit. Both are handled, and both are explained there and in `PORTING-NOTES.md`
+§18.
+
 ## Tests
 
 Neither suite needs the plug-in built, and both should pass before every

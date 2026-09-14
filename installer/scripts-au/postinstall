@@ -1,0 +1,13 @@
+#!/bin/bash
+#-----------------------------------------------------------------------------
+# macOS caches the list of installed Audio Units, and a freshly installed
+# .component does not always appear in a host that is already running - or
+# even in one started afterwards - until the registrar rescans. Killing it
+# makes it rescan; launchd starts it again on demand.
+#
+# NEVER FATAL. If it is not running, or cannot be killed, the plug-in is still
+# correctly installed and will be found after a log-out. An installer that
+# reported failure over a cache refresh would be lying about the install.
+#-----------------------------------------------------------------------------
+killall -9 AudioComponentRegistrar >/dev/null 2>&1 || true
+exit 0

@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8">
+<style>
+  body { font: 13px -apple-system, "Helvetica Neue", sans-serif; margin: 0; color: #1d1d1f; }
+  h2 { font-size: 15px; margin: 0 0 8px; }
+  p  { margin: 0 0 10px; line-height: 1.45; }
+  ul { margin: 0 0 10px 18px; padding: 0; line-height: 1.45; }
+  .note { color: #6e6e73; }
+</style>
+</head>
+<body>
+
+<h2>Installed</h2>
+
+<p>Start your DAW and rescan its plug-ins if it does not do that by itself.
+Project6 appears as an <b>instrument</b> by A. E. Cobley.</p>
+
+<p>Two things worth knowing:</p>
+
+<ul>
+  <li><b>In REAPER, use the VST3.</b> REAPER never asks an Audio Unit whether it
+      has MIDI output, so a MIDI pad&rsquo;s notes have nowhere to go there. The
+      VST3 has no such problem.</li>
+  <li><b>Apple&rsquo;s AUMIDISynth goes silent at a transport loop point</b> and
+      stays silent until the transport is stopped. That is the synth, not
+      Project6 &mdash; the notes reaching it are correct and keep arriving. Use a
+      different synth if you loop.</li>
+</ul>
+
+<p class="note">Project6 is free software under CC&nbsp;BY-SA&nbsp;4.0.
+Copyright &copy; 2026 A. E. Cobley.</p>
+
+</body>
+</html>
