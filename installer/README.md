@@ -157,7 +157,28 @@ your Apple ID password.
 1. **appleid.apple.com** → Sign-In and Security → **App-Specific Passwords** →
    generate one, and copy it.
 2. Your **Team ID** is the bracketed code in the identities above, and is also
-   on developer.apple.com → Membership.
+   on developer.apple.com → Membership. **Take it from the certificate** where
+   you can: the team you give notarytool must be the team that owns the
+   Developer ID you sign with, or the submission is rejected.
+
+   ```sh
+   security find-identity -v | grep "Developer ID"
+   #   Developer ID Application: A. E. Cobley (ABCDE12345)
+   #                                           ^^^^^^^^^^ this
+   ```
+
+   From a downloaded `.cer` instead, it is the `OU=` field:
+
+   ```sh
+   openssl x509 -inform der -in developerID_application.cer -noout -subject
+   ```
+
+   **The Issuer ID of an App Store Connect API key is NOT the Team ID.** One is
+   a UUID, the other is ten alphanumeric characters; they come from different
+   systems and are not interchangeable. (And the API-key route takes no team at
+   all — see below.) If you belong to more than one team, make sure you are
+   reading the paid one: a free "Personal Team" cannot create Developer ID
+   certificates in the first place.
 3. Store it all once, in the keychain:
 
 ```sh
