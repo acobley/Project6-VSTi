@@ -62,16 +62,43 @@ fi
 echo
 echo "3. Architectures"
 #-----------------------------------------------------------------------------
+# lipo IS NOT PART OF macOS. It comes with the Xcode command line tools, which
+# a musician's Mac has no reason to have - and a machine without them is
+# exactly the machine worth testing on. `file` is in the base system and says
+# the same thing, so it is the fallback.
 for binary in "$VST3/Contents/MacOS/$NAME" "$AU/Contents/MacOS/$NAME"; do
-    if [ -f "$binary" ]; then
-        archs="$(lipo -archs "$binary" 2>/dev/null)"
-        case "$archs" in
-            *"$(uname -m)"*) pass "$(basename "$(dirname "$(dirname "$binary")")") - $archs" ;;
-            "")              fail "could not read the architectures of $binary" ;;
-            *)               fail "$binary is $archs - nothing for this $(uname -m) Mac" ;;
-        esac
-    else
+    if [ ! -f "$binary" ]; then
         fail "no executable at $binary"
+        continue
+    fi
+
+    label="$(basename "$(dirname "$(dirname "$binary")")")"
+
+    archs="$(lipo -archs "$binary" 2>/dev/null)"
+
+    if [ -z "$archs" ]; then
+        # `file` PRINTS ITS ERRORS ON STDOUT - "cannot open ..." comes back as
+        # if it were the answer, and is then reported as an architecture this
+        # Mac does not have. So only a description that actually names Mach-O
+        # is believed.
+        description="$(file -b "$binary" 2>/dev/null)"
+        case "$description" in
+            *Mach-O*) archs="$description" ;;
+            *)        archs="" ;;
+        esac
+    fi
+
+    if [ -z "$archs" ]; then
+        # NOT A FAILURE. Being unable to measure something is not the same as
+        # it being wrong, and auval below settles the question properly: it
+        # INSTANTIATES the component, which it cannot do for the wrong
+        # architecture.
+        note "$label - could not determine the architectures here"
+        note "  neither lipo nor file was usable; section 6 answers this anyway"
+    elif printf '%s' "$archs" | grep -q "$(uname -m)"; then
+        pass "$label - $archs"
+    else
+        fail "$label is $archs - nothing for this $(uname -m) Mac"
     fi
 done
 
