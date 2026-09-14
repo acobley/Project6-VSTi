@@ -170,6 +170,52 @@ xcrun notarytool store-credentials project6-notary \
 `project6-notary` is just a label you choose. The password is stored in the
 keychain, so it never appears in a command again.
 
+#### If that fails with HTTP 500
+
+```
+Validating your credentials...
+Error: HTTP status code: 500. Internal Server Error
+```
+
+**This is Apple's end, not yours.** It happens before anything is uploaded, at
+the point where notarytool checks the Apple ID, team and password against the
+notary service — it does not touch your certificates and says nothing about
+them. Apple's own DTS engineer, on this exact error: *"The notary service is
+quite reliable IME, and when I do see errors like this they often get fixed
+based on internal monitoring."*
+
+Retry first; these often clear by themselves. Apple's status page is at
+developer.apple.com/system-status, though it is coarse and routinely misses
+partial failures, so "available" there is not a contradiction.
+
+If it persists, Apple's recommended workaround is to **authenticate with an App
+Store Connect API key instead of an app-specific password** — a different
+authentication path entirely. It is the better route anyway: it is what works
+unattended in CI, and it does not break when a password is rotated.
+
+App Store Connect → **Users and Access** → **Integrations** → App Store Connect
+API → generate a team key. You need three things from it: the **Key ID**, the
+**Issuer ID** (above the key list), and the `AuthKey_XXXXXXXX.p8` file — **which
+downloads exactly once**, so keep it somewhere safe and backed up.
+
+```sh
+xcrun notarytool store-credentials project6-notary \
+    --key ~/private_keys/AuthKey_XXXXXXXX.p8 \
+    --key-id XXXXXXXX \
+    --issuer aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee
+```
+
+**`build-installer.sh` needs no change either way.** `store-credentials` writes
+the same kind of keychain profile whichever authentication it is given, and
+`notarytool submit --keychain-profile` reads both identically — so
+`--notarize project6-notary` stays exactly as it is.
+
+To test the credentials without building anything:
+
+```sh
+xcrun notarytool history --keychain-profile project6-notary
+```
+
 ### 4. Build it
 
 ```sh
