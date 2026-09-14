@@ -100,6 +100,42 @@ and there is a small limit on how many exist at once. If you ever need them on
 a second machine, export them from Keychain Access as a `.p12` rather than
 creating new ones.
 
+#### If you made them on developer.apple.com instead
+
+Then you have probably hit the one trap in that route, and the symptom is
+**Xcode listing the certificates but saying they are not in the keychain**.
+
+A certificate is **two halves**: the certificate Apple issues, and the
+**private key**, which only ever exists on the Mac that generated the signing
+request. The portal has only the first half and can never give you the second.
+So a certificate created there is useless until both halves are on this Mac.
+
+The check that settles it — an *identity* is by definition a certificate plus
+its key, so if these list them, you are fine:
+
+```sh
+security find-identity -v -p codesigning        # Developer ID Application
+security find-identity -v | grep "Developer ID" # both, including Installer
+```
+
+In the GUI: Keychain Access → **login** → **My Certificates**. Not
+"Certificates" — **My Certificates** is the list of ones you hold the key for,
+and each should open to reveal a private key underneath.
+
+If they are missing, which half you are missing decides the fix:
+
+* **You generated the CSR from Keychain Access on this Mac.** The key is here
+  and you simply never installed the issued certificate. developer.apple.com →
+  Certificates → click each → **Download**, then double-click the `.cer`. It
+  goes into the login keychain and pairs with the key by itself.
+* **You did not generate a CSR, or did it on another machine.** The key is not
+  here and nothing can recover it from the portal. Either import a `.p12`
+  exported from the machine that has it, or **revoke both certificates and let
+  Xcode create them** as above — Xcode generates the key locally and installs
+  both halves, which is the whole reason to prefer that route. Revoking unused
+  Developer ID certificates is harmless when nothing signed with them has
+  shipped, and it frees up the limited slots.
+
 ### 2. Find their exact names
 
 ```sh
