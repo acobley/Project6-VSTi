@@ -67,6 +67,14 @@ while [ $# -gt 0 ]; do
         --sign-installer) SIGN_INSTALLER="$2"; shift 2 ;;
         --notarize)       NOTARY_PROFILE="$2"; shift 2 ;;
         --config)         CONFIG="$2"; shift 2 ;;
+        --list-identities)
+            echo "Code-signing identities (for --sign-app):"
+            security find-identity -v -p codesigning || true
+            echo
+            echo "All identities (the Developer ID INSTALLER one is here, not above,"
+            echo "because it is not a code-signing certificate - for --sign-installer):"
+            security find-identity -v || true
+            exit 0 ;;
         -h|--help)        sed -n '2,45p' "${BASH_SOURCE[0]}"; exit 0 ;;
         *) echo "build-installer: unknown argument '$1'" >&2; exit 1 ;;
     esac
@@ -163,10 +171,33 @@ echo "==> no symlink in the payload points outside it"
 # .component that contains it, or signing the outer bundle seals a signature
 # that is then invalidated by signing the inner one.
 #-----------------------------------------------------------------------------
-echo "==> signing payload as: $SIGN_APP"
-codesign --force --timestamp=none --sign "$SIGN_APP" "$AU_RESOURCES/plugin.vst3"
-codesign --force --timestamp=none --sign "$SIGN_APP" "$WORK/root-au/$NAME.component"
-codesign --force --timestamp=none --sign "$SIGN_APP" "$WORK/root-vst3/$NAME.vst3"
+#
+# AND THE FLAGS ARE NOT THE SAME FOR AD-HOC AND FOR A DEVELOPER ID.
+#
+# Notarisation requires BOTH a secure timestamp and the hardened runtime, and
+# Apple checks what is INSIDE the package as well as the package itself. A
+# payload signed the ad-hoc way and then wrapped in a properly signed .pkg is
+# rejected, with a message about the payload rather than about these flags.
+#
+# Ad-hoc signing cannot carry a timestamp - there is no certificate for a
+# timestamp authority to countersign - so --timestamp=none is right there and
+# only there. Asking for one anyway makes every local build wait on Apple's
+# timestamp server for nothing.
+#-----------------------------------------------------------------------------
+if [ "$SIGN_APP" = "-" ]; then
+    CODESIGN_FLAGS=(--force --timestamp=none)
+    echo "==> signing payload ad-hoc (local use only - cannot be notarised)"
+else
+    CODESIGN_FLAGS=(--force --timestamp --options runtime)
+    echo "==> signing payload as: $SIGN_APP"
+    echo "    with a secure timestamp and the hardened runtime, both of which"
+    echo "    notarisation requires"
+fi
+
+# INNERMOST FIRST, still: see above.
+codesign "${CODESIGN_FLAGS[@]}" --sign "$SIGN_APP" "$AU_RESOURCES/plugin.vst3"
+codesign "${CODESIGN_FLAGS[@]}" --sign "$SIGN_APP" "$WORK/root-au/$NAME.component"
+codesign "${CODESIGN_FLAGS[@]}" --sign "$SIGN_APP" "$WORK/root-vst3/$NAME.vst3"
 
 codesign --verify --deep --strict "$WORK/root-vst3/$NAME.vst3"
 codesign --verify --deep --strict "$WORK/root-au/$NAME.component"
@@ -301,11 +332,34 @@ if [ -n "$NOTARY_PROFILE" ]; then
         echo "notarise an unsigned package." >&2
         exit 1
     }
+    [ "$SIGN_APP" != "-" ] || {
+        echo "build-installer: --notarize needs --sign-app with a real Developer ID" >&2
+        echo "too. Apple notarises the package AND what is inside it; an ad-hoc" >&2
+        echo "signed payload is rejected however well the package itself is signed." >&2
+        exit 1
+    }
     echo "==> submitting for notarisation (this waits, and can take minutes)"
     xcrun notarytool submit "$FINAL" --keychain-profile "$NOTARY_PROFILE" --wait
     xcrun stapler staple "$FINAL"
     xcrun stapler validate "$FINAL"
     echo "==> notarised and stapled"
+
+    #-------------------------------------------------------------------------
+    # THE ONLY TEST THAT MEANS ANYTHING: ask Gatekeeper, on this machine, the
+    # same question it will be asked on the one that downloads it. Everything
+    # up to here says the paperwork is in order; this says the answer is yes.
+    #-------------------------------------------------------------------------
+    assessment="$(spctl --assess --type install -vv "$FINAL" 2>&1 || true)"
+    echo "$assessment"
+
+    if printf '%s' "$assessment" | grep -q "source=Notarized Developer ID"; then
+        echo "==> Gatekeeper accepts it as a notarised Developer ID package"
+    else
+        echo "build-installer: Gatekeeper did NOT accept the finished package." >&2
+        echo "It is signed and stapled but would still be refused on a machine" >&2
+        echo "that downloads it. Do not ship this." >&2
+        exit 1
+    fi
 fi
 
 rm -rf "$WORK"

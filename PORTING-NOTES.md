@@ -2169,6 +2169,21 @@ strangers to do that.
 Distribution needs both halves of a Developer ID (`Developer ID Application`
 for the payload and `Developer ID Installer` for the package — two different
 certificates) and a notarisation pass. The script takes `--sign-app`,
-`--sign-installer` and `--notarize` and does the lot, including `stapler`. All
-of it needs a paid Apple Developer account; without one the installer is a
-local convenience and not a distributable.
+`--sign-installer` and `--notarize` and does the lot, including `stapler`.
+`installer/README.md` has the walkthrough.
+
+**Signing for real is not the same command with a different name in it**, and
+the first version of this script would have failed notarisation. With a
+Developer ID it now signs with `--timestamp` (a secure timestamp, so the
+signature outlives the certificate) and `--options runtime` (the hardened
+runtime). **Notarisation requires both, and it checks what is INSIDE the
+package as well as the package** — an ad-hoc signed payload wrapped in a
+properly signed `.pkg` is rejected, and the message is about the payload rather
+than about the flags. Ad-hoc signing cannot carry a timestamp at all, so
+`--timestamp=none` is right for local builds and only for those; the script
+picks the pair by whether `--sign-app` is `-`.
+
+And after stapling it asks **Gatekeeper, locally, the question the downloading
+machine will ask**: `spctl --assess --type install -vv` must answer
+`source=Notarized Developer ID`, and the build fails otherwise. Everything
+before that only proves the paperwork is in order.

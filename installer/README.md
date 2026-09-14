@@ -77,6 +77,111 @@ xcrun notarytool store-credentials my-notary-profile \
 Both certificates come from a paid Apple Developer account. Without one, an
 installer can be built and used locally but cannot be distributed cleanly.
 
+## Signing and notarising, start to finish
+
+Do this once. Afterwards it is one command per release.
+
+### 1. Two certificates, and they are different things
+
+You need **both**, and they are not interchangeable:
+
+| Certificate | Signs | Passed as |
+|---|---|---|
+| **Developer ID Application** | the `.vst3` and `.component` | `--sign-app` |
+| **Developer ID Installer** | the `.pkg` itself | `--sign-installer` |
+
+Easiest route: **Xcode → Settings → Accounts → (your Apple ID) → Manage
+Certificates → `+`** and create each in turn. They land in your login keychain
+with their private keys, which is what matters — a certificate downloaded from
+the developer portal without its key is useless.
+
+Only the **Account Holder** of the team can create Developer ID certificates,
+and there is a small limit on how many exist at once. If you ever need them on
+a second machine, export them from Keychain Access as a `.p12` rather than
+creating new ones.
+
+### 2. Find their exact names
+
+```sh
+installer/build-installer.sh --list-identities
+```
+
+The Application one appears under code-signing identities; the Installer one
+does **not** — it is not a code-signing certificate — so the script lists both
+sets. You want the full string including the team ID in brackets:
+
+    Developer ID Application: A. E. Cobley (ABCDE12345)
+    Developer ID Installer: A. E. Cobley (ABCDE12345)
+
+### 3. An app-specific password, and the notary profile
+
+Notarisation is a separate Apple service with its own login. It will not take
+your Apple ID password.
+
+1. **appleid.apple.com** → Sign-In and Security → **App-Specific Passwords** →
+   generate one, and copy it.
+2. Your **Team ID** is the bracketed code in the identities above, and is also
+   on developer.apple.com → Membership.
+3. Store it all once, in the keychain:
+
+```sh
+xcrun notarytool store-credentials project6-notary \
+    --apple-id you@example.com \
+    --team-id ABCDE12345 \
+    --password abcd-efgh-ijkl-mnop
+```
+
+`project6-notary` is just a label you choose. The password is stored in the
+keychain, so it never appears in a command again.
+
+### 4. Build it
+
+```sh
+installer/build-installer.sh \
+    --sign-app       "Developer ID Application: A. E. Cobley (ABCDE12345)" \
+    --sign-installer "Developer ID Installer: A. E. Cobley (ABCDE12345)" \
+    --notarize       project6-notary
+```
+
+Notarisation waits on Apple and usually takes a few minutes. The script then
+staples the ticket to the package, so it validates even on a machine that is
+offline.
+
+### What the script changes when you sign for real
+
+Signing for distribution is not the same command with a different name in it.
+With a Developer ID the script switches to:
+
+* **`--timestamp`** — a secure timestamp, countersigned by Apple's timestamp
+  server, so the signature stays valid after the certificate expires.
+* **`--options runtime`** — the hardened runtime.
+
+**Notarisation requires both**, and it checks what is *inside* the package as
+well as the package itself: a payload signed the ad-hoc way and then wrapped in
+a properly signed `.pkg` is rejected, with a message about the payload rather
+than about these flags. Ad-hoc signing cannot carry a timestamp at all — there
+is no certificate for a timestamp authority to countersign — which is why
+`--timestamp=none` is right for local builds and only for those.
+
+### The check that actually matters
+
+After stapling, the script asks **Gatekeeper on your own machine the same
+question the downloading machine will ask**:
+
+```sh
+spctl --assess --type install -vv installer/Project6-<version>.pkg
+```
+
+It must say `source=Notarized Developer ID`. **Anything else and the build
+fails**, because everything before that point only proves the paperwork is in
+order — this proves the answer is yes. A package that is signed and stapled and
+still refused by Gatekeeper is exactly the failure worth catching at home.
+
+Then verify it end to end the honest way: send it to yourself as a **download**,
+and check `xattr -p com.apple.quarantine` shows it arrived quarantined before
+you install it. Quarantined, signed and notarised, installing without a murmur
+is the whole goal.
+
 ## Before handing it to a tester
 
 **"It installed on another Mac" is not the same as "it is ready".** Two
