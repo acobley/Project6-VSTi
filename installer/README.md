@@ -77,6 +77,34 @@ xcrun notarytool store-credentials my-notary-profile \
 Both certificates come from a paid Apple Developer account. Without one, an
 installer can be built and used locally but cannot be distributed cleanly.
 
+## If it fails on someone else's Mac
+
+`com.apple.installer.pagecontroller error -1` means Installer could not set up
+its panes — usually because it rejected the distribution, not because anything
+is wrong with the payload. **The error names none of that, but the log does.**
+
+On the machine that fails, open the package, and when the error appears:
+
+* **Installer → Window → Installer Log**, or `⌘L`, set to **Show All Logs**;
+* or afterwards, `/var/log/install.log` —
+  `log show --predicate 'process == "Installer"' --last 30m`
+
+That names the actual reason. In the one well-documented case of this error
+the log said *"Invalid Distribution File/Package"* with an XML parse failure,
+which is nothing you could have guessed from the dialog.
+
+Worth establishing first, because it splits the problem in half: **does the
+same `.pkg` install on the machine that built it?**
+
+* Fails on both → the package. The log will say why.
+* Works locally, fails elsewhere → the environment: quarantine, an older
+  macOS, or Gatekeeper refusing an unsigned package (see above).
+
+`build-installer.sh` now validates the distribution twice — once as written,
+and once as it ends up *inside* the product archive, which is the copy the far
+machine actually reads — and fails the build if it is malformed or names a
+component package that is not embedded.
+
 ## Checking the result
 
 ```sh

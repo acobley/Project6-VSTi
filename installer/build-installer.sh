@@ -203,6 +203,25 @@ cp "$ROOT/LICENSE" "$WORK/resources/license.txt"
 
 sed "s/__VERSION__/$VERSION/g" "$HERE/distribution.xml" > "$WORK/distribution.xml"
 
+#-----------------------------------------------------------------------------
+# VALIDATE THE DISTRIBUTION, TWICE, because a bad one is not caught by
+# building - it is caught by somebody else's Mac refusing the package with
+# "com.apple.installer.pagecontroller error -1", which says nothing about what
+# is actually wrong. Installer reads this XML to build its panes, and if it
+# cannot parse or resolve it, that is the error you get.
+#
+# Once on the substituted source, and once on the copy that actually ended up
+# INSIDE the product archive - which is the one the other machine will read,
+# and is not necessarily byte-identical to what went in.
+#-----------------------------------------------------------------------------
+if command -v xmllint >/dev/null 2>&1; then
+    xmllint --noout "$WORK/distribution.xml" || {
+        echo "build-installer: distribution.xml is not well-formed XML." >&2
+        exit 1
+    }
+    echo "==> distribution.xml is well-formed"
+fi
+
 UNSIGNED="$WORK/$NAME-$VERSION-unsigned.pkg"
 FINAL="$HERE/$NAME-$VERSION.pkg"
 
@@ -211,6 +230,60 @@ productbuild \
     --package-path "$WORK/pkgs" \
     --resources "$WORK/resources" \
     "$UNSIGNED"
+
+#-----------------------------------------------------------------------------
+# AND THE ONE THAT SHIPPED. pkgutil --expand unpacks the product archive; the
+# Distribution inside it is what Installer will read on the far machine.
+#-----------------------------------------------------------------------------
+if command -v xmllint >/dev/null 2>&1; then
+    rm -rf "$WORK/expanded"
+    pkgutil --expand "$UNSIGNED" "$WORK/expanded"
+
+    [ -f "$WORK/expanded/Distribution" ] || {
+        echo "build-installer: the product archive has no Distribution file." >&2
+        exit 1
+    }
+
+    xmllint --noout "$WORK/expanded/Distribution" || {
+        echo "build-installer: the Distribution INSIDE the package is not" >&2
+        echo "well-formed. This is the file the installing machine reads." >&2
+        exit 1
+    }
+
+    # EVERY COMPONENT PACKAGE THE DISTRIBUTION NAMES MUST ACTUALLY BE IN
+    # THERE. A pkg-ref to a package productbuild did not embed is a
+    # distribution Installer cannot resolve, and it fails at the page stage
+    # naming none of this.
+    #
+    # FLATTENED FIRST. pkg-ref elements are written across several lines, and
+    # a line-based scan of them finds nothing - and then reports that nothing
+    # is missing, which is a guard that passes everything. Asked for it, got
+    # it, tested it, and that is exactly what the first version did.
+    refs=$(tr '\n' ' ' < "$WORK/expanded/Distribution" \
+           | grep -o '<pkg-ref[^>]*>[^<]*\.pkg</pkg-ref>' \
+           | sed 's/.*>\([^<>]*\.pkg\)<.*/\1/')
+
+    if [ -z "$refs" ]; then
+        echo "build-installer: found no pkg-ref in the shipped Distribution." >&2
+        echo "Either the archive is malformed or this check has stopped working;" >&2
+        echo "either way it must not pass silently." >&2
+        exit 1
+    fi
+
+    missing=""
+    for ref in $refs; do
+        ref="${ref#\#}"                   # both "name.pkg" and "#name.pkg" are legal
+        [ -e "$WORK/expanded/$ref" ] || missing="$missing $ref"
+    done
+
+    if [ -n "$missing" ]; then
+        echo "build-installer: the Distribution names packages that are not" >&2
+        echo "inside the archive:$missing" >&2
+        exit 1
+    fi
+
+    echo "==> the shipped Distribution is well-formed and every pkg-ref resolves"
+fi
 
 if [ -n "$SIGN_INSTALLER" ]; then
     echo "==> signing the installer as: $SIGN_INSTALLER"

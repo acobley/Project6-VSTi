@@ -2127,6 +2127,37 @@ the `.component` becomes self-contained. Two consequences worth knowing:
   in the payload points at an absolute path. The fix handles the link we know
   about; the guard handles the one somebody adds in two years.
 
+### `pagecontroller error -1`, and the guard that passed everything
+
+Reported from another Mac: `com.apple.installer.pagecontroller error -1`.
+That is Installer failing to set up its **panes**, which normally means it
+rejected the Distribution — and the dialog names none of it. **The install log
+does**: Installer → Window → Installer Log (`⌘L`), or `/var/log/install.log`.
+
+Two of the obvious suspicions were checked and **both were wrong**: a shipping
+production installer uses the bare `name.pkg` form in `pkg-ref` exactly as this
+one does, and uses `rootVolumeOnly="true"` too. So no guess was shipped as a
+fix — that is the mistake this project has already paid for four times over in
+§0.
+
+What *was* changed is defensible on its own terms:
+
+* `rootVolumeOnly="true"` → a `<domains>` element. Apple's own Distribution XML
+  reference marks the attribute **deprecated** and names `domains` as its
+  replacement. Not known to be the fault; simply the current spelling.
+* **The distribution is now validated twice at build time** — once as written,
+  and once as it ends up *inside* the product archive, which is the copy the
+  installing machine actually reads and is not necessarily what went in. A
+  malformed distribution now fails the build instead of somebody else's Mac.
+
+**And the guard that passed everything.** The first version of the pkg-ref
+check scanned line by line. The `pkg-ref` elements are written across several
+lines, so it matched nothing — and then reported that nothing was missing. It
+was only caught because it was run against a deliberately broken tree instead
+of being eyeballed. It now flattens the file first, and **fails when it finds
+no pkg-ref at all**, because a check that finds nothing to check is broken, not
+satisfied.
+
 ### Signing is not optional for the thing that was actually asked for
 
 Unsigned, the `.pkg` installs fine locally and travels fine on a USB stick. A

@@ -13,8 +13,20 @@
          only uses one format should not have the other installed silently. -->
     <options customize="always"
              require-scripts="false"
-             rootVolumeOnly="true"
              hostArchitectures="x86_64,arm64"/>
+
+    <!-- WHERE IT MAY BE INSTALLED. This replaces rootVolumeOnly="true", which
+         is what used to be here and which Apple's own Distribution XML
+         reference marks DEPRECATED, naming this element as its replacement.
+
+         Plug-ins go in /Library/Audio/Plug-Ins, which is on the boot volume
+         by definition, so: the system domain yes, an arbitrary volume no, and
+         the user's home no - the component packages install to absolute
+         paths under /Library and a home-directory install would put them
+         somewhere no host looks. -->
+    <domains enable_anywhere="false"
+             enable_currentUserHome="false"
+             enable_localSystem="true"/>
 
     <welcome    file="welcome.html"    mime-type="text/html"/>
     <license    file="license.txt"     mime-type="text/plain"/>
