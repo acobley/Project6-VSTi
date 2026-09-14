@@ -198,16 +198,28 @@ Validating your credentials...
 Error: HTTP status code: 500. Internal Server Error
 ```
 
-**This is Apple's end, not yours.** It happens before anything is uploaded, at
-the point where notarytool checks the Apple ID, team and password against the
-notary service — it does not touch your certificates and says nothing about
-them. Apple's own DTS engineer, on this exact error: *"The notary service is
-quite reliable IME, and when I do see errors like this they often get fixed
-based on internal monitoring."*
+**CHECK THE TEAM ID FIRST. A wrong one produces exactly this error.** That is
+what it was here: not an outage, not the password, not the certificates — the
+`--team-id` did not belong to the Apple ID. Apple returns a *500 Internal
+Server Error* rather than an honest "no such team", which sends you looking in
+completely the wrong place, so check it before you believe anything else:
 
-Retry first; these often clear by themselves. Apple's status page is at
-developer.apple.com/system-status, though it is coarse and routinely misses
-partial failures, so "available" there is not a contradiction.
+```sh
+security find-identity -v | grep "Developer ID"
+#   Developer ID Application: A. E. Cobley (ABCDE12345)
+#                                           ^^^^^^^^^^ use this
+```
+
+It happens before anything is uploaded, at the point notarytool checks the
+Apple ID, team and password — so whatever the cause, it says nothing about
+your certificates.
+
+If the Team ID is definitely right, then it may genuinely be Apple's end.
+Their DTS engineer, on this error: *"The notary service is quite reliable IME,
+and when I do see errors like this they often get fixed based on internal
+monitoring."* Retry; these often clear by themselves. The status page at
+developer.apple.com/system-status is coarse and routinely misses partial
+failures, so "available" there is not a contradiction.
 
 If it persists, Apple's recommended workaround is to **authenticate with an App
 Store Connect API key instead of an app-specific password** — a different
