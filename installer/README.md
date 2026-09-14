@@ -340,9 +340,35 @@ xattr -p com.apple.quarantine /path/to/Project6-<version>.pkg
 * **A value is printed** — it *was* quarantined and it installed anyway, which
   is the real test.
 
-To test it honestly, send the package the way a tester will actually receive
-it: a download link, or email. Then try it on a Mac that has never had the
-build tree.
+**On a package you built yourself, `No such xattr` is expected and means
+nothing.** Quarantine is stamped on by whatever *downloads* a file, and you
+never download your own build. It is only informative on a copy that has
+actually travelled — and only some routes set it:
+
+| Sets quarantine | Does not |
+|---|---|
+| Safari, Chrome, Firefox downloads | `curl` / `wget` / `scp` |
+| Mail and Messages attachments | iCloud Drive sync |
+| AirDrop | SMB / network share copy |
+| | USB stick |
+
+So send it the way a tester will actually receive it — a download link, or
+email — and try it on a Mac that has never had the build tree.
+
+To force the check without a real download, the attribute can be stamped on by
+hand:
+
+```sh
+xattr -w com.apple.quarantine "0081;00000000;Safari;" Project6-<version>.pkg
+```
+
+That is a fair approximation, but a genuine browser download remains the honest
+test: it exercises the whole path rather than a synthesised attribute.
+
+**And note this is the weaker check of the two.** `spctl --assess --type
+install -vv`, which the build script runs automatically after stapling, asks
+Gatekeeper for its verdict directly and does not depend on how the file
+travelled at all. If the signed build completed, that already passed.
 
 ### So is it ready for another user?
 
