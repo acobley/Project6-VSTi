@@ -379,6 +379,67 @@ travelled at all. If the signed build completed, that already passed.
   Gatekeeper for an unsigned installer is asking them to do the exact thing
   they should refuse, and it teaches a habit worth not teaching.
 
+## Publishing it on GitHub
+
+Signed and notarised, a GitHub download is a perfectly reasonable channel — a
+browser sets the quarantine attribute, the stapled ticket satisfies Gatekeeper
+without contacting Apple, and it installs without a murmur.
+
+**As a Release asset, not as a commit.** `.gitignore` excludes
+`installer/*.pkg` on purpose. Git stores a binary as a fresh blob every
+version, forever, in every clone, and it cannot be removed afterwards without
+rewriting history. A release asset is versioned, replaceable, counted, and
+outside the history. **Tag the commit the binary was built from**, so a release
+maps to source — the machinery here is in the repo, so that is genuinely
+reproducible.
+
+### The point of no return
+
+The moment somebody else installs it, these stop being editable:
+
+    audio.project6.vst3        audio.project6.audiounit
+    aumu / Prj6 / AECo         and the VST3 class UIDs
+
+Change any of them afterwards and every project that used the plug-in loses
+it, silently. This is the last cheap moment to be sure.
+
+### Before the first release
+
+* Verify the payload **on a Mac that has never had the build tree** — see
+  *Before handing it to a tester* above. An AU that installs and will not
+  instantiate is the failure the whole script exists to prevent.
+* Publish a checksum beside the asset: `shasum -a 256 Project6-<version>.pkg`.
+* Put the two known host quirks in the release notes — REAPER not taking MIDI
+  output from an Audio Unit, and AUMIDISynth going silent at a loop point.
+  Both are other people's, both will otherwise be reported as yours.
+* Say how to uninstall, because a `.pkg` never will:
+
+  ```sh
+  sudo rm -rf /Library/Audio/Plug-Ins/VST3/Project6.vst3
+  sudo rm -rf /Library/Audio/Plug-Ins/Components/Project6.component
+  ```
+
+### What you are taking on
+
+* **The signing key becomes the asset to protect.** Leaked, it lets somebody
+  sign malware as you, and Apple's remedy is revoking the Developer ID — which
+  invalidates everything you have ever signed with it. Export it as an
+  encrypted `.p12`, keep it offline, and keep it out of CI unless the secrets
+  are handled properly.
+* **Notarisation is not endorsement.** It means an automated scan found no
+  malware. It says nothing about whether the plug-in is any good, and it will
+  not help if a bug costs somebody a session.
+* **The binary carries your build paths.** VSTGUI's assert macros bake absolute
+  source paths into the executable — around fifty of them, all naming the home
+  directory it was built in. Harmless, and standard across shipped plug-ins,
+  but it is public once published. `-ffile-prefix-map=$(PWD)=.` removes them if
+  that matters.
+* **The licence starts binding other people.** CC BY-SA 4.0 is what this
+  inherited from VocalFilter; Creative Commons themselves advise against CC
+  licences for software, since the terms are written for creative works and
+  carry no patent grant. Worth a decision before the first download rather than
+  after.
+
 ## If it fails on someone else's Mac
 
 `com.apple.installer.pagecontroller error -1` means Installer could not set up
