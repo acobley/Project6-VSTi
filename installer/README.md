@@ -305,23 +305,37 @@ tests only the first.
 
 ### 1. Does the payload actually work there?
 
-The installer finishing means files were copied. It says nothing about whether
-they load. Run this on the far machine:
+The installer finishing means files were **copied**. It says nothing about
+whether they **load**.
+
+Copy `verify-install.sh` to the machine you are testing on, install the
+`.pkg`, and run it:
 
 ```sh
-pkgutil --pkgs | grep -i project6
-ls -ld /Library/Audio/Plug-Ins/VST3/Project6.vst3
-ls -ld /Library/Audio/Plug-Ins/Components/Project6.component/Contents/Resources/plugin.vst3
-auval -v aumu Prj6 AECo
+./verify-install.sh
 ```
 
-The third line is the important one. **It must be a directory, not a symlink.**
-If it shows an `l` and an arrow, the AU is carrying a link into a build tree
-that does not exist there, and it will fail to load however clean the install
-looked. That is the whole reason `build-installer.sh` exists.
+It needs nothing else — not this repo, not the build tree, not the installer.
+That is deliberate: the machine that must not have the build tree is exactly
+the machine it has to run on. It checks that both bundles are present, that
+the architectures suit the Mac, that the signatures verify and what signed
+them, that the installer receipts are there, and that **the AU actually
+instantiates** under `auval`.
 
-Then open a DAW and load both formats. An AU that installs and does not
-instantiate is the failure this is guarding against.
+The check it exists for is this one:
+
+```sh
+ls -ld /Library/Audio/Plug-Ins/Components/Project6.component/Contents/Resources/plugin.vst3
+```
+
+**It must be a directory, not a symlink.** If it shows an `l` and an arrow,
+the AU is carrying a link into a build tree that does not exist on that
+machine, and it will not load however clean the install looked — that is the
+whole reason `build-installer.sh` has a staging step.
+
+Then the one thing no script can do for you: **open a DAW and load both
+formats**. An AU that installs and will not instantiate is the failure all of
+this guards against.
 
 ### 2. Was Gatekeeper ever actually asked?
 
