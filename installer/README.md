@@ -418,13 +418,21 @@ Signed and notarised, a GitHub download is a perfectly reasonable channel — a
 browser sets the quarantine attribute, the stapled ticket satisfies Gatekeeper
 without contacting Apple, and it installs without a murmur.
 
-**As a Release asset, not as a commit.** `.gitignore` excludes
-`installer/*.pkg` on purpose. Git stores a binary as a fresh blob every
-version, forever, in every clone, and it cannot be removed afterwards without
-rewriting history. A release asset is versioned, replaceable, counted, and
-outside the history. **Tag the commit the binary was built from**, so a release
-maps to source — the machinery here is in the repo, so that is genuinely
-reproducible.
+**Released packages live in `installer/releases/`,** committed, with a
+SHA-256 beside each. Loose builds in `installer/` stay gitignored, so an
+unsigned local build cannot be swept into the repo by accident.
+
+Publish them as **GitHub Release assets** too, and **tag the commit each
+binary was built from** — the machinery is in this repo, so a tagged release
+is genuinely reproducible from source.
+
+Know what committing a binary costs, because it is the one decision here that
+cannot be undone cheaply: **git never forgets.** Every version is a fresh blob
+in every clone, for ever, and removing one later means rewriting history and
+breaking every clone that exists. A Release asset can simply be replaced or
+deleted. At a couple of megabytes a release that is a perfectly reasonable
+trade for having the artefact beside the source — but it is a trade, and it
+only goes one way.
 
 ### The point of no return
 

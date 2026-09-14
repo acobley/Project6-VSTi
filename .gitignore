@@ -2,7 +2,10 @@ build/
 build-make/
 external/
 
-# Installer outputs. The machinery is tracked; what it produces is not.
+# Installer outputs. The machinery is tracked; what it produces is not - with
+# one exception. A package DELIBERATELY RELEASED is copied into
+# installer/releases/ and committed; loose builds in installer/ stay ignored so
+# that an unsigned local one can never be swept in by a `git add -A`.
 installer/build/
 installer/*.pkg
 
