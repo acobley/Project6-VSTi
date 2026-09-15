@@ -2,10 +2,16 @@ build/
 build-make/
 external/
 
-# Installer outputs. The machinery is tracked; what it produces is not - with
-# one exception. A package DELIBERATELY RELEASED is copied into
-# installer/releases/ and committed; loose builds in installer/ stay ignored so
-# that an unsigned local one can never be swept in by a `git add -A`.
+# Installer outputs. The machinery is tracked; what it produces is not.
+#
+# 1.0.0.1 was committed under installer/releases/ before this changed, and it
+# stays there: git never forgets a blob, so removing it now would shrink no
+# clone that already exists and only a history rewrite would. FROM THE NEXT
+# VERSION, a released package is a GitHub Release asset against its tag -
+# tagged, checksummed, and out of the repository's history.
+#
+# Ignoring loose builds here also means an UNSIGNED one can never be swept in
+# by a `git add -A`.
 installer/build/
 installer/*.pkg
 
