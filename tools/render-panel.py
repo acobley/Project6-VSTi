@@ -59,6 +59,10 @@ g = K.get
 
 SLOT_COLUMNS, SLOT_ROWS = 8, 8
 
+# Project6Dsp.h - the trim's range, so the slider position and the trace
+# in the display are computed from the same scale.
+TRIM_MIN_DB, TRIM_MAX_DB = -60.0, 0.0
+
 # Derived exactly as the header derives them.
 LEVEL_W      = g('kSlotWidth') - g('kDivisionWidth') - g('kFitWidth') \
                - g('kLoopWidth') - 3 * g('kStripGap')
@@ -177,57 +181,72 @@ def draw_panel(out_path):
            font=F_TITLE, fill=SLOT_TEXT)
 
     # --- the output trim, left of the display ---------------------------
+    # ONE VALUE, used twice: the slider's position and the trace in the
+    # display are the same number, exactly as they are in the plug-in,
+    # where the display plots the trim and nothing else.
+    trim_db = -6.0
+    trim_frac = (trim_db - TRIM_MIN_DB) / (TRIM_MAX_DB - TRIM_MIN_DB)
+
     d.text((g('kMargin'), HEADING_TOP), 'Output', font=F_HEAD, fill=CAPTION)
     sl = (g('kMargin'), GRID_TOP, g('kMargin') + g('kSliderWidth'),
           GRID_TOP + g('kSliderHeight'))
     d.rectangle(sl, fill=LAMP_OFF)
-    d.rectangle((sl[0] + 1, sl[1] + 1, sl[0] + 1 + (sl[2] - sl[0] - 2) * 0.86,
-                 sl[3] - 1), fill=BAR_FILL)
+    d.rectangle((sl[0] + 1, sl[1] + 1,
+                 sl[0] + 1 + (sl[2] - sl[0] - 2) * trim_frac, sl[3] - 1),
+                fill=BAR_FILL)
     well(d, sl, BAR_LIGHT, BAR_HIGH)
-    d.text((g('kMargin'), GRID_TOP + g('kSliderHeight') + 4), '0.0 dB',
-           font=F_TINY, fill=SLOT_IDLE)
+    d.text((g('kMargin'), GRID_TOP + g('kSliderHeight') + 4),
+           '%.1f dB' % trim_db, font=F_TINY, fill=SLOT_IDLE)
 
     # --- the display ----------------------------------------------------
-    plot = (DISPLAY_LEFT, HEADING_TOP, DISPLAY_LEFT + DISPLAY_W, DISPLAY_BOT)
-    d.rectangle(plot, fill=(0, 0, 0, 190))
-    d.rectangle(plot, outline=(255, 255, 255, 110))
+    plate = (DISPLAY_LEFT, HEADING_TOP, DISPLAY_LEFT + DISPLAY_W, DISPLAY_BOT)
+    d.rectangle(plate, fill=(0, 0, 0, 190))
+    d.rectangle(plate, outline=(255, 255, 255, 110))
 
-    for beat in range(4):                       # 4/4, one bar wide
-        x = plot[0] + DISPLAY_W * beat / 4.0
-        d.line((x, plot[1], x, plot[3]),
-               fill=(255, 255, 255, 70 if beat == 0 else 38))
-    # kDbLines, from Project6Display.cpp. +12 dB at the top, -60 at the
-    # bottom; unity is the one drawn brightest because it is the one that
-    # matters.
+    # SpyDisplay::draw: plot = r.inset(6, 5) then plot.top += 12, which is
+    # the band the caption gets so that a trace at full level does not run
+    # through the lettering.
+    plot = (plate[0] + 6, plate[1] + 5 + 12, plate[2] - 6, plate[3] - 5)
+    plot_h = plot[3] - plot[1]
+    plot_w = plot[2] - plot[0]
+
+    # kDbLines, from Project6Display.cpp. Unity is the line drawn brightest
+    # because it is the one that matters.
     db_lines = (12.0, 0.0, -12.0, -24.0, -36.0, -48.0, -60.0)
 
     def y_of(db):
-        return plot[1] + g('kDisplayHeight') * (12.0 - db) / 72.0
+        return plot[1] + plot_h * (db_lines[0] - db) / (db_lines[0] - db_lines[-1])
 
     for db in db_lines:
         y = y_of(db)
         d.line((plot[0], y, plot[2], y),
                fill=(255, 255, 255, 70 if db == 0.0 else 38))
-        d.text((plot[2] - 22, y + 1), '%+.0f' % db, font=F_TINY,
-               fill=(255, 255, 255, 90))
 
-    # An output level over one bar: four beats, each with an attack and a
-    # decay, sitting a few dB under unity where a mix actually sits.
-    import math
-    pts = []
-    for i in range(DISPLAY_W):
-        phase = i / float(DISPLAY_W)
-        beat = (phase * 4.0) % 1.0
-        level = -7.0 - 15.0 * beat ** 0.6 + 2.5 * math.sin(phase * 40.0)
-        if beat < 0.04:
-            level += 5.0
-        pts.append((plot[0] + i, y_of(max(-60.0, min(6.0, level)))))
-    d.line(pts, fill=(255, 255, 255, 205), width=1)
+    beats = 4                                   # the host's own numerator
+    for beat in range(beats):
+        x = plot[0] + plot_w * beat / float(beats)
+        d.line((x, plot[1], x, plot[3]),
+               fill=(255, 255, 255, 70 if beat == 0 else 38))
 
-    xh = plot[0] + DISPLAY_W * 0.42
-    d.line((xh, plot[1], xh, plot[3]), fill=PLAYHEAD, width=2)
-    d.text((plot[0] + 6, plot[3] - 13), '120.0 BPM   4/4   playing',
+    # THE ONE THING THERE IS TO DRAW, and it is a STRAIGHT LINE - the
+    # output trim, plotted across the bar. There is no waveform and no
+    # level history: nothing publishes either, and the display is a readout
+    # of the trim and the transport, not a meter.
+    d.line((plot[0], y_of(trim_db), plot[2], y_of(trim_db)),
+           fill=(255, 255, 255, 205), width=2)
+
+    # The caption band at the TOP - transport and beats on the left, the
+    # DSP's actual sample rate on the right.
+    cap_y = plate[1] + 4
+    d.text((plate[0] + 5, cap_y), 'Playing  -  %d/bar' % beats,
            font=F_TINY, fill=(255, 255, 255, 200))
+    rate = '44.1 kHz'
+    d.text((plate[2] - 5 - d.textlength(rate, font=F_TINY), cap_y), rate,
+           font=F_TINY, fill=(255, 255, 255, 200))
+
+    # LAST, over everything, because it is the only thing that moves.
+    xh = plot[0] + plot_w * 0.42
+    d.line((xh, plot[1], xh, plot[3]), fill=PLAYHEAD, width=2)
 
     # --- headings -------------------------------------------------------
     d.text((g('kMargin'), SLOT_HEAD),
