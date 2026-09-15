@@ -1,0 +1,341 @@
+#!/usr/bin/env python3
+"""Draw the plug-in's panel as a host shows it, into docs/panel.png.
+
+WHY IT READS THE HEADER. Every position and size below comes out of
+source/Project6Editor.h, and every colour out of the files that define it, so
+this cannot quietly drift from the thing it is a picture of. A constant that
+gets renamed makes this FAIL rather than silently draw last year's panel - the
+same bargain tools/render-routing.py makes.
+
+What it cannot show is the real VSTGUI rendering: this is a faithful
+reconstruction from the same numbers, not a screenshot. The pad contents are
+made up, because an empty bank is a poor advertisement for a sample bank.
+
+    python3 tools/render-panel.py [out.png]
+"""
+
+import os
+import re
+import sys
+
+from PIL import Image, ImageDraw, ImageFont
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.join(HERE, '..')
+
+
+# ---------------------------------------------------------------------------
+# The numbers, read out of the header rather than copied
+# ---------------------------------------------------------------------------
+def read_constants(path, wanted):
+    """Every `static constexpr int kName = <literal>;` in one header.
+
+    Only literals - anything defined in terms of other constants is computed
+    below, where the arithmetic is visible and can be checked against the
+    header by eye.
+    """
+    text = open(os.path.join(ROOT, path), encoding='utf-8').read()
+    found = {}
+    for name, value in re.findall(
+            r'static\s+constexpr\s+int\s+(k\w+)\s*=\s*(-?\d+)\s*;', text):
+        found[name] = int(value)
+
+    missing = [n for n in wanted if n not in found]
+    if missing:
+        sys.exit('render-panel: not found in %s: %s\n'
+                 'The header moved under this script; fix the names rather '
+                 'than hard-coding the numbers.' % (path, ', '.join(missing)))
+    return found
+
+
+NEEDED = ('kMargin kSliderWidth kSliderHeight kColumnGap kSlotWidth kSlotHeight '
+          'kSlotGap kStripHeight kLevelGap kDivisionWidth kFitWidth kLoopWidth '
+          'kStripGap kTitleTop kTitleHeight kHeadingHeight kRowChannelHeight '
+          'kRowChannelGap kRowFaderGap kDisplayGap kDisplayHeight '
+          'kColumnButtonHeight kColumnButtonGap').split()
+
+K = read_constants('source/Project6Editor.h', NEEDED)
+g = K.get
+
+SLOT_COLUMNS, SLOT_ROWS = 8, 8
+
+# Derived exactly as the header derives them.
+LEVEL_W      = g('kSlotWidth') - g('kDivisionWidth') - g('kFitWidth') \
+               - g('kLoopWidth') - 3 * g('kStripGap')
+CELL_H       = g('kSlotHeight') + g('kLevelGap') + g('kStripHeight')
+GRID_W       = SLOT_COLUMNS * g('kSlotWidth') + (SLOT_COLUMNS - 1) * g('kSlotGap')
+GRID_H       = SLOT_ROWS * CELL_H + (SLOT_ROWS - 1) * g('kSlotGap')
+CONTENT_W    = g('kSliderWidth')
+FADER_LEFT   = g('kMargin') + GRID_W + g('kRowFaderGap')
+W            = FADER_LEFT + g('kSliderWidth') + g('kMargin')
+HEADING_TOP  = g('kTitleTop') + g('kTitleHeight') + 8
+GRID_TOP     = HEADING_TOP + g('kHeadingHeight') + 3
+DISPLAY_LEFT = g('kMargin') + CONTENT_W + g('kDisplayGap')
+DISPLAY_W    = W - DISPLAY_LEFT - g('kMargin')
+DISPLAY_BOT  = HEADING_TOP + g('kDisplayHeight')
+SLOT_HEAD    = DISPLAY_BOT + 16
+COL_BTN_TOP  = SLOT_HEAD + g('kHeadingHeight') + 3
+SLOT_TOP     = COL_BTN_TOP + g('kColumnButtonHeight') + g('kColumnButtonGap')
+H            = SLOT_TOP + GRID_H + g('kMargin')
+
+# The two the header states outright, so a mistake above is caught here.
+for label, got, want in (('width', W, 1071), ('height', H, 624)):
+    if got != want:
+        sys.exit('render-panel: computed %s %d, header says %d - the '
+                 'arithmetic here no longer matches the header.'
+                 % (label, got, want))
+
+# ---------------------------------------------------------------------------
+# The colours, from the files that define them
+# ---------------------------------------------------------------------------
+PANEL        = (64, 64, 64)
+WELL_EMPTY   = (40, 40, 40)
+WELL_FULL    = (58, 58, 58)
+WELL_MIDI    = (58, 56, 74)
+WELL_LIVE    = (96, 34, 34)
+WELL_ARMED   = (74, 60, 30)
+WELL_SHADOW  = (100, 100, 100)
+WELL_HIGH    = (200, 200, 200)
+SLOT_TEXT    = (255, 255, 255)
+SLOT_IDLE    = (140, 140, 140)
+LIVE_BORDER  = (255, 70, 70)
+PEND_BORDER  = (255, 190, 60)
+PROGRESS     = (255, 140, 110)
+LAMP_OFF     = (0, 0, 0)
+BAR_FILL     = (100, 100, 100)
+BAR_LIGHT    = (200, 200, 200)
+BAR_HIGH     = (255, 255, 255)
+PLAYHEAD     = (255, 190, 60)
+CAPTION      = (235, 235, 235)
+
+
+def font(size, bold=False):
+    for directory in ('/usr/share/fonts/truetype/dejavu/',
+                      '/System/Library/Fonts/Supplemental/'):
+        name = ('DejaVuSans-Bold.ttf' if bold else 'DejaVuSans.ttf') \
+            if directory.startswith('/usr') else ('Arial Bold.ttf' if bold else 'Arial.ttf')
+        path = os.path.join(directory, name)
+        if os.path.exists(path):
+            return ImageFont.truetype(path, size)
+    return ImageFont.load_default()
+
+
+# panelFontTiny is nine points in the real panel, which is what keeps a
+# transposition legible where it shares its rectangle with the bar behind it.
+F_TITLE, F_HEAD, F_PAD, F_TINY = font(11, True), font(10), font(9), font(8)
+
+
+def well(draw, box, light=WELL_HIGH, shadow=WELL_SHADOW):
+    """VSTGUI's Draw3dRect: light down the top and left, shadow the rest."""
+    x0, y0, x1, y1 = box
+    draw.line((x0, y1 - 1, x0, y0), fill=light)
+    draw.line((x0, y0, x1 - 1, y0), fill=light)
+    draw.line((x1 - 1, y0, x1 - 1, y1 - 1), fill=shadow)
+    draw.line((x1 - 1, y1 - 1, x0, y1 - 1), fill=shadow)
+
+
+def centred(draw, box, string, fnt, fill):
+    x0, y0, x1, y1 = box
+    w = draw.textlength(string, font=fnt)
+    draw.text(((x0 + x1 - w) / 2, (y0 + y1) / 2 - fnt.size * 0.62),
+              string, font=fnt, fill=fill)
+
+
+# ---------------------------------------------------------------------------
+# What the pads are holding. Invented - see the docstring.
+# ---------------------------------------------------------------------------
+#   name, kind ('wav' | 'mid' | None), state ('play' | 'arm' | None),
+#   level 0..1, division index, fit index, loops, transpose
+BANK = {
+    (0, 0): ('kick 01.wav',    'wav', 'play', 0.78, 0, 1, True,  0),
+    (0, 1): ('kick soft.wav',  'wav', None,   0.70, 0, 1, True,  0),
+    (0, 3): ('clap.wav',       'wav', None,   0.62, 2, 0, False, 0),
+    (1, 0): ('snare 03.wav',   'wav', 'play', 0.74, 0, 1, True,  0),
+    (1, 2): ('rim.wav',        'wav', None,   0.55, 3, 0, False, 0),
+    (2, 0): ('hats closed.wav','wav', 'arm',  0.66, 3, 1, True,  0),
+    (2, 4): ('ride.wav',       'wav', None,   0.58, 1, 1, True,  0),
+    (3, 1): ('bass loop.wav',  'wav', 'play', 0.72, 0, 2, True,  0),
+    (3, 5): ('sub hit.wav',    'wav', None,   0.64, 2, 0, False, 0),
+    (4, 0): ('keys Am.wav',    'wav', None,   0.68, 0, 2, True,  0),
+    (4, 2): ('pad warm.wav',   'wav', 'play', 0.60, 0, 2, True,  0),
+    (5, 3): ('vox chop.wav',   'wav', None,   0.57, 1, 1, True,  0),
+    (6, 0): ('arp 93.mid',     'mid', 'play', 0.00, 0, 0, True,  12),
+    (6, 1): ('chords.mid',     'mid', None,   0.00, 0, 0, True,  0),
+    (6, 4): ('stab.mid',       'mid', None,   0.00, 2, 0, False, -5),
+    (7, 0): ('patterns 93.mid','mid', 'arm',  0.00, 0, 0, True,  0),
+    (7, 2): ('fill.mid',       'mid', None,   0.00, 3, 0, False, 0),
+}
+DIVISIONS = ('1/1', '1/2', '1/4', '1/8')
+FITS      = ('off', 'spd', 'pch')
+
+
+def draw_panel(out_path):
+    image = Image.new('RGB', (W, H), PANEL)
+    d = ImageDraw.Draw(image, 'RGBA')
+
+    d.text((g('kMargin'), g('kTitleTop')), 'Project6  -  instrument',
+           font=F_TITLE, fill=SLOT_TEXT)
+
+    # --- the output trim, left of the display ---------------------------
+    d.text((g('kMargin'), HEADING_TOP), 'Output', font=F_HEAD, fill=CAPTION)
+    sl = (g('kMargin'), GRID_TOP, g('kMargin') + g('kSliderWidth'),
+          GRID_TOP + g('kSliderHeight'))
+    d.rectangle(sl, fill=LAMP_OFF)
+    d.rectangle((sl[0] + 1, sl[1] + 1, sl[0] + 1 + (sl[2] - sl[0] - 2) * 0.86,
+                 sl[3] - 1), fill=BAR_FILL)
+    well(d, sl, BAR_LIGHT, BAR_HIGH)
+    d.text((g('kMargin'), GRID_TOP + g('kSliderHeight') + 4), '0.0 dB',
+           font=F_TINY, fill=SLOT_IDLE)
+
+    # --- the display ----------------------------------------------------
+    plot = (DISPLAY_LEFT, HEADING_TOP, DISPLAY_LEFT + DISPLAY_W, DISPLAY_BOT)
+    d.rectangle(plot, fill=(0, 0, 0, 190))
+    d.rectangle(plot, outline=(255, 255, 255, 110))
+
+    for beat in range(4):                       # 4/4, one bar wide
+        x = plot[0] + DISPLAY_W * beat / 4.0
+        d.line((x, plot[1], x, plot[3]),
+               fill=(255, 255, 255, 70 if beat == 0 else 38))
+    # kDbLines, from Project6Display.cpp. +12 dB at the top, -60 at the
+    # bottom; unity is the one drawn brightest because it is the one that
+    # matters.
+    db_lines = (12.0, 0.0, -12.0, -24.0, -36.0, -48.0, -60.0)
+
+    def y_of(db):
+        return plot[1] + g('kDisplayHeight') * (12.0 - db) / 72.0
+
+    for db in db_lines:
+        y = y_of(db)
+        d.line((plot[0], y, plot[2], y),
+               fill=(255, 255, 255, 70 if db == 0.0 else 38))
+        d.text((plot[2] - 22, y + 1), '%+.0f' % db, font=F_TINY,
+               fill=(255, 255, 255, 90))
+
+    # An output level over one bar: four beats, each with an attack and a
+    # decay, sitting a few dB under unity where a mix actually sits.
+    import math
+    pts = []
+    for i in range(DISPLAY_W):
+        phase = i / float(DISPLAY_W)
+        beat = (phase * 4.0) % 1.0
+        level = -7.0 - 15.0 * beat ** 0.6 + 2.5 * math.sin(phase * 40.0)
+        if beat < 0.04:
+            level += 5.0
+        pts.append((plot[0] + i, y_of(max(-60.0, min(6.0, level)))))
+    d.line(pts, fill=(255, 255, 255, 205), width=1)
+
+    xh = plot[0] + DISPLAY_W * 0.42
+    d.line((xh, plot[1], xh, plot[3]), fill=PLAYHEAD, width=2)
+    d.text((plot[0] + 6, plot[3] - 13), '120.0 BPM   4/4   playing',
+           font=F_TINY, fill=(255, 255, 255, 200))
+
+    # --- headings -------------------------------------------------------
+    d.text((g('kMargin'), SLOT_HEAD),
+           'Samples  -  drag .wav files onto the slots; a click launches on the next bar',
+           font=F_HEAD, fill=CAPTION)
+    # CRect (kRowFaderLeft - 130, kSlotHeadingTop, ...) in the editor.
+    d.text((FADER_LEFT - 130, SLOT_HEAD),
+           'Row levels  (direct outs tap before these)',
+           font=F_HEAD, fill=CAPTION)
+
+    # --- column buttons -------------------------------------------------
+    for col in range(SLOT_COLUMNS):
+        x = g('kMargin') + col * (g('kSlotWidth') + g('kSlotGap'))
+        box = (x, COL_BTN_TOP, x + g('kSlotWidth'),
+               COL_BTN_TOP + g('kColumnButtonHeight'))
+        fill = WELL_FULL if col in (0, 1) else WELL_EMPTY
+        d.rectangle(box, fill=fill)
+        if col == 0:                       # part of this column is sounding
+            d.rectangle((box[0] + 1, box[1] + 1,
+                         box[0] + 1 + (g('kSlotWidth') - 2) * 0.5, box[3] - 1),
+                        fill=(96, 34, 34))
+        well(d, box, WELL_HIGH, WELL_SHADOW)
+        centred(d, box, str(col + 1), F_PAD,
+                SLOT_TEXT if col in (0, 1) else SLOT_IDLE)
+
+    # --- the 8 x 8 bank -------------------------------------------------
+    for row in range(SLOT_ROWS):
+        y = SLOT_TOP + row * (CELL_H + g('kSlotGap'))
+        for col in range(SLOT_COLUMNS):
+            x = g('kMargin') + col * (g('kSlotWidth') + g('kSlotGap'))
+            entry = BANK.get((row, col))
+            pad = (x, y, x + g('kSlotWidth'), y + g('kSlotHeight'))
+
+            if entry is None:
+                d.rectangle(pad, fill=WELL_EMPTY)
+                well(d, pad, WELL_SHADOW, WELL_HIGH)
+            else:
+                name, kind, state, level, div, fit, loops, transpose = entry
+                base = {'play': WELL_LIVE, 'arm': WELL_ARMED}.get(
+                    state, WELL_MIDI if kind == 'mid' else WELL_FULL)
+                d.rectangle(pad, fill=base)
+                well(d, pad, WELL_SHADOW, WELL_HIGH)
+                if state:
+                    d.rectangle(pad, outline=LIVE_BORDER if state == 'play'
+                                else PEND_BORDER)
+                centred(d, (pad[0] + 3, pad[1], pad[2] - 3, pad[3] - 4),
+                        name, F_PAD, SLOT_TEXT)
+                if state == 'play':         # how far through the file it is
+                    frac = 0.28 + 0.14 * row
+                    d.rectangle((pad[0] + 1, pad[3] - 4,
+                                 pad[0] + 1 + (g('kSlotWidth') - 2) * frac,
+                                 pad[3] - 2), fill=PROGRESS)
+
+            # ---- the strip: level (or transpose), division, fit, loop ----
+            sy0 = y + g('kSlotHeight') + g('kLevelGap')
+            sy1 = sy0 + g('kStripHeight')
+            sx = x
+
+            bar = (sx, sy0, sx + LEVEL_W, sy1)
+            d.rectangle(bar, fill=LAMP_OFF)
+            if entry and entry[1] == 'mid':
+                # A MIDI pad shows a centre-zero TRANSPOSE where an audio
+                # pad shows its level - the two share this rectangle.
+                semis = entry[7]
+                centre = (bar[0] + bar[2]) // 2
+                if semis:
+                    reach = max(1, int((LEVEL_W / 2 - 1) * abs(semis) / 24.0))
+                    d.rectangle((centre, sy0 + 1, centre + reach, sy1 - 1)
+                                if semis > 0 else
+                                (centre - reach, sy0 + 1, centre, sy1 - 1),
+                                fill=BAR_FILL)
+                centred(d, bar, ('%+d' % semis) if semis else '0', F_TINY,
+                        SLOT_TEXT if semis else SLOT_IDLE)
+            elif entry:
+                d.rectangle((bar[0] + 1, sy0 + 1,
+                             bar[0] + 1 + (LEVEL_W - 2) * entry[3], sy1 - 1),
+                            fill=BAR_FILL)
+            well(d, bar, BAR_LIGHT, BAR_HIGH)
+
+            sx += LEVEL_W + g('kStripGap')
+            for width, label, lit in (
+                    (g('kDivisionWidth'), DIVISIONS[entry[4]] if entry else '1/1', bool(entry)),
+                    (g('kFitWidth'), FITS[entry[5]] if entry else 'off',
+                     bool(entry) and entry[5] != 0),
+                    (g('kLoopWidth'), ('L' if (entry is None or entry[6]) else '1'),
+                     bool(entry) and not entry[6])):
+                box = (sx, sy0, sx + width, sy1)
+                d.rectangle(box, fill=WELL_FULL)
+                well(d, box, WELL_HIGH, WELL_SHADOW)
+                centred(d, box, label, F_TINY, SLOT_TEXT if lit else SLOT_IDLE)
+                sx += width + g('kStripGap')
+
+        # ---- the row fader, with its MIDI channel above ----------------
+        fy = y + g('kRowChannelHeight') + g('kRowChannelGap')
+        d.text((FADER_LEFT, y), 'MIDI ch %d' % (row + 1),
+               font=F_TINY, fill=SLOT_IDLE)
+        fader = (FADER_LEFT, fy, FADER_LEFT + g('kSliderWidth'),
+                 fy + CELL_H - g('kRowChannelHeight') - g('kRowChannelGap'))
+        d.rectangle(fader, fill=LAMP_OFF)
+        d.rectangle((fader[0] + 1, fader[1] + 1,
+                     fader[0] + 1 + (g('kSliderWidth') - 2) * (0.74 - row * 0.02),
+                     fader[3] - 1), fill=BAR_FILL)
+        well(d, fader, BAR_LIGHT, BAR_HIGH)
+
+    image.save(out_path)
+    print('render-panel: wrote %s (%d x %d)' % (out_path, W, H))
+
+
+if __name__ == '__main__':
+    draw_panel(sys.argv[1] if len(sys.argv) > 1
+               else os.path.join(ROOT, 'docs', 'panel.png'))
