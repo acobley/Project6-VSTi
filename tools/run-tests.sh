@@ -140,11 +140,15 @@ fi
 # a reason to stop a release, but it IS a reason to say so rather than print a
 # traceback and call it a failure.
 if ! python3 -c 'import PIL' >/dev/null 2>&1; then
-    skip "render-routing - Pillow is not installed (pip3 install --user Pillow)"
-elif python3 tools/render-routing.py >"$WORK/routing.out" 2>&1; then
-    pass "render-routing"
+    skip "render-routing and render-panel - Pillow is not installed (pip3 install --user Pillow)"
 else
-    fail "render-routing"; cat "$WORK/routing.out"
+    for diagram in routing panel; do
+        if python3 "tools/render-$diagram.py" >"$WORK/$diagram.out" 2>&1; then
+            pass "render-$diagram"
+        else
+            fail "render-$diagram"; cat "$WORK/$diagram.out"
+        fi
+    done
 fi
 
 #-----------------------------------------------------------------------------

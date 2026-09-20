@@ -63,9 +63,41 @@ SLOT_COLUMNS, SLOT_ROWS = 8, 8
 # panel draws a waveform or a piano roll - never both. 'wave' or 'roll'.
 PREVIEW = 'roll'
 
+def read_doubles(path, wanted):
+    """Named `constexpr double`s, or a `constexpr double k...[] = {...}`.
+
+    Parsed rather than copied, for the same reason the sizes are: a number
+    written down twice is a number that will disagree with itself. A name
+    that moves makes this FAIL rather than quietly draw a grid the plug-in
+    does not have.
+    """
+    text = open(os.path.join(ROOT, path), encoding='utf-8').read()
+    found = {}
+    for name, value in re.findall(
+            r'constexpr\s+double\s+(k\w+)\s*=\s*(-?[\d.]+)\s*;', text):
+        found[name] = float(value)
+    for name, body in re.findall(
+            r'constexpr\s+double\s+(k\w+)\s*\[\s*\]\s*=\s*\{([^}]*)\}', text):
+        found[name] = tuple(float(v) for v in re.findall(r'-?[\d.]+', body))
+
+    missing = [n for n in wanted if n not in found]
+    if missing:
+        sys.exit('render-panel: not found in %s: %s\n'
+                 '  The source moved under this script; fix the names rather '
+                 'than the picture.' % (path, ', '.join(missing)))
+    return found
+
+
 # Project6Dsp.h - the trim's range, so the slider position and the trace
 # in the display are computed from the same scale.
-TRIM_MIN_DB, TRIM_MAX_DB = -60.0, 0.0
+_DSP = read_doubles('source/Project6Dsp.h', ('kTrimMinDb', 'kTrimMaxDb'))
+TRIM_MIN_DB = _DSP['kTrimMinDb']
+TRIM_MAX_DB = _DSP['kTrimMaxDb']
+
+# Project6Display.cpp - the horizontal rules across the plot. SpyDisplay
+# scales the plot from the FIRST of these to the LAST, so they are the
+# vertical scale as well as the grid.
+DB_LINES = read_doubles('source/Project6Display.cpp', ('kDbLines',))['kDbLines']
 
 # Derived exactly as the header derives them.
 LEVEL_W      = g('kSlotWidth') - g('kDivisionWidth') - g('kFitWidth') \
@@ -265,7 +297,7 @@ def draw_panel(out_path):
 
     # kDbLines, from Project6Display.cpp. Unity is the line drawn brightest
     # because it is the one that matters.
-    db_lines = (12.0, 0.0, -12.0, -24.0, -36.0, -48.0, -60.0)
+    db_lines = DB_LINES
 
     def y_of(db):
         return plot[1] + plot_h * (db_lines[0] - db) / (db_lines[0] - db_lines[-1])

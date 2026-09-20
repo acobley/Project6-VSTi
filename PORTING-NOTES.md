@@ -591,6 +591,26 @@ Tested against both shapes of output, including a synthetic Mach-O `S`, and
 against a deliberately undefined function - which is still caught, and is now
 the *only* thing reported.
 
+### The panel picture is checked now, not just the routing one
+
+Both diagrams regenerate byte-for-byte identically from the current sources,
+which is what "up to date" means for a picture drawn from the code. But only
+`render-routing.py` was in `run-tests.sh`, so the panel could have drifted for
+a week without anything saying so. Both run now.
+
+Checking that also found one number written down twice: `kDbLines` - the
+horizontal rules across the display, which are the vertical SCALE as well as
+the grid - was copied into `render-panel.py` rather than parsed, in a script
+whose whole bargain is that it does not do that. It is parsed now, along with
+the trim range out of `Project6Dsp.h`, and renaming either makes the script
+fail loudly rather than draw a grid the plug-in does not have. The proof that
+the parse is right is that the PNG did not change by a single byte.
+
+The captions, the seven dB lines, the beat ruler, the plate and edge alphas,
+the trim trace, the playhead and the waveform and roll colours were all read
+back against `Project6Editor.cpp` and `Project6Display.cpp` by hand. They
+agree.
+
 ### A check that could not run is not a check that passed
 
 `render-routing.py` needs Pillow, which is not part of Python and not part of
