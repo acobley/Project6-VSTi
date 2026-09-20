@@ -20,8 +20,13 @@ WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
 FAILED=0
+SKIPPED=0
 pass () { printf '  ok    %s\n' "$1"; }
 fail () { printf '  FAIL  %s\n' "$1"; FAILED=$((FAILED + 1)); }
+# A check that could not RUN is not a check that passed. It is counted and
+# said again at the end, because the one line build-release.sh prints is the
+# last one, and "all checks passed" with two of them never run is a lie.
+skip () { printf '  skip  %s\n' "$1"; SKIPPED=$((SKIPPED + 1)); }
 
 #-----------------------------------------------------------------------------
 # An SDK, for the one suite that needs Steinberg's headers.
@@ -85,15 +90,39 @@ if [ -n "$SDK" ]; then
     done
     [ "$objfail" -eq 0 ] && pass "all $(ls source/*.cpp | wc -l | tr -d ' ') sources compiled"
 
-    nm -C "$WORK"/obj/*.o | grep " U " | grep "Project6::" | sed 's/.* U //' | sort -u > "$WORK/undef"
-    nm -C "$WORK"/obj/*.o | grep -E " [TtWwVvDdBb] " | grep "Project6::" \
-        | sed 's/.* [TtWwVvDdBb] //' | sort -u > "$WORK/def"
+    # NOT A LIST OF LETTERS. It used to be one, taken from Linux, and it was
+    # wrong in both directions. On Mach-O a coalesced vtable is S, which the
+    # list did not contain, so on a Mac every vtable referenced from another
+    # translation unit was reported undefined - two of them, loudly, on a
+    # release build that was perfectly fine. And on Linux the list counted w
+    # and v, which are weak UNDEFINED, as defined, while u - GNU's unique
+    # global, which is a definition - was in neither list and so was silently
+    # ignored. A list of letters can only ever be as complete as the platforms
+    # it was written on, and three platforms disagree about lowercase.
+    #
+    # An ADDRESS is the thing that means the same everywhere: a symbol nm
+    # prints an address for is defined here, and one it does not is wanted
+    # from somewhere else. The type letter is then only used to tell a real
+    # symbol line from nm's "file.o:" headers.
+    : > "$WORK/undef.raw"; : > "$WORK/def.raw"
+    nm -C "$WORK"/obj/*.o | awk -v u="$WORK/undef.raw" -v d="$WORK/def.raw" '
+        { if ($1 ~ /^[0-9a-fA-F]+$/) { defined = 1; t = $2; i = 3 }
+          else                       { defined = 0; t = $1; i = 2 }
+          if (i > NF || length (t) != 1) next
+          name = $i
+          for (j = i + 1; j <= NF; ++j) name = name " " $j
+          if (name !~ /Project6::/) next
+          if (defined) print name > d; else print name > u }'
+    sort -u "$WORK/undef.raw" > "$WORK/undef"
+    sort -u "$WORK/def.raw"   > "$WORK/def"
     missing="$(comm -23 "$WORK/undef" "$WORK/def")"
     if [ -z "$missing" ]; then
         pass "every Project6:: symbol used is defined"
     else
         fail "undefined Project6:: symbols:"; printf '%s\n' "$missing"
     fi
+else
+    skip "paramstests and the object sweep - no VST3 SDK found"
 fi
 
 #-----------------------------------------------------------------------------
@@ -106,7 +135,13 @@ else
     fail "check-editor"; cat "$WORK/editor.out"
 fi
 
-if python3 tools/render-routing.py >"$WORK/routing.out" 2>&1; then
+# Pillow is not part of a Python install and not part of a Mac. Missing, this
+# check cannot run - which is not the same as the diagram being wrong, and not
+# a reason to stop a release, but it IS a reason to say so rather than print a
+# traceback and call it a failure.
+if ! python3 -c 'import PIL' >/dev/null 2>&1; then
+    skip "render-routing - Pillow is not installed (pip3 install --user Pillow)"
+elif python3 tools/render-routing.py >"$WORK/routing.out" 2>&1; then
     pass "render-routing"
 else
     fail "render-routing"; cat "$WORK/routing.out"
@@ -115,7 +150,11 @@ fi
 #-----------------------------------------------------------------------------
 echo
 if [ "$FAILED" -eq 0 ]; then
-    echo "All checks passed."
+    if [ "$SKIPPED" -eq 0 ]; then
+        echo "All checks passed."
+    else
+        echo "All checks passed - but $SKIPPED could not RUN and was skipped."
+    fi
     exit 0
 fi
 echo "$FAILED check(s) FAILED."

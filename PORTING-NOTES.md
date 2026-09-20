@@ -559,6 +559,51 @@ If a build fails with *"Bundle does not export the required
 'GetPluginFactory' function"*, a source file was added after the Xcode project
 was generated: re-run `./setup-xcode.sh --no-open` and build again.
 
+### The symbol sweep was reading letters, and letters are platform-local
+
+`tools/run-tests.sh` compiles every source to an object file and then subtracts
+the `Project6::` symbols that are *defined* from the ones that are *wanted*.
+It did that by matching nm's type letter against a list - `[TtWwVvDdBb]` - and
+that list was written on Linux, where the whole suite had only ever run.
+
+The first release build on the Mac reported two undefined symbols:
+
+```
+typeinfo for Project6::Project6Editor
+vtable for Project6::Project6Controller
+```
+
+Nothing was wrong. On ELF a weak vtable is `V`, which was in the list; on
+Mach-O the same coalesced symbol is `S`, which was not. Any vtable referenced
+from a second translation unit therefore looked missing on a Mac and only on
+a Mac.
+
+Rewriting it turned up the hole pointing the other way, on the platform it was
+written for: **`w` and `v` are weak UNDEFINED and the list counted them as
+defined**, while `u` - GNU's unique-global, which *is* a definition - was in
+neither list and so was silently dropped from both sides. The first rewrite
+duly called `u` undefined and the canary run caught it.
+
+**An address is the thing that means the same everywhere.** A symbol nm prints
+an address for is defined here; one it does not is wanted from somewhere else.
+The type letter now only separates a symbol line from nm's `file.o:` headers.
+Tested against both shapes of output, including a synthetic Mach-O `S`, and
+against a deliberately undefined function - which is still caught, and is now
+the *only* thing reported.
+
+### A check that could not run is not a check that passed
+
+`render-routing.py` needs Pillow, which is not part of Python and not part of
+a Mac. Missing, it produced a traceback and a `FAIL`, which is the wrong
+answer twice over: the diagram is not wrong, and a missing drawing library is
+not a reason to stop a release.
+
+It is now a `skip`, counted, and said again on the last line - because the one
+line `build-release.sh` prints out of the test log is the last one, and *"All
+checks passed"* with two checks never run is a lie told in the one place
+somebody is actually looking. The missing-SDK case, which was already silent,
+is counted the same way.
+
 ## 7. Deliberate omissions, and the trap behind each
 
 Each of these is **absent on purpose**. The trap is what bites when it is
