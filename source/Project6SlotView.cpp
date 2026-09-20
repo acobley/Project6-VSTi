@@ -256,6 +256,25 @@ void SpySampleSlot::setMoveHandler (std::function<void (int, int, bool)> handler
 }
 
 //------------------------------------------------------------------------
+void SpySampleSlot::setHoverHandler (std::function<void (int)> handler)
+{
+	mHoverHandler = std::move (handler);
+}
+
+//------------------------------------------------------------------------
+void SpySampleSlot::onMouseEnterEvent (MouseEnterEvent& event)
+{
+	// NOT CONSUMED. Pointing at a pad is not an interaction with it: the
+	// event goes on to whatever else wants it, and a pad that swallowed
+	// it would be a pad that broke tooltips and hover states elsewhere
+	// for the sake of a picture.
+	if (mHoverHandler)
+		mHoverHandler (mIndex);
+
+	CControl::onMouseEnterEvent (event);
+}
+
+//------------------------------------------------------------------------
 void SpySampleSlot::onMouseDownEvent (MouseDownEvent& event)
 {
 	if (! event.buttonState.isLeft ())

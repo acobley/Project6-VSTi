@@ -372,16 +372,20 @@ private:
 	SpySlotLoop* mLoops[kSlotCount] = { nullptr };
 	SpyColumnButton* mColumns[kSlotColumns] = { nullptr };
 
-	/** WHICH PAD THE DISPLAY IS SHOWING THE WAVEFORM OF: the one most
-	    recently armed from the panel, or -1 for none.
+	/** WHICH PAD THE DISPLAY IS SHOWING THE WAVEFORM OF, or -1 for none.
 
-	    Set when a pad is CLICKED rather than whenever one starts, because
-	    the display should answer "what did I just reach for" and a bank
-	    with eight loops running would otherwise flicker between them. A
-	    pad turned OFF leaves it alone: you have just looked at that pad,
-	    and blanking the display the instant you stop it takes the picture
-	    away at the moment it is most likely to be wanted again. */
+	    Set by POINTING at a loaded pad, and by DROPPING a file on one.
+	    Not by clicking: launching a pad is a musical act with a sound as
+	    its answer, and hijacking it to change a picture makes the display
+	    lurch about while somebody is playing. Pointing is the gesture
+	    that means "show me this", and it costs nothing to undo.
+
+	    Nothing clears it on the way out. The display is read by moving
+	    the pointer OFF the pad, so a picture that vanished as you went to
+	    look at it would be no use at all. */
 	int mWaveformSlot = -1;
+
+	void slotHovered (int index);
 
 	VSTGUI::SharedPointer<VSTGUI::CVSTGUITimer> mTimer;
 };

@@ -324,6 +324,9 @@ bool PLUGIN_API Project6Editor::open (void* parent, const PlatformType& platform
 			slot->setMoveHandler ([this] (int from, int to, bool copy)
 			                      { slotMoved (from, to, copy); });
 
+			slot->setHoverHandler ([this] (int hovered)
+			                       { slotHovered (hovered); });
+
 			mControls[slotPlayParam (index)] = slot;
 			if (mController)
 				showValue (slot, mController->getParamNormalized (slotPlayParam (index)));
@@ -487,10 +490,38 @@ void Project6Editor::refreshDisplay ()
 }
 
 //------------------------------------------------------------------------
+void Project6Editor::slotHovered (int index)
+{
+	if (mController == nullptr || ! isSlotIndex (index))
+		return;
+
+	// ONLY A PAD WITH SOMETHING TO SHOW takes the display over. An empty
+	// pad and a MIDI pad leave it exactly as it was, because the pointer
+	// crosses a great many pads on its way anywhere and a display that
+	// blanked at each of them would flicker the whole way across the
+	// bank. The rule is one sentence: the display shows the last AUDIO
+	// pad you pointed at.
+	if (mController->slotWaveform (index).empty ())
+		return;
+
+	mWaveformSlot = index;
+}
+
+//------------------------------------------------------------------------
 void Project6Editor::slotDropped (int index, const std::string& path)
 {
 	if (mController == nullptr || ! isSlotIndex (index))
 		return;
+
+	// A FILE JUST ARRIVED HERE, so the display becomes about this pad -
+	// unconditionally, unlike hovering. The waveform is not here yet: it
+	// is summarised while the file is read and comes back on the status
+	// message, and refreshDisplay picks it up whenever it lands.
+	//
+	// If the file fails to load there will never be one, and the display
+	// clears. That is the right answer rather than a missing case: you
+	// dropped something, and nothing came of it.
+	mWaveformSlot = index;
 
 	// Straight to the controller. It records the path, tells the
 	// processor, and calls refreshSlots on every editor it has open -
@@ -827,13 +858,6 @@ void Project6Editor::valueChanged (CControl* control)
 	// While a level bar is moving, the pad above it reads out the value.
 	if (isSlotLevelParam (tag))
 		showLevelOverlay (tag, value);
-
-	// ARMING A PAD PUTS ITS WAVEFORM ON THE DISPLAY. Here rather than in
-	// updateControl, so it follows the CLICK and not every route a
-	// trigger can change by - a host's automation lane replaying eight
-	// pads would otherwise drag the display along behind it.
-	if (isSlotPlayParam (tag) && value >= 0.5)
-		mWaveformSlot = slotOfPlayParam (tag);
 }
 
 //------------------------------------------------------------------------

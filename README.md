@@ -62,6 +62,13 @@ and waiting, coming in together on the next bar line when you roll the
 transport. A pad whose file has gone missing since it was saved comes back
 dark rather than lit and silent.
 
+**Point at a pad holding a `.wav` and its waveform appears behind the
+display** - and dropping a file on a pad does the same. Pointing costs nothing
+and changes no sound, so looking at what a pad holds never means playing it.
+The summary is computed once when the file loads, never on the audio thread,
+and `kWaveformEnabled` in `Project6Sample.h` turns the whole feature off in
+one word.
+
 An armed slot glows amber while it waits and red while it plays, so the wait
 is visible rather than mysterious, and **a bar along the bottom of a playing
 pad shows how far through its file it is**. A column box fills in proportion

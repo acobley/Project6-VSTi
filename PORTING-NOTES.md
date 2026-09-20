@@ -2086,7 +2086,88 @@ To use an existing checkout anyway:
 cmake -B build -G Xcode -DVST3_SDK_ROOT=/path/to/vst3sdk
 ```
 
-## 18. Shipping it: the installer, and the symlink that breaks it
+## 18. The pointed-at pad's waveform, behind the display
+
+**Point at** a pad holding a `.wav` and its waveform appears behind the
+display; **drop** a file on one and the same thing happens. The display
+answers "what is in that pad", and asking costs nothing.
+
+### Where the work happens, and where it does not
+
+**The audio thread is not involved at any point.** The summary is computed in
+`loadWavFile`, which is the UI thread and is already holding the whole file,
+so it is one more pass over samples just read and converted - a fraction of
+what reading them cost. It travels on the **existing slot status message**,
+which already carries the tempo, the kind and the note count, so no new
+channel was invented for it.
+
+`kWaveformBuckets` is 256 absolute peaks, about one per 3.6 pixels of a
+930-pixel display. **Peaks, not averages**: an average turns a drum hit into a
+low bump and makes every percussive file look like the same gentle mound.
+
+Costs in full: one extra pass at load, a kilobyte per slot on a message that
+fires when a file finishes loading, 64 KB of peaks held by the controller for
+a full bank, and 256 points filled per repaint at 30 ms. Nothing recurring
+touches the audio path.
+
+### Rolling it back is one word, and the rollback is tested
+
+`kWaveformEnabled` in `Project6Sample.h`. False, and `summariseWaveform`
+returns nothing, so the loader stores an empty vector, the processor sends no
+attribute, the controller holds none and the display draws none.
+
+**That path is not a branch nobody has run.** It is the same path a MIDI pad
+and an empty slot already take every time a bank is used, so there is no
+"waveform off" behaviour distinct from "no waveform to draw" - one case, not
+two.
+
+And WavTests section 10 **passes in both configurations**: with the switch on
+it checks the shape, with it off it checks that everything answers nothing. A
+suite that only passed with the feature enabled would turn flipping the switch
+into a broken build, which is precisely what stops somebody flipping it at the
+moment they need to. Both were compiled and run, and the whole plug-in was
+object-built with the switch off.
+
+### Pointing, not clicking - and the first version got this wrong
+
+It was first written to follow **arming** a pad. That was the wrong gesture,
+and the reason is worth keeping rather than quietly changing: **launching a
+pad is a musical act with a sound as its answer.** Hijacking it to also change
+a picture makes the display lurch about while somebody is playing, and makes
+"I want to see what is in that pad" cost a sound nobody asked for.
+
+**Pointing is the gesture that means "show me this"**, and it costs nothing to
+undo. `SpySampleSlot::onMouseEnterEvent` calls a hover handler and **does not
+consume the event** - pointing at a pad is not an interaction with it, and a
+pad that swallowed the event would break hover behaviour elsewhere for the
+sake of a picture.
+
+Two rules follow, each different for a reason:
+
+* **Hovering changes the display only for a pad that has a waveform.** The
+  pointer crosses a great many pads on its way anywhere, and a display that
+  blanked at each empty one would flicker the whole way across the bank. So:
+  *the display shows the last audio pad you pointed at.*
+* **Dropping changes it unconditionally.** The waveform is not there yet - it
+  is summarised while the file is read and arrives on the status message - so
+  `refreshDisplay` picks it up whenever it lands. If the file fails to load
+  there will never be one and the display clears, which is the right answer
+  rather than a missing case: you dropped something and nothing came of it.
+
+**Nothing clears it on the way out.** The display is read by moving the
+pointer *off* the pad, so a picture that vanished as you went to look at it
+would be no use to anybody.
+
+### And the silhouette means nothing in decibels
+
+It is mirrored about the middle and deliberately ignores the plot's own dB
+scale: it is a picture of the file drawn in the space the plot occupies, and
+dressing it in decibels would invite it to be read against gridlines it has
+nothing to do with. It is dim for the same reason - it is ground, and the trim
+trace and the playhead are the two things here that must stay exactly
+readable over it.
+
+## 19. Shipping it: the installer, and the symlink that breaks it
 
 `installer/build-installer.sh` builds `installer/Project6-<version>.pkg`: two
 component packages, one per format, behind a `productbuild` choice pane, so

@@ -156,6 +156,15 @@ public:
 	    slot the user was not pointing at. */
 	void setMoveHandler (std::function<void (int, int, bool)> handler);
 
+	/** Called with this pad's index when the pointer ENTERS it, so the
+	    panel's display can show what the pad holds.
+
+	    Entering only. There is no matching call on the way out, because
+	    the display is looked at by moving the pointer OFF the pad - a
+	    picture that vanished as you went to look at it would be no use
+	    to anybody. */
+	void setHoverHandler (std::function<void (int)> handler);
+
 	void draw (VSTGUI::CDrawContext* context) override;
 
 	//--------------------------------------------------------------------
@@ -184,6 +193,11 @@ public:
 	void onMouseMoveEvent (VSTGUI::MouseMoveEvent& event) override;
 	void onMouseUpEvent (VSTGUI::MouseUpEvent& event) override;
 	void onMouseCancelEvent (VSTGUI::MouseCancelEvent& event) override;
+
+	/** The pointer arriving on this pad. Nothing but the hover handler -
+	    it changes no value and consumes no event, so it cannot get in the
+	    way of a click, a drag or a drop. */
+	void onMouseEnterEvent (VSTGUI::MouseEnterEvent& event) override;
 
 	/** Deliberately inert. CControl's wheel handling would move the
 	    trigger by fractions of its one step, which on a two-state
@@ -266,6 +280,7 @@ private:
 	float mProgress = 0.f;
 	std::function<void (int, const std::string&)> mHandler;
 	std::function<void (int, int, bool)> mMoveHandler;
+	std::function<void (int)> mHoverHandler;
 	bool mDragOver = false;
 };
 
