@@ -256,7 +256,7 @@ void SpySampleSlot::setMoveHandler (std::function<void (int, int, bool)> handler
 }
 
 //------------------------------------------------------------------------
-void SpySampleSlot::setHoverHandler (std::function<void (int)> handler)
+void SpySampleSlot::setHoverHandler (std::function<void (int, bool)> handler)
 {
 	mHoverHandler = std::move (handler);
 }
@@ -269,9 +269,18 @@ void SpySampleSlot::onMouseEnterEvent (MouseEnterEvent& event)
 	// it would be a pad that broke tooltips and hover states elsewhere
 	// for the sake of a picture.
 	if (mHoverHandler)
-		mHoverHandler (mIndex);
+		mHoverHandler (mIndex, true);
 
 	CControl::onMouseEnterEvent (event);
+}
+
+//------------------------------------------------------------------------
+void SpySampleSlot::onMouseExitEvent (MouseExitEvent& event)
+{
+	if (mHoverHandler)
+		mHoverHandler (mIndex, false);
+
+	CControl::onMouseExitEvent (event);
 }
 
 //------------------------------------------------------------------------

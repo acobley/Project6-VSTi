@@ -2192,10 +2192,10 @@ a picture makes the display lurch about while somebody is playing, and makes
 "I want to see what is in that pad" cost a sound nobody asked for.
 
 **Pointing is the gesture that means "show me this"**, and it costs nothing to
-undo. `SpySampleSlot::onMouseEnterEvent` calls a hover handler and **does not
-consume the event** - pointing at a pad is not an interaction with it, and a
-pad that swallowed the event would break hover behaviour elsewhere for the
-sake of a picture.
+undo. `SpySampleSlot::onMouseEnterEvent` and `onMouseExitEvent` call a hover
+handler and **neither consumes its event** - pointing at a pad is not an
+interaction with it, and a pad that swallowed the event would break hover
+behaviour elsewhere for the sake of a picture.
 
 Two rules follow, each different for a reason:
 
@@ -2212,6 +2212,44 @@ Two rules follow, each different for a reason:
 **Nothing clears it on the way out.** The display is read by moving the
 pointer *off* the pad, so a picture that vanished as you went to look at it
 would be no use to anybody.
+
+### Entering is not hovering, so there is a dwell
+
+The second thing this got wrong: it changed the display the instant the
+pointer *crossed* a pad. A flick of the wrist across the bank passes over
+eight pads, and the display followed every one of them - a strobe rather than
+a picture, and the pad you were actually heading for arrived last in a queue
+of seven you never looked at.
+
+So the pointer has to **stay** on a pad for `kHoverDelayMs` (300 ms, in
+`Project6Editor.h`) before that pad becomes the one on display. Three
+decisions in that, each load-bearing:
+
+* **The existing 30 ms timer counts it, not sixty-four new ones.** The panel
+  already ticks to move the playheads. `slotHovered` does nothing but start or
+  stop a count; `onTimer` turns a count into a picture. Sixty-four
+  `CVSTGUITimer`s to answer a question one timer already knows the answer to
+  would be sixty-four objects to own, cancel and leak.
+* **The delay is written in milliseconds and converted to ticks**, upwards, by
+  `kHoverTicks`. Writing "ten ticks" would mean retuning `kTimerMs` for the
+  playheads silently retuned the feel of the display, and a fortnight later
+  nobody would connect the two.
+* **The count stops at the threshold rather than running away.** A pointer
+  parked on a pad for an hour is the same state as one parked for a second -
+  no overflow to reason about - and a pad that *finishes loading* while it is
+  being pointed at is picked up on the very next tick, without the pointer
+  having to leave and come back.
+
+**Leaving clears the count only if the pad being left is still the pad we
+think we are on.** Moving from one pad straight to the next can deliver the
+new pad's enter *before* the old pad's exit, and an unconditional clear there
+would throw away a dwell that had only just begun - the one case where the
+pointer really has settled.
+
+**A drop still promotes immediately.** The dwell exists to tell a deliberate
+act from a passing one, and dropping a file on a pad is about as deliberate as
+this plug-in gets. Waiting 300 ms to confirm it would be asking the same
+question twice.
 
 ### And the silhouette means nothing in decibels
 

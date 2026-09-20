@@ -156,14 +156,16 @@ public:
 	    slot the user was not pointing at. */
 	void setMoveHandler (std::function<void (int, int, bool)> handler);
 
-	/** Called with this pad's index when the pointer ENTERS it, so the
-	    panel's display can show what the pad holds.
+	/** Called with this pad's index and true when the pointer ENTERS it,
+	    false when it LEAVES, so the panel can tell a pad being pointed at
+	    from one the pointer merely crossed.
 
-	    Entering only. There is no matching call on the way out, because
-	    the display is looked at by moving the pointer OFF the pad - a
-	    picture that vanished as you went to look at it would be no use
-	    to anybody. */
-	void setHoverHandler (std::function<void (int)> handler);
+	    BOTH DIRECTIONS, even though only entering can change what the
+	    display shows. The panel waits for the pointer to SETTLE before it
+	    believes a hover, and it cannot know the pointer has moved on
+	    unless it is told. Leaving does not clear the display - see
+	    Project6Editor - it only stops the clock. */
+	void setHoverHandler (std::function<void (int, bool)> handler);
 
 	void draw (VSTGUI::CDrawContext* context) override;
 
@@ -194,10 +196,12 @@ public:
 	void onMouseUpEvent (VSTGUI::MouseUpEvent& event) override;
 	void onMouseCancelEvent (VSTGUI::MouseCancelEvent& event) override;
 
-	/** The pointer arriving on this pad. Nothing but the hover handler -
-	    it changes no value and consumes no event, so it cannot get in the
-	    way of a click, a drag or a drop. */
+	/** The pointer arriving on, or leaving, this pad. Nothing but the
+	    hover handler - neither changes a value and neither consumes its
+	    event, so they cannot get in the way of a click, a drag or a
+	    drop. */
 	void onMouseEnterEvent (VSTGUI::MouseEnterEvent& event) override;
+	void onMouseExitEvent (VSTGUI::MouseExitEvent& event) override;
 
 	/** Deliberately inert. CControl's wheel handling would move the
 	    trigger by fractions of its one step, which on a two-state
@@ -280,7 +284,7 @@ private:
 	float mProgress = 0.f;
 	std::function<void (int, const std::string&)> mHandler;
 	std::function<void (int, int, bool)> mMoveHandler;
-	std::function<void (int)> mHoverHandler;
+	std::function<void (int, bool)> mHoverHandler;
 	bool mDragOver = false;
 };
 

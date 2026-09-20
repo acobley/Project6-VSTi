@@ -62,10 +62,12 @@ and waiting, coming in together on the next bar line when you roll the
 transport. A pad whose file has gone missing since it was saved comes back
 dark rather than lit and silent.
 
-**Point at a pad and what it holds appears behind the display** — a waveform
-for a `.wav`, a piano roll for a `.mid` — and dropping a file on a pad does
-the same. Pointing costs nothing and changes no sound, so looking at what a
-pad holds never means playing it. The piano roll scales to the range of
+**Rest the pointer on a pad and what it holds appears behind the display** — a
+waveform for a `.wav`, a piano roll for a `.mid` — and dropping a file on a
+pad does the same, at once. Pointing costs nothing and changes no sound, so
+looking at what a pad holds never means playing it. It takes a moment's dwell
+rather than the crossing of a border, so sweeping the pointer across the bank
+leaves the display alone. The piano roll scales to the range of
 pitches the file actually uses, so the notes read in relation to each other
 rather than against a keyboard most files never visit.
 

@@ -324,8 +324,8 @@ bool PLUGIN_API Project6Editor::open (void* parent, const PlatformType& platform
 			slot->setMoveHandler ([this] (int from, int to, bool copy)
 			                      { slotMoved (from, to, copy); });
 
-			slot->setHoverHandler ([this] (int hovered)
-			                       { slotHovered (hovered); });
+			slot->setHoverHandler ([this] (int hovered, bool entered)
+			                       { slotHovered (hovered, entered); });
 
 			mControls[slotPlayParam (index)] = slot;
 			if (mController)
@@ -433,6 +433,25 @@ bool PLUGIN_API Project6Editor::open (void* parent, const PlatformType& platform
 //------------------------------------------------------------------------
 void Project6Editor::onTimer ()
 {
+	// THE DWELL, before the refresh so that a pad which has just earned
+	// the display gets it on this tick rather than the next.
+	//
+	// Entering a pad starts a count; only when the count reaches
+	// kHoverTicks does that pad become the one on display. The count
+	// STOPS at the threshold rather than running away, so a pointer
+	// parked on a pad for an hour is in the same state as one parked for
+	// a second - and a pad that finishes loading while it is being
+	// pointed at is picked up on the next tick, without the pointer
+	// having to leave and come back.
+	if (mHoverSlot >= 0)
+	{
+		if (mHoverTicks < kHoverTicks)
+			++mHoverTicks;
+
+		if (mHoverTicks >= kHoverTicks)
+			showPreview (mHoverSlot);
+	}
+
 	refreshDisplay ();
 
 	// The playheads. ASKED FOR, not pushed: the processor cannot send
@@ -496,7 +515,40 @@ void Project6Editor::refreshDisplay ()
 }
 
 //------------------------------------------------------------------------
-void Project6Editor::slotHovered (int index)
+void Project6Editor::slotHovered (int index, bool entered)
+{
+	if (! isSlotIndex (index))
+		return;
+
+	// POINTING IS NOT ARRIVING. All this does is start, or stop, a
+	// count; the display is not touched here at all. What turns a count
+	// into a picture is onTimer, once the pointer has stayed put for
+	// kHoverDelayMs. Dragging the pointer across the bank enters and
+	// leaves eight pads without any of them reaching that.
+	if (entered)
+	{
+		if (mHoverSlot != index)
+		{
+			mHoverSlot = index;
+			mHoverTicks = 0;
+		}
+
+		return;
+	}
+
+	// LEAVING, and only if this is still the pad we believe we are on.
+	// Moving from one pad straight to the next can deliver the new pad's
+	// enter BEFORE the old pad's exit, and an unconditional clear there
+	// would throw away a dwell that had only just begun.
+	if (mHoverSlot == index)
+	{
+		mHoverSlot = -1;
+		mHoverTicks = 0;
+	}
+}
+
+//------------------------------------------------------------------------
+void Project6Editor::showPreview (int index)
 {
 	if (mController == nullptr || ! isSlotIndex (index))
 		return;

@@ -242,6 +242,20 @@ public:
 	    rather than three steps, and slow enough to cost nothing. */
 	static constexpr int kTimerMs = 30;
 
+	/** How long the pointer has to STAY on a pad before the display
+	    becomes about it. Crossing the bank on the way to somewhere else
+	    passes over as many as eight pads in a flick of the wrist, and a
+	    display that followed each one would be a strobe rather than a
+	    picture. A third of a second is long enough that a sweep shows
+	    nothing and short enough that stopping to look feels immediate.
+
+	    Written in MILLISECONDS and converted, so that retuning the timer
+	    cannot silently retune the dwell. The rounding is upwards: a dwell
+	    is never shorter than it says. */
+	static constexpr int kHoverDelayMs = 300;
+	static constexpr int kHoverTicks = (kHoverDelayMs + kTimerMs - 1) / kTimerMs;
+	static_assert (kHoverTicks >= 1, "a dwell of no ticks is not a dwell");
+
 	/** A slot's path changed - because a file was dropped here, or in
 	    another editor, or because a project was loaded. Refreshes the
 	    whole bank from the controller; sixty-four string compares is
@@ -375,18 +389,31 @@ private:
 	/** WHICH PAD THE DISPLAY IS PREVIEWING, or -1 for none. A waveform if
 	    it holds a `.wav`, a piano roll if it holds a `.mid`.
 
-	    Set by POINTING at a loaded pad, and by DROPPING a file on one.
+	    Set by RESTING on a loaded pad, and by DROPPING a file on one.
 	    Not by clicking: launching a pad is a musical act with a sound as
 	    its answer, and hijacking it to change a picture makes the display
 	    lurch about while somebody is playing. Pointing is the gesture
 	    that means "show me this", and it costs nothing to undo.
+
+	    RESTING, not merely entering. The pointer has to stay on the pad
+	    for kHoverDelayMs before it counts - see mHoverSlot. A drop does
+	    not wait, because dropping a file IS the deliberate act the dwell
+	    is there to wait for.
 
 	    Nothing clears it on the way out. The display is read by moving
 	    the pointer OFF the pad, so a picture that vanished as you went to
 	    look at it would be no use at all. */
 	int mPreviewSlot = -1;
 
-	void slotHovered (int index);
+	/** The pad the pointer is ON, and for how many ticks it has been
+	    there. NOT the pad being shown: this one only becomes that one
+	    once the dwell is served, in onTimer. -1 means the pointer is on
+	    no pad at all, which is the state a sweep leaves behind. */
+	int mHoverSlot = -1;
+	int mHoverTicks = 0;
+
+	void slotHovered (int index, bool entered);
+	void showPreview (int index);
 
 	VSTGUI::SharedPointer<VSTGUI::CVSTGUITimer> mTimer;
 };
