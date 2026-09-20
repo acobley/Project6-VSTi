@@ -1254,6 +1254,26 @@ void Project6Processor::sendSlotStatusToController (int index)
 			}
 		}
 
+		// AND THE PIANO ROLL, on the same terms. A pad holds one kind of
+		// file or the other, so at most one of these two attributes is
+		// ever present and the panel draws whichever it was given.
+		//
+		// SUMMARISED HERE rather than stored on the clip. A MidiClip is
+		// published to the audio thread and read there; the preview is
+		// for the panel alone, and hanging it off the clip would grow the
+		// object the audio thread holds for the sake of something that
+		// side never looks at.
+		if (const auto& clip = mClips[index])
+		{
+			const std::vector<RollNote> roll = summariseRoll (*clip);
+			if (!roll.empty ())
+			{
+				message->getAttributes ()->setBinary (
+					kProject6SlotRollAttribute, roll.data (),
+					static_cast<Steinberg::uint32> (roll.size () * sizeof (RollNote)));
+			}
+		}
+
 		sendMessage (message);
 	}
 }

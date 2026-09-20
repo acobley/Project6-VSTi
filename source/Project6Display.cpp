@@ -38,6 +38,14 @@ const CColor kOutputTrace (255, 255, 255, 205);
     use in exchange for looking busier. */
 const CColor kWaveform (150, 190, 255, 60);
 
+/** A MIDI pad's notes. Violet, because that is the colour a MIDI pad's
+    well already is on the grid - so the display and the pad you are
+    pointing at agree about what kind of file this is without a word being
+    written. Brighter than the waveform because a handful of thin bars
+    needs more to read as a shape than a solid silhouette does, and still
+    dim enough to stay behind the trim trace and the playhead. */
+const CColor kRollNote (170, 160, 255, 120);
+
 /** Labelled horizontal lines. Every 12 dB, which puts one on unity and one
     on the bottom of the trim's travel. */
 constexpr double kDbLines[] = { 12.0, 0.0, -12.0, -24.0, -36.0, -48.0, -60.0 };
@@ -113,6 +121,98 @@ void SpyDisplay::drawWaveform (CDrawContext* context, const CRect& plot)
 
 	context->setFillColor (kWaveform);
 	context->drawGraphicsPath (path, CDrawContext::kPathFilled);
+}
+
+//------------------------------------------------------------------------
+bool SpyDisplay::setRoll (const std::vector<RollNote>& notes)
+{
+	// Compared field by field: RollNote is three floats and has no
+	// operator==, and writing one for a struct used in exactly one
+	// comparison would be more code than the comparison.
+	const bool same =
+		notes.size () == mRoll.size ()
+		&& std::equal (notes.begin (), notes.end (), mRoll.begin (),
+		               [] (const RollNote& a, const RollNote& b)
+		               {
+			               return a.start == b.start && a.end == b.end
+			                      && a.pitch == b.pitch;
+		               });
+
+	if (same)
+		return false;
+
+	mRoll = notes;
+
+	// THE PITCH RANGE, ONCE. "Notes in relation to each other" means the
+	// rectangle is filled by whatever range the file actually uses: a
+	// two-octave bass line and a two-octave melody both fill it, and a
+	// file that sits on one note gets a line through the middle rather
+	// than a bar at the bottom of a 128-note scale it never visits.
+	mRollLowest  = 0.f;
+	mRollHighest = 0.f;
+
+	if (!mRoll.empty ())
+	{
+		mRollLowest = mRollHighest = mRoll.front ().pitch;
+		for (const RollNote& note : mRoll)
+		{
+			mRollLowest  = std::min (mRollLowest, note.pitch);
+			mRollHighest = std::max (mRollHighest, note.pitch);
+		}
+	}
+
+	invalid ();
+	return true;
+}
+
+//------------------------------------------------------------------------
+void SpyDisplay::drawRoll (CDrawContext* context, const CRect& plot)
+{
+	if (mRoll.empty ())
+		return;
+
+	// ONE NOTE, OR ALL ON ONE PITCH: a range of zero would divide by it.
+	// Widened to a whole octave so a single-pitch file draws its line
+	// across the middle rather than filling the rectangle edge to edge.
+	float lowest  = mRollLowest;
+	float highest = mRollHighest;
+	if (highest - lowest < 1.f)
+	{
+		const float middle = (lowest + highest) * 0.5f;
+		lowest  = middle - 6.f;
+		highest = middle + 6.f;
+	}
+
+	// A LANE PER SEMITONE of the range actually used, with a little air
+	// top and bottom so the outermost notes are bars rather than edges.
+	const double lanes  = static_cast<double> (highest - lowest) + 1.0;
+	const double inset  = std::min (6., plot.getHeight () * 0.08);
+	const double top    = plot.top + inset;
+	const double height = std::max (1., plot.getHeight () - inset * 2.);
+	const double lane   = height / lanes;
+
+	// Thin lanes would vanish; one pixel is the floor.
+	const double barHeight = std::max (1., lane - 1.);
+
+	context->setFillColor (kRollNote);
+
+	for (const RollNote& note : mRoll)
+	{
+		const double x0 = plot.left + plot.getWidth () * note.start;
+		const double x1 = plot.left + plot.getWidth () * note.end;
+
+		// HIGH PITCHES AT THE TOP, which is the one thing everybody
+		// expects of a piano roll and the one thing a y axis measured
+		// downwards gets wrong by default.
+		const double laneIndex = static_cast<double> (highest - note.pitch);
+		const double y = top + laneIndex * lane;
+
+		// A SHORT NOTE IS STILL A NOTE. A sixteenth in a long pattern can
+		// come to less than a pixel, and a bar of no width is a bar
+		// nobody sees - which would quietly empty the busiest patterns.
+		CRect bar (x0, y, std::max (x1, x0 + 1.0), y + barHeight);
+		context->drawRect (bar, kDrawFilled);
+	}
 }
 
 //------------------------------------------------------------------------
@@ -280,9 +380,11 @@ void SpyDisplay::draw (CDrawContext* context)
 	plot.inset (6., 5.);
 	plot.top += 12.;
 
-	// BEHIND EVERYTHING. The waveform is the ground the readouts are drawn
-	// on, so it goes down before the grid rather than over it.
+	// BEHIND EVERYTHING. The preview is the ground the readouts are drawn
+	// on, so it goes down before the grid rather than over it. A pad holds
+	// one kind of file, so at most one of these two draws anything.
 	drawWaveform (context, plot);
+	drawRoll (context, plot);
 
 	drawGrid (context, plot);
 

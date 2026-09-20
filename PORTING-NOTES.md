@@ -2086,11 +2086,18 @@ To use an existing checkout anyway:
 cmake -B build -G Xcode -DVST3_SDK_ROOT=/path/to/vst3sdk
 ```
 
-## 18. The pointed-at pad's waveform, behind the display
+## 18. The pointed-at pad's preview, behind the display
 
-**Point at** a pad holding a `.wav` and its waveform appears behind the
-display; **drop** a file on one and the same thing happens. The display
-answers "what is in that pad", and asking costs nothing.
+**Point at** a pad and what it holds appears behind the display: a
+**waveform** for a `.wav`, a **piano roll** for a `.mid`. **Drop** a file on
+one and the same thing happens. The display answers "what is in that pad",
+and asking costs nothing.
+
+A pad holds one kind of file, so at most one of the two previews is ever
+non-empty and the display draws whichever it was given. The two are built the
+same way on purpose - same summarise-once-at-load, same message, same
+controller storage, same empty-means-nothing rule - so there is one shape to
+understand rather than two.
 
 ### Where the work happens, and where it does not
 
@@ -2110,23 +2117,71 @@ fires when a file finishes loading, 64 KB of peaks held by the controller for
 a full bank, and 256 points filled per repaint at 30 ms. Nothing recurring
 touches the audio path.
 
-### Rolling it back is one word, and the rollback is tested
+### The piano roll
 
-`kWaveformEnabled` in `Project6Sample.h`. False, and `summariseWaveform`
-returns nothing, so the loader stores an empty vector, the processor sends no
-attribute, the controller holds none and the display draws none.
+`summariseRoll` in `Project6Midi.h`, SDK-free like everything else there. Up
+to `kMaxRollNotes` (512) notes, each **normalised to the clip's own content**
+- `start` and `end` are fractions between nought and one - so the drawing side
+needs to know nothing about tempo, bars or how long the file is. It has a
+rectangle and a list of numbers.
+
+`RollNote` is **three floats, pitch included**, which is an integer everywhere
+else in that file. Deliberate: the struct crosses to the controller as raw
+bytes, and three floats have no padding to guess at, no alignment to agree on
+and no packing pragma to forget.
+
+**Over the cap, it takes every Nth note rather than the first 512.** The notes
+are sorted by start, so keeping the first 512 of a longer pattern draws its
+opening and leaves the rest of the rectangle empty - which does not read as
+"some notes are missing", it reads as a pattern that stops. A stride keeps the
+shape of the whole thing.
+
+**The vertical scale is the range the file actually uses**, not 0-127. That is
+what "notes in relation to each other" has to mean: a two-octave bass line and
+a two-octave melody both fill the rectangle, and a file sitting on one pitch
+gets a line through the middle rather than a bar at the bottom of a scale it
+never visits. A range of zero is widened to an octave so it cannot divide by
+it. High pitches at the top, which is the one thing everybody expects of a
+piano roll and the one thing a downward y axis gets wrong by default. And a
+note shorter than a pixel is drawn one pixel wide, because a bar of no width
+would quietly empty the busiest patterns.
+
+The summary is made in `sendSlotStatusToController`, **not stored on the
+clip**: a `MidiClip` is published to the audio thread and read there, and
+hanging a preview off it would grow the object that side holds for something
+it never looks at.
+
+### Rolling it back is one word each, and both rollbacks are tested
+
+`kWaveformEnabled` in `Project6Sample.h`, `kPianoRollEnabled` in
+`Project6Midi.h`. **Two switches, not one**, because the two previews are the
+same idea applied to different files and being able to drop one without the
+other is the point of having a switch at all.
+
+False, and the summariser returns nothing, so the loader stores an empty
+vector, the processor sends no attribute, the controller holds none and the
+display draws none.
 
 **That path is not a branch nobody has run.** It is the same path a MIDI pad
 and an empty slot already take every time a bank is used, so there is no
 "waveform off" behaviour distinct from "no waveform to draw" - one case, not
 two.
 
-And WavTests section 10 **passes in both configurations**: with the switch on
-it checks the shape, with it off it checks that everything answers nothing. A
-suite that only passed with the feature enabled would turn flipping the switch
-into a broken build, which is precisely what stops somebody flipping it at the
-moment they need to. Both were compiled and run, and the whole plug-in was
-object-built with the switch off.
+WavTests section 10 and MidiTests section 14 **pass in every combination**:
+with a switch on they check the shape, with it off they check that everything
+answers nothing. A suite that only passed with the feature enabled would turn
+flipping the switch into a broken build, which is precisely what stops
+somebody flipping it at the moment they need to.
+
+**All four combinations were compiled, run and object-built** - both on, each
+alone, both off - rather than reasoning that they must work:
+
+| `kWaveformEnabled` | `kPianoRollEnabled` | suites | plug-in builds |
+|---|---|---|---|
+| true | true | pass | yes |
+| false | true | pass | yes |
+| true | false | pass | yes |
+| false | false | pass | yes |
 
 ### Pointing, not clicking - and the first version got this wrong
 

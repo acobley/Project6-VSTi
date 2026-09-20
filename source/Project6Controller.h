@@ -10,6 +10,9 @@
 #include "Project6Sample.h"
 #include "Project6Slots.h"
 
+// For RollNote: the piano roll the panel draws for a MIDI pad.
+#include "Project6Midi.h"
+
 #include "public.sdk/source/vst/vsteditcontroller.h"
 
 #include <string>
@@ -84,6 +87,10 @@ public:
 	/** The pad's waveform for the panel to draw. Empty is normal: see
 	    kWaveformEnabled in Project6Sample.h. */
 	const std::vector<float>& slotWaveform (int index) const;
+
+	/** The pad's piano roll for the panel to draw. Empty is normal: see
+	    kPianoRollEnabled in Project6Midi.h. */
+	const std::vector<RollNote>& slotRoll (int index) const;
 
 	//--------------------------------------------------------------------
 	// What was read out of a slot's file about its TEMPO.
@@ -196,6 +203,11 @@ private:
 	    kWaveformEnabled false - one answer for all three, which is the
 	    whole reason the drawing side has only one case to handle. */
 	std::vector<float> mSlotWaveform[kSlotCount];
+
+	/** And each MIDI pad's notes, summarised the same way and on the same
+	    message. At most one of these two is non-empty for any pad: a pad
+	    holds a wav or a mid. */
+	std::vector<RollNote> mSlotRoll[kSlotCount];
 	TempoSource mSlotTempoSource[kSlotCount] = {};
 	bool mSlotOneShot[kSlotCount] = {};
 	SlotFileKind mSlotKind[kSlotCount] = {};

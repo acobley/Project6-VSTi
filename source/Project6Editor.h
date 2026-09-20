@@ -372,7 +372,8 @@ private:
 	SpySlotLoop* mLoops[kSlotCount] = { nullptr };
 	SpyColumnButton* mColumns[kSlotColumns] = { nullptr };
 
-	/** WHICH PAD THE DISPLAY IS SHOWING THE WAVEFORM OF, or -1 for none.
+	/** WHICH PAD THE DISPLAY IS PREVIEWING, or -1 for none. A waveform if
+	    it holds a `.wav`, a piano roll if it holds a `.mid`.
 
 	    Set by POINTING at a loaded pad, and by DROPPING a file on one.
 	    Not by clicking: launching a pad is a musical act with a sound as
@@ -383,7 +384,7 @@ private:
 	    Nothing clears it on the way out. The display is read by moving
 	    the pointer OFF the pad, so a picture that vanished as you went to
 	    look at it would be no use at all. */
-	int mWaveformSlot = -1;
+	int mPreviewSlot = -1;
 
 	void slotHovered (int index);
 

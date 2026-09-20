@@ -435,6 +435,56 @@ MidiStatus loadMidiFile (const std::string& path, MidiClip& out)
 }
 
 //------------------------------------------------------------------------
+//------------------------------------------------------------------------
+std::vector<RollNote> summariseRoll (const MidiClip& clip)
+{
+	std::vector<RollNote> roll;
+
+	// THE ROLLBACK, and the two ordinary cases, answered identically. See
+	// kPianoRollEnabled: there is no third behaviour to test.
+	if (!kPianoRollEnabled || clip.notes.empty () || !(clip.content > 0.0))
+		return roll;
+
+	const std::size_t total = clip.notes.size ();
+
+	// OVER THE LINE, TAKE EVERY Nth - not the first kMaxRollNotes.
+	//
+	// The notes are sorted by start, so keeping the first 512 of a longer
+	// pattern would draw its opening and leave the rest of the rectangle
+	// empty, which does not read as "some notes are missing". It reads as
+	// a pattern that stops. A stride keeps the shape of the whole thing
+	// and thins it evenly, which is what a preview is for.
+	const std::size_t stride =
+		(total > static_cast<std::size_t> (kMaxRollNotes))
+			? (total + kMaxRollNotes - 1) / kMaxRollNotes
+			: 1;
+
+	roll.reserve (std::min (total, static_cast<std::size_t> (kMaxRollNotes)));
+
+	for (std::size_t i = 0; i < total; i += stride)
+	{
+		const MidiNote& note = clip.notes[i];
+
+		RollNote out;
+		out.start = static_cast<float> (note.start / clip.content);
+		out.end   = static_cast<float> (note.end / clip.content);
+		out.pitch = static_cast<float> (note.note);
+
+		// A NOTE RUNNING PAST THE CONTENT is clipped rather than dropped.
+		// content is the later of the last note-off and the end-of-track,
+		// so this is rare - but a file whose track ends before its last
+		// note does exist, and a bar drawn off the end of the rectangle
+		// is worse than one that stops at it.
+		out.start = std::min (1.f, std::max (0.f, out.start));
+		out.end   = std::min (1.f, std::max (out.start, out.end));
+
+		roll.push_back (out);
+	}
+
+	return roll;
+}
+
+//------------------------------------------------------------------------
 // MidiVoice
 //------------------------------------------------------------------------
 

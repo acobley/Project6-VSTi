@@ -59,6 +59,10 @@ g = K.get
 
 SLOT_COLUMNS, SLOT_ROWS = 8, 8
 
+# Which preview the display is showing. A pad holds a wav or a mid, so the
+# panel draws a waveform or a piano roll - never both. 'wave' or 'roll'.
+PREVIEW = 'roll'
+
 # Project6Dsp.h - the trim's range, so the slider position and the trace
 # in the display are computed from the same scale.
 TRIM_MIN_DB, TRIM_MAX_DB = -60.0, 0.0
@@ -210,25 +214,54 @@ def draw_panel(out_path):
     plot_h = plot[3] - plot[1]
     plot_w = plot[2] - plot[0]
 
-    # THE ARMED PAD'S WAVEFORM, behind everything - kWaveformBuckets peaks
-    # mirrored about the middle. Invented peaks, like the pad names: the
-    # shape is what a loop looks like, not what any particular file does.
+    # THE POINTED-AT PAD'S PREVIEW, behind everything. A pad holds a wav
+    # or a mid, so the panel draws one or the other and never both - this
+    # picture shows the MIDI case, a piano roll, because that is the half
+    # the waveform render already showed.
     import math
-    middle = (plot[1] + plot[3]) / 2.0
-    reach = (plot[3] - plot[1]) / 2.0
-    buckets = 256
-    shape = []
-    for i in range(buckets):
-        t = i / float(buckets)
-        beat = (t * 4.0) % 1.0
-        env = (0.30 + 0.62 * math.exp(-beat * 5.0)) * (0.85 + 0.15 * math.sin(t * 31.0))
-        shape.append(min(1.0, env * (0.9 + 0.1 * math.sin(t * 7.0))))
+    if PREVIEW == 'wave':
+        middle = (plot[1] + plot[3]) / 2.0
+        reach = (plot[3] - plot[1]) / 2.0
+        buckets = 256
+        shape = []
+        for i in range(buckets):
+            t = i / float(buckets)
+            beat = (t * 4.0) % 1.0
+            env = ((0.30 + 0.62 * math.exp(-beat * 5.0))
+                   * (0.85 + 0.15 * math.sin(t * 31.0)))
+            shape.append(min(1.0, env * (0.9 + 0.1 * math.sin(t * 7.0))))
 
-    top = [(plot[0] + plot_w * i / float(buckets), middle - reach * v)
-           for i, v in enumerate(shape)]
-    bottom = [(plot[0] + plot_w * i / float(buckets), middle + reach * v)
-              for i, v in reversed(list(enumerate(shape)))]
-    d.polygon(top + bottom, fill=(150, 190, 255, 60))
+        top = [(plot[0] + plot_w * i / float(buckets), middle - reach * v)
+               for i, v in enumerate(shape)]
+        bottom = [(plot[0] + plot_w * i / float(buckets), middle + reach * v)
+                  for i, v in reversed(list(enumerate(shape)))]
+        d.polygon(top + bottom, fill=(150, 190, 255, 60))
+    else:
+        # A lane per semitone of the range the file ACTUALLY uses, high
+        # pitches at the top, with a little air top and bottom. Invented
+        # notes, like the pad names.
+        notes = []
+        pattern = [(0, 36, 2), (2, 42, 1), (3, 36, 1), (4, 38, 2), (6, 42, 1),
+                   (8, 36, 2), (10, 42, 1), (11, 36, 1), (12, 38, 2), (14, 42, 2),
+                   (1, 48, 1), (5, 51, 1), (9, 48, 1), (13, 53, 2),
+                   (0, 60, 4), (4, 63, 4), (8, 60, 4), (12, 65, 3)]
+        for step, pitch, length in pattern:
+            notes.append((step / 16.0, (step + length) / 16.0, pitch))
+
+        lowest = min(n[2] for n in notes)
+        highest = max(n[2] for n in notes)
+        lanes = (highest - lowest) + 1
+        inset = min(6.0, (plot[3] - plot[1]) * 0.08)
+        top_y = plot[1] + inset
+        lane = max(1.0, ((plot[3] - plot[1]) - inset * 2)) / lanes
+        bar_h = max(1.0, lane - 1.0)
+
+        for start, end, pitch in notes:
+            x0 = plot[0] + plot_w * start
+            x1 = plot[0] + plot_w * end
+            y = top_y + (highest - pitch) * lane
+            d.rectangle((x0, y, max(x1, x0 + 1), y + bar_h),
+                        fill=(170, 160, 255, 120))
 
     # kDbLines, from Project6Display.cpp. Unity is the line drawn brightest
     # because it is the one that matters.

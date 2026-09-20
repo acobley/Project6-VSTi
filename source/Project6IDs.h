@@ -118,6 +118,12 @@ static const char* const kProject6SlotBeatsAttribute   = "Beats";
     false. See Project6Sample.h. */
 static const char* const kProject6SlotWaveAttribute    = "Wave";
 
+/** The pad's piano roll: RollNotes as binary, three floats each, for the
+    panel to draw behind its display. ABSENT is normal and means "nothing
+    to draw" - an audio pad, an empty slot, or a build with
+    kPianoRollEnabled false. See Project6Midi.h. */
+static const char* const kProject6SlotRollAttribute    = "Roll";
+
 /** The playhead of every slot, for the progress bars on the pads.
 
     A REQUEST AND A REPLY, both on the UI thread: the controller asks on

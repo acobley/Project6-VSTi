@@ -35,6 +35,8 @@
 
 #include "vstgui/vstgui.h"
 
+#include "Project6Midi.h"
+
 #include <functional>
 #include <vector>
 
@@ -72,6 +74,15 @@ public:
 	    storage is a view that reads freed memory the day that storage is
 	    reallocated. */
 	bool setWaveform (const std::vector<float>& peaks);
+
+	/** The MIDI equivalent: the pointed-at pad's notes, as bars. Same
+	    terms as setWaveform in every respect - empty clears it, it is
+	    copied rather than referenced, and it returns true only when it
+	    changed.
+
+	    A pad holds a wav or a mid, so at most one of the two is ever
+	    non-empty and the display draws whichever it was given. */
+	bool setRoll (const std::vector<RollNote>& notes);
 
 	void draw (VSTGUI::CDrawContext* context) override;
 
@@ -111,6 +122,7 @@ private:
 	void drawPlayhead (VSTGUI::CDrawContext* context, const VSTGUI::CRect& plot);
 
 	void drawWaveform (VSTGUI::CDrawContext* context, const VSTGUI::CRect& plot);
+	void drawRoll (VSTGUI::CDrawContext* context, const VSTGUI::CRect& plot);
 
 	double mTrimDb      = kTrimDefaultDb;
 	double mSampleRate  = 44100.0;
@@ -118,8 +130,18 @@ private:
 	double mBarPhase    = 0.0;
 	int    mBeatsPerBar = 4;
 
-	/** The armed pad's peaks, 0..1. Empty means nothing to draw. */
+	/** The pointed-at pad's peaks, 0..1. Empty means nothing to draw. */
 	std::vector<float> mWaveform;
+
+	/** Or its notes, if it holds a .mid. */
+	std::vector<RollNote> mRoll;
+
+	/** The lowest and highest pitch in mRoll, worked out once when the
+	    roll is set rather than on every repaint. The display runs at
+	    thirty frames a second and the answer only changes when the pad
+	    does. */
+	float mRollLowest  = 0.f;
+	float mRollHighest = 0.f;
 };
 
 //------------------------------------------------------------------------

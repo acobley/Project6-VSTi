@@ -476,17 +476,23 @@ void Project6Editor::refreshDisplay ()
 	                    transport, mController->getParamNormalized (kLiveBarPhase),
 	                    beats);
 
-	// AND THE ARMED PAD'S WAVEFORM. Pushed every tick like everything else
-	// here, and setWaveform compares before it repaints - the summary
-	// arrives on a message that lands whenever the file finishes loading,
-	// which is not a moment this side gets told about.
+	// AND THE POINTED-AT PAD'S PREVIEW - a waveform, or a piano roll, and
+	// never both, because a pad holds one kind of file. Pushed every tick
+	// like everything else here, and both setters compare before they
+	// repaint: the summaries arrive on a message that lands whenever a
+	// file finishes loading, which is not a moment this side gets told
+	// about.
 	//
-	// A pad that has since been emptied, or replaced by a .mid, reports an
-	// empty summary, which clears the display. That is the same path a
-	// build with kWaveformEnabled false takes every time.
-	mDisplay->setWaveform (mWaveformSlot >= 0
-	                           ? mController->slotWaveform (mWaveformSlot)
-	                           : std::vector<float> ());
+	// A pad since emptied, or changed from one kind to the other, reports
+	// empty for what it no longer holds, which clears that half of the
+	// display. That is the same path a build with the previews switched
+	// off takes every time.
+	const bool havePad = mPreviewSlot >= 0;
+
+	mDisplay->setWaveform (havePad ? mController->slotWaveform (mPreviewSlot)
+	                               : std::vector<float> ());
+	mDisplay->setRoll (havePad ? mController->slotRoll (mPreviewSlot)
+	                           : std::vector<RollNote> ());
 }
 
 //------------------------------------------------------------------------
@@ -495,16 +501,18 @@ void Project6Editor::slotHovered (int index)
 	if (mController == nullptr || ! isSlotIndex (index))
 		return;
 
-	// ONLY A PAD WITH SOMETHING TO SHOW takes the display over. An empty
-	// pad and a MIDI pad leave it exactly as it was, because the pointer
-	// crosses a great many pads on its way anywhere and a display that
-	// blanked at each of them would flicker the whole way across the
-	// bank. The rule is one sentence: the display shows the last AUDIO
-	// pad you pointed at.
-	if (mController->slotWaveform (index).empty ())
+	// ONLY A PAD WITH SOMETHING TO SHOW takes the display over - a
+	// waveform if it holds a wav, a piano roll if it holds a mid. An
+	// EMPTY pad leaves it exactly as it was, because the pointer crosses
+	// a great many pads on its way anywhere and a display that blanked at
+	// each of them would flicker the whole way across the bank. The rule
+	// is one sentence: the display shows the last LOADED pad you pointed
+	// at.
+	if (mController->slotWaveform (index).empty ()
+	    && mController->slotRoll (index).empty ())
 		return;
 
-	mWaveformSlot = index;
+	mPreviewSlot = index;
 }
 
 //------------------------------------------------------------------------
@@ -521,7 +529,7 @@ void Project6Editor::slotDropped (int index, const std::string& path)
 	// If the file fails to load there will never be one, and the display
 	// clears. That is the right answer rather than a missing case: you
 	// dropped something, and nothing came of it.
-	mWaveformSlot = index;
+	mPreviewSlot = index;
 
 	// Straight to the controller. It records the path, tells the
 	// processor, and calls refreshSlots on every editor it has open -

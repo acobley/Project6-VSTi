@@ -300,6 +300,17 @@ const std::vector<float>& Project6Controller::slotWaveform (int index) const
 }
 
 //------------------------------------------------------------------------
+const std::vector<RollNote>& Project6Controller::slotRoll (int index) const
+{
+	static const std::vector<RollNote> kNone;
+
+	if (!isSlotIndex (index))
+		return kNone;
+
+	return mSlotRoll[index];
+}
+
+//------------------------------------------------------------------------
 double Project6Controller::slotTempo (int index) const
 {
 	if (!isSlotIndex (index))
@@ -594,10 +605,24 @@ tresult PLUGIN_API Project6Controller::notify (IMessage* message)
 			message->getAttributes ()->getInt (kProject6SlotTempoSrcAttribute, source);
 			message->getAttributes ()->getInt (kProject6SlotOneShotAttribute, oneShot);
 
-			// THE WAVEFORM, and its ABSENCE is the message. Cleared
-			// first, so a pad that changes from a wav to a mid - or to
-			// nothing - stops showing the wav it used to hold.
+			// THE TWO PREVIEWS, and their ABSENCE is the message. BOTH
+			// cleared first, so a pad that changes from a wav to a mid -
+			// or either to nothing - stops showing what it used to hold.
 			mSlotWaveform[index].clear ();
+			mSlotRoll[index].clear ();
+			{
+				const void* data = nullptr;
+				Steinberg::uint32 bytes = 0;
+				if (message->getAttributes ()->getBinary (
+					    kProject6SlotRollAttribute, data, bytes) == kResultOk
+				    && data != nullptr && bytes > 0
+				    && (bytes % sizeof (RollNote)) == 0)
+				{
+					const RollNote* notes = static_cast<const RollNote*> (data);
+					mSlotRoll[index].assign (
+						notes, notes + bytes / sizeof (RollNote));
+				}
+			}
 			{
 				const void* data = nullptr;
 				Steinberg::uint32 bytes = 0;

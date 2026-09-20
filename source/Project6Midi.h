@@ -93,6 +93,47 @@ constexpr int midiChannelNumberForRow (int row) { return midiChannelForRow (row)
 constexpr int kMaxTransposeSemitones = 24;
 
 //------------------------------------------------------------------------
+/** THE PIANO ROLL THE PANEL DRAWS BEHIND ITS DISPLAY, and the one switch
+    that turns it off.
+
+    Its own switch rather than the waveform's: the two previews are the
+    same idea applied to different files, and being able to drop one
+    without the other is the point of having a switch at all.
+
+    See kWaveformEnabled in Project6Sample.h for the reasoning both share -
+    in particular that "off" and "nothing to draw" are deliberately the
+    same answer, so the disabled build runs the path an audio pad and an
+    empty slot run constantly rather than a branch nobody has exercised. */
+constexpr bool kPianoRollEnabled = true;
+
+/** How many notes the preview will carry. Far more than a pattern
+    normally holds - kMaxMidiNotes allows twenty thousand, and anything
+    approaching that is a performance capture rather than a loop - so in
+    practice every note is shown. See summariseRoll for what happens to
+    the ones over the line. */
+constexpr int kMaxRollNotes = 512;
+
+//------------------------------------------------------------------------
+/** One note, ready to draw and needing nothing else to place it.
+
+    ALL THREE ARE FLOATS, including the pitch, which is an integer
+    everywhere else in this file. That is deliberate: this struct crosses
+    to the controller as raw bytes on a message, and three floats have no
+    padding to guess at, no alignment to agree on and no packing pragma to
+    forget. The cost is a cast at the far end that changes nothing.
+
+    `start` and `end` are FRACTIONS OF THE CLIP'S OWN LENGTH, not quarter
+    notes - normalised here so the drawing side needs to know nothing
+    about tempo, bars or how long the file is. It has a rectangle and a
+    list of numbers between nought and one. */
+struct RollNote
+{
+	float start = 0.f;    ///< 0..1 across the clip's content
+	float end   = 0.f;    ///< 0..1; always > start
+	float pitch = 60.f;   ///< the MIDI note number, 0..127
+};
+
+//------------------------------------------------------------------------
 /** One note, in quarter notes from the start of the clip.
 
     NO CHANNEL. Every pad's notes go out on ITS ROW'S channel - row A is
@@ -145,6 +186,15 @@ struct MidiClip
 	bool empty () const { return notes.empty (); }
 	int  noteCount () const { return static_cast<int> (notes.size ()); }
 };
+
+//------------------------------------------------------------------------
+/** Up to kMaxRollNotes of `clip`'s notes, normalised to its content, for
+    the panel to draw as a piano roll.
+
+    Returns empty when kPianoRollEnabled is false, when the clip has no
+    notes, or when it has no length to normalise against - one answer to
+    all three, for the reason kPianoRollEnabled gives. */
+std::vector<RollNote> summariseRoll (const MidiClip& clip);
 
 //------------------------------------------------------------------------
 /** How long the loop actually is: `content` rounded UP to a whole bar.

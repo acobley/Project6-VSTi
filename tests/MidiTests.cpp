@@ -1323,6 +1323,98 @@ int main ()
 	}
 
 	//--------------------------------------------------------------------
+	section ("14. The piano roll the panel draws");
+	//--------------------------------------------------------------------
+	//
+	// PASSES IN BOTH CONFIGURATIONS, like WavTests 10: with
+	// kPianoRollEnabled false the whole feature must answer "nothing", and
+	// a suite that only passed with it on would turn flipping the switch
+	// into a broken build.
+	//--------------------------------------------------------------------
+	if (!kPianoRollEnabled)
+	{
+		MidiClip clip;
+		clip.notes.push_back ({ 0.0, 1.0, 60, 100 });
+		clip.content = 4.0;
+		check (summariseRoll (clip).empty (),
+		       "DISABLED: a clip with notes still summarises to nothing");
+	}
+	else
+	{
+		MidiClip clip;
+		clip.notes.push_back ({ 0.0, 1.0, 60, 100 });
+		clip.notes.push_back ({ 1.0, 1.5, 64, 100 });
+		clip.notes.push_back ({ 2.0, 4.0, 67, 100 });
+		clip.content = 4.0;
+
+		const std::vector<RollNote> roll = summariseRoll (clip);
+		check (roll.size () == 3, "every note of a small clip is carried");
+
+		// NORMALISED TO THE CONTENT, so the drawing side needs to know
+		// nothing about tempo, bars or how long the file is.
+		bool normalised = true;
+		for (const RollNote& note : roll)
+			normalised &= (note.start >= 0.f && note.start <= 1.f
+			               && note.end >= note.start && note.end <= 1.f);
+		check (normalised, "and every one lands between 0 and 1, end after start");
+
+		check (roll[0].start == 0.f, "a note at the start is at 0");
+		check (roll[0].end > 0.24f && roll[0].end < 0.26f,
+		       "a quarter-note in a four-quarter clip ends a quarter of the way");
+		check (roll[2].end > 0.99f, "a note running to the end reaches 1");
+		check (roll[1].pitch == 64.f, "the pitch is carried as the MIDI number");
+
+		// ORDER IS PRESERVED, because the clip is sorted by start and the
+		// drawing side should not have to re-sort a preview.
+		bool ordered = true;
+		for (std::size_t i = 1; i < roll.size (); ++i)
+			ordered &= (roll[i].start >= roll[i - 1].start);
+		check (ordered, "and the notes stay in the order the clip had them");
+
+		// OVER THE CAP, THINNED EVENLY rather than truncated. A pattern
+		// whose first 512 notes were kept would draw its opening and
+		// leave the rest of the rectangle empty, which reads as a pattern
+		// that stops rather than one that was sampled.
+		MidiClip dense;
+		for (int i = 0; i < kMaxRollNotes * 4; ++i)
+		{
+			const double at = i * 0.01;
+			dense.notes.push_back (
+				{ at, at + 0.005, static_cast<unsigned char> (40 + (i % 40)), 100 });
+		}
+		dense.content = dense.notes.back ().end;
+
+		const std::vector<RollNote> thinned = summariseRoll (dense);
+		check (static_cast<int> (thinned.size ()) <= kMaxRollNotes,
+		       "a dense clip is capped at kMaxRollNotes");
+		check (thinned.size () > static_cast<std::size_t> (kMaxRollNotes) / 2,
+		       "but not thinned to almost nothing");
+		check (thinned.front ().start < 0.01f, "the thinning starts at the beginning");
+		check (thinned.back ().start > 0.9f,
+		       "AND REACHES THE END - not the first 512 and then silence");
+
+		// A NOTE PAST THE CONTENT IS CLIPPED, not dropped: a bar drawn
+		// off the end of the rectangle is worse than one that stops at
+		// it.
+		MidiClip overrun;
+		overrun.notes.push_back ({ 3.0, 9.0, 60, 100 });
+		overrun.content = 4.0;
+		const std::vector<RollNote> clipped = summariseRoll (overrun);
+		check (clipped.size () == 1, "a note running past the content is kept");
+		check (clipped[0].end <= 1.f, "and clipped to the end of the rectangle");
+		check (clipped[0].end > clipped[0].start, "still with some length to draw");
+
+		// EMPTY IS A NORMAL ANSWER, and the same one the rollback gives.
+		MidiClip none;
+		none.content = 4.0;
+		check (summariseRoll (none).empty (), "a clip with no notes summarises to nothing");
+
+		MidiClip lengthless;
+		lengthless.notes.push_back ({ 0.0, 1.0, 60, 100 });
+		check (summariseRoll (lengthless).empty (), "and so does one with no length");
+	}
+
+	//--------------------------------------------------------------------
 	std::printf ("\n%s  (%d failure%s)\n",
 	             gFailures == 0 ? "ALL TESTS PASSED" : "TESTS FAILED",
 	             gFailures, gFailures == 1 ? "" : "s");

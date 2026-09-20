@@ -62,12 +62,17 @@ and waiting, coming in together on the next bar line when you roll the
 transport. A pad whose file has gone missing since it was saved comes back
 dark rather than lit and silent.
 
-**Point at a pad holding a `.wav` and its waveform appears behind the
-display** - and dropping a file on a pad does the same. Pointing costs nothing
-and changes no sound, so looking at what a pad holds never means playing it.
-The summary is computed once when the file loads, never on the audio thread,
-and `kWaveformEnabled` in `Project6Sample.h` turns the whole feature off in
-one word.
+**Point at a pad and what it holds appears behind the display** — a waveform
+for a `.wav`, a piano roll for a `.mid` — and dropping a file on a pad does
+the same. Pointing costs nothing and changes no sound, so looking at what a
+pad holds never means playing it. The piano roll scales to the range of
+pitches the file actually uses, so the notes read in relation to each other
+rather than against a keyboard most files never visit.
+
+Both summaries are computed once when the file loads, never on the audio
+thread, and each has its own switch — `kWaveformEnabled` in
+`Project6Sample.h`, `kPianoRollEnabled` in `Project6Midi.h` — that turns it
+off in one word.
 
 An armed slot glows amber while it waits and red while it plays, so the wait
 is visible rather than mysterious, and **a bar along the bottom of a playing
