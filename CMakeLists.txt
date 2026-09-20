@@ -29,6 +29,31 @@ cmake_minimum_required(VERSION 3.25.0)
 set(CMAKE_OSX_DEPLOYMENT_TARGET 10.13 CACHE STRING "macOS deployment target")
 
 #-----------------------------------------------------------------------------
+# UNIVERSAL BY DEFAULT
+#
+# Without this the Xcode generator builds for whatever the building Mac is -
+# arm64, in practice - while installer/distribution.xml advertises the package
+# as x86_64,arm64. It then installs perfectly on an Intel Mac, or in a host
+# running under Rosetta, and nothing loads: the same shape of failure as the
+# AU's dangling symlink, and just as invisible from the Mac it was built on.
+#
+# It has to be set BEFORE project(), because that is when the compiler checks
+# run and they bake in the architectures.
+#
+# The cost is real: every translation unit in the SDK and VSTGUI is compiled
+# twice, so a clean build takes about twice as long. -DPORT_UNIVERSAL=OFF, or
+# setup-xcode.sh --native, builds only for this machine, which is what you
+# want while iterating.
+#
+# Verify with:  lipo -archs build/VST3/Release/Project6.vst3/Contents/MacOS/Project6
+#-----------------------------------------------------------------------------
+option(PORT_UNIVERSAL "Build arm64 + x86_64 (release builds should)" ON)
+
+if(APPLE AND PORT_UNIVERSAL AND NOT CMAKE_OSX_ARCHITECTURES)
+    set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "" FORCE)
+endif()
+
+#-----------------------------------------------------------------------------
 # PLUG-IN IDENTITY  --  this is the block to edit
 #
 # PLUGIN_NAME is used for the target, the bundle, the Xcode scheme and the
@@ -40,7 +65,7 @@ set(CMAKE_OSX_DEPLOYMENT_TARGET 10.13 CACHE STRING "macOS deployment target")
 # loses it.
 #-----------------------------------------------------------------------------
 set(PLUGIN_NAME         "Project6")
-set(PLUGIN_VERSION      "1.0.0.1")
+set(PLUGIN_VERSION      "1.1.0.0")
 set(PLUGIN_DESCRIPTION  "Project6 - VST3 / AUv2 instrument")
 set(PLUGIN_COMPANY      "A. E. Cobley")
 set(PLUGIN_BUNDLE_ID    "audio.project6.vst3")

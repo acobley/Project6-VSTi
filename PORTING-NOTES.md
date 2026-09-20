@@ -2361,3 +2361,97 @@ And after stapling it asks **Gatekeeper, locally, the question the downloading
 machine will ask**: `spctl --assess --type install -vv` must answer
 `source=Notarized Developer ID`, and the build fails otherwise. Everything
 before that only proves the paperwork is in order.
+
+## 20. Releasing it: two scripts, and the architecture nobody built
+
+`installer/build-release.sh` and `installer/publish-release.sh`. One makes the
+package, the other publishes it, and between them they encode the order the
+steps have to happen in - which is the part that is easy to know and easy to
+get wrong at eleven at night.
+
+```sh
+installer/build-release.sh          # tests, clean universal build, checks, signed .pkg
+installer/publish-release.sh        # checksum, push, tag, GitHub Release
+```
+
+### The package advertised an architecture the build never produced
+
+`installer/distribution.xml` has said `hostArchitectures="x86_64,arm64"` since
+the installer was written. `CMakeLists.txt` said nothing about architectures
+at all, so the Xcode generator built for whatever Mac was doing the building -
+arm64 - and the package installed perfectly on an Intel Mac, or in a host
+under Rosetta, and loaded **nothing**.
+
+That is the same shape of failure as the AU's dangling symlink: a successful
+install, a plug-in in the right place, and silence. And it is invisible from
+the machine that built it, which is the only machine that ever tries it.
+
+`PORT_UNIVERSAL` (on by default, `setup-xcode.sh --native` to turn it off) now
+sets `CMAKE_OSX_ARCHITECTURES` **before `project()`** - it has to be before,
+because that is when the compiler checks run and bake the architectures in.
+A clean build takes about twice as long, which is the price of the package
+being what it says it is.
+
+**And the script checks rather than trusting the option.** `lipo -archs` on
+the built binary, and a signed build that is not universal stops there. An
+option can be overridden on the command line, a stale `build/` can predate it,
+and neither of those announces itself.
+
+### The order is the point
+
+Nothing reaches GitHub until the package has passed, so:
+
+1. The suites, **before** anything is built - a failing test after a
+   half-hour universal build is a half-hour wasted.
+2. The notary profile is asked whether it answers, also before the build. If
+   the Team ID is wrong this is where you find out, rather than after.
+3. A **clean** configure. Compile flags and the version are baked in at
+   configure time and `-ffile-prefix-map` only takes effect on a fresh one.
+4. The binary is swept for home-directory paths and checked for both
+   architectures.
+5. Any earlier package at that path is deleted. An unsigned build writes
+   exactly where a signed one does and nothing in the name tells them apart.
+6. One signed, notarised package - built **once**, not twice.
+7. `spctl` is asked the question the downloading machine will ask.
+8. Only then: the checksum into the notes, a commit, a push, a tag, a release.
+
+The tag therefore points at the commit the package was built from, which is
+why `build-release.sh` refuses a dirty tree. A release built from uncommitted
+work is one nobody can rebuild.
+
+### The .pkg is a release asset, not a file in the repository
+
+1.0.0.1 was committed under `installer/releases/` and stays there, because git
+never forgets a blob and removing it now would shrink no clone that already
+exists. From 1.1.0.0 the package goes up as a **GitHub Release asset** against
+its tag: tagged, checksummed, and out of the history. `.gitignore` carries
+`installer/*.pkg`, which also means an unsigned local build can never be swept
+in by a `git add -A`.
+
+### Both scripts were watched refusing things
+
+The guards are the whole value of a release script, and a guard that passes
+vacuously is worse than none - the pkg-ref check in `build-installer.sh`
+matched nothing for a while and reported everything fine, and only a
+deliberately broken tree found it.
+
+So these two were run in a stub tree with a fake `uname`, `gh`, `spctl` and
+`pkgutil`, and made to hit: a Linux host, a dirty tree, no signing
+certificate, missing release notes, no `gh`, no git remote, a package
+Gatekeeper will not vouch for, a tag that already exists, notes carrying
+somebody else's checksum, and notes with nowhere to put one. Each stops with
+its own reason. Then the whole sequence ran for real against a local bare
+repository and the checksum in the published notes was compared against the
+package.
+
+Two smaller things came out of doing that rather than assuming:
+
+* **`--help` could not find itself.** Both scripts `cd` to the project root
+  and then read their own source for the header; `$BASH_SOURCE` is whatever
+  the caller typed, so `./build-release.sh --help` from inside `installer/`
+  looked for the file in the wrong directory. They now take the absolute path
+  before moving. The help text is also read as "the leading comment block"
+  rather than as a line range, which cannot go stale when somebody adds a
+  sentence to the header.
+* **`mktemp -t name` means different things on macOS and GNU.** Spelled out
+  with an explicit template, it means the same on both.

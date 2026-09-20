@@ -8,7 +8,55 @@
 as two separately choosable components, so somebody who only wants one format
 gets only that one.
 
-## Running it
+## Two scripts, and what they refuse to do
+
+Everything below is what the release sequence *means*; these two run it.
+
+```sh
+installer/build-release.sh          # tests, clean universal build, checks, signed .pkg
+installer/publish-release.sh        # checksum, push, tag, GitHub Release
+```
+
+`build-release.sh` looks the signing identities up rather than having them
+written down - one Developer ID Application and one Developer ID Installer,
+by SHA-1 hash so a stray space cannot mangle them - and stops before doing
+any work if it finds none, or two. It refuses a dirty working tree, because
+the tag `publish-release.sh` makes would then point at a commit that is not
+what was built. It checks the notary profile answers *before* the build
+rather than after it, and mentions missing release notes at the start, for
+the same reason: a universal Release build is not a thing to discover a typo
+at the end of. `--unsigned` builds locally, `--skip-tests` when you have just
+run them, `--allow-dirty` for a build you will throw away.
+
+`publish-release.sh` asks `spctl` the question the downloading machine will
+ask and **refuses to publish anything Gatekeeper would refuse**. Then it
+writes the package's SHA-256 into the release notes, commits that, pushes,
+tags and creates the release - in that order, so nothing reaches GitHub until
+the package has passed. `--dry-run` prints what it would do, including the
+checksum commit it would make.
+
+The release notes need a line reading `<paste the sha256 here>` for the
+checksum to land in. If the notes already carry a *different* checksum the
+script stops rather than publishing one nobody can reproduce: that means
+either the notes are stale or the package was rebuilt after they were
+written, and only you know which.
+
+### These refusals were watched happening
+
+Not reasoned about. Both scripts were run in a stub tree with a fake `uname`,
+`gh`, `spctl` and `pkgutil`, and each of these was made to happen: a Linux
+host, a dirty tree, no signing certificate, missing release notes, no `gh`,
+no git remote, a package Gatekeeper will not vouch for, a tag that already
+exists, notes carrying somebody else's checksum, and notes with nowhere to
+put one. Each stops with its own reason. Then the whole sequence was run for
+real against a local bare repository, and the checksum in the published notes
+was compared with the package's.
+
+The two things not exercised that way are the ones that need a real compiler:
+the home-directory-paths sweep and the architecture check. They are one
+`grep -c` and one `case` on `lipo -archs`.
+
+## Running it by hand
 
 **macOS only.** `pkgbuild`, `productbuild` and `codesign` are Apple's and exist
 nowhere else, so this cannot be run from the Linux side of a remote session.
@@ -41,6 +89,14 @@ For a local build with no certificates, run it with no arguments instead.
 
 The version comes out of `PLUGIN_VERSION` in `CMakeLists.txt`. There is no
 second copy of it to forget.
+
+**A release build is universal**, arm64 and x86_64, because `distribution.xml`
+advertises the package as both. Get that wrong and it installs perfectly on an
+Intel Mac and loads nothing - the same shape of failure as the AU's dangling
+symlink, and just as invisible from the Mac you built it on. `PORT_UNIVERSAL`
+in `CMakeLists.txt` is what does it, `setup-xcode.sh --native` turns it off
+while you are iterating, and `build-release.sh` checks with `lipo -archs`
+rather than trusting either.
 
 ## The bug this script exists to avoid
 

@@ -144,7 +144,27 @@ Read `installer/README.md` before sending the result to anyone: unsigned it is
 fine on a USB stick and refused by Gatekeeper if it is downloaded, and there is
 a symlink in the AU bundle that makes a naive `pkgbuild` ship a dead Audio
 Unit. Both are handled, and both are explained there and in `PORTING-NOTES.md`
-§18.
+§19.
+
+## Releasing
+
+Two scripts, and between them they encode the order the steps have to happen
+in:
+
+```sh
+installer/build-release.sh          # tests, clean universal build, checks, signed .pkg
+installer/publish-release.sh        # checksum, push, tag, GitHub Release
+```
+
+`build-release.sh` runs the suites and checks the notary profile *before* it
+builds, configures clean, builds universal (arm64 + x86_64, which is what the
+installer advertises), sweeps the binary for home-directory paths, and refuses
+a dirty tree — the tag has to point at the commit the package was built from.
+`publish-release.sh` will not publish anything `spctl` refuses, and writes the
+package's SHA-256 into the release notes before it tags. `--dry-run` shows
+what it would do. `PORTING-NOTES.md` §20.
+
+Released packages are **GitHub Release assets**, not files in the repository.
 
 ## Tests
 

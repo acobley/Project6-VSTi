@@ -8,6 +8,7 @@
 #   ./setup-xcode.sh --no-validator   skip Steinberg's validator after each build
 #   ./setup-xcode.sh --minimal        --no-validator plus no moduleinfo.json
 #   ./setup-xcode.sh --no-au          skip the Audio Unit (.component) target
+#   ./setup-xcode.sh --native         build for this Mac only, not universal
 #   ./setup-xcode.sh --clean          throw away build/ first
 #
 #   VST3_SDK_ROOT=/path ./setup-xcode.sh    use an SDK you already have
@@ -34,6 +35,9 @@ CLEAN=0
 VALIDATOR=ON
 MODULEINFO=ON
 BUILD_AU=ON
+# Release builds are universal; --native halves the build time while you are
+# iterating, at the cost of a binary that only runs on this kind of Mac.
+UNIVERSAL=ON
 
 for arg in "$@"; do
 	case "$arg" in
@@ -42,8 +46,9 @@ for arg in "$@"; do
 		--no-validator) VALIDATOR=OFF ;;
 		--minimal)      VALIDATOR=OFF; MODULEINFO=OFF ;;
 		--no-au)        BUILD_AU=OFF ;;
+		--native)       UNIVERSAL=OFF ;;
 		--clean)        CLEAN=1 ;;
-		-h|--help)      sed -n '3,15p' "$0"; exit 0 ;;
+		-h|--help)      sed -n '3,16p' "$0"; exit 0 ;;
 		*)              echo "unknown option: $arg"; exit 1 ;;
 	esac
 done
@@ -155,6 +160,7 @@ fi
 
 CMAKE_ARGS="-DSMTG_RUN_VST_VALIDATOR=$VALIDATOR -DSMTG_CREATE_MODULE_INFO=$MODULEINFO"
 CMAKE_ARGS="$CMAKE_ARGS -DPORT_BUILD_AU=$BUILD_AU"
+CMAKE_ARGS="$CMAKE_ARGS -DPORT_UNIVERSAL=$UNIVERSAL"
 if [ "$GENERATOR" = "Unix Makefiles" ]; then
 	CMAKE_ARGS="$CMAKE_ARGS -DCMAKE_BUILD_TYPE=Release"
 fi
