@@ -84,7 +84,7 @@ sudo rm -rf /Library/Audio/Plug-Ins/Components/Project6.component
 ## Checksum
 
 ```
-<paste the sha256 here>
+92add2a99108f1fe8cecfec477acf66490f7f87ebfe92a3e1b2aca80ff572db3  Project6-1.1.0.0.pkg
 ```
 
 ---
