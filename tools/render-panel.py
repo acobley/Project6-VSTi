@@ -210,6 +210,26 @@ def draw_panel(out_path):
     plot_h = plot[3] - plot[1]
     plot_w = plot[2] - plot[0]
 
+    # THE ARMED PAD'S WAVEFORM, behind everything - kWaveformBuckets peaks
+    # mirrored about the middle. Invented peaks, like the pad names: the
+    # shape is what a loop looks like, not what any particular file does.
+    import math
+    middle = (plot[1] + plot[3]) / 2.0
+    reach = (plot[3] - plot[1]) / 2.0
+    buckets = 256
+    shape = []
+    for i in range(buckets):
+        t = i / float(buckets)
+        beat = (t * 4.0) % 1.0
+        env = (0.30 + 0.62 * math.exp(-beat * 5.0)) * (0.85 + 0.15 * math.sin(t * 31.0))
+        shape.append(min(1.0, env * (0.9 + 0.1 * math.sin(t * 7.0))))
+
+    top = [(plot[0] + plot_w * i / float(buckets), middle - reach * v)
+           for i, v in enumerate(shape)]
+    bottom = [(plot[0] + plot_w * i / float(buckets), middle + reach * v)
+              for i, v in reversed(list(enumerate(shape)))]
+    d.polygon(top + bottom, fill=(150, 190, 255, 60))
+
     # kDbLines, from Project6Display.cpp. Unity is the line drawn brightest
     # because it is the one that matters.
     db_lines = (12.0, 0.0, -12.0, -24.0, -36.0, -48.0, -60.0)
@@ -228,10 +248,9 @@ def draw_panel(out_path):
         d.line((x, plot[1], x, plot[3]),
                fill=(255, 255, 255, 70 if beat == 0 else 38))
 
-    # THE ONE THING THERE IS TO DRAW, and it is a STRAIGHT LINE - the
-    # output trim, plotted across the bar. There is no waveform and no
-    # level history: nothing publishes either, and the display is a readout
-    # of the trim and the transport, not a meter.
+    # THE TRIM, plotted across the bar as a straight line - the display is
+    # a readout of the trim and the transport, not a meter. It is drawn
+    # OVER the waveform above, which is the ground rather than a reading.
     d.line((plot[0], y_of(trim_db), plot[2], y_of(trim_db)),
            fill=(255, 255, 255, 205), width=2)
 

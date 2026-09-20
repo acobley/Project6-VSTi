@@ -372,6 +372,17 @@ private:
 	SpySlotLoop* mLoops[kSlotCount] = { nullptr };
 	SpyColumnButton* mColumns[kSlotColumns] = { nullptr };
 
+	/** WHICH PAD THE DISPLAY IS SHOWING THE WAVEFORM OF: the one most
+	    recently armed from the panel, or -1 for none.
+
+	    Set when a pad is CLICKED rather than whenever one starts, because
+	    the display should answer "what did I just reach for" and a bank
+	    with eight loops running would otherwise flicker between them. A
+	    pad turned OFF leaves it alone: you have just looked at that pad,
+	    and blanking the display the instant you stop it takes the picture
+	    away at the moment it is most likely to be wanted again. */
+	int mWaveformSlot = -1;
+
 	VSTGUI::SharedPointer<VSTGUI::CVSTGUITimer> mTimer;
 };
 

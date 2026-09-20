@@ -358,6 +358,12 @@ SampleStatus parseWav (const unsigned char* data, std::size_t size, SampleBuffer
 
 	out.peak = peak;
 
+	// THE PANEL'S WAVEFORM, computed here because here is where the file
+	// already is and this is not the audio thread. One more pass over
+	// samples that have just been read and converted costs a fraction of
+	// what reading them cost.
+	out.waveform = summariseWaveform (out.samples.data (), out.frameCount);
+
 	//--------------------------------------------------------------------
 	// THE TEMPO, in order of trust. Each step only runs if the one before
 	// it found nothing, and the whole thing is allowed to find nothing.
@@ -406,6 +412,46 @@ SampleStatus parseWav (const unsigned char* data, std::size_t size, SampleBuffer
 	}
 
 	return SampleStatus::Loaded;
+}
+
+//------------------------------------------------------------------------
+std::vector<float> summariseWaveform (const float* interleaved, int frames)
+{
+	std::vector<float> peaks;
+
+	// THE ROLLBACK, and the two ordinary cases, answered identically. See
+	// kWaveformEnabled: there is no third behaviour to test.
+	if (!kWaveformEnabled || interleaved == nullptr || frames <= 0)
+		return peaks;
+
+	peaks.assign (static_cast<std::size_t> (kWaveformBuckets), 0.f);
+
+	// EVERY FRAME IS LOOKED AT, in a bucket decided by where it falls
+	// rather than by stepping a cursor. Walking the buckets and reading a
+	// span each would skip frames when frames < kWaveformBuckets and
+	// double-count at the boundaries; walking the FRAMES cannot do either,
+	// and a file shorter than the bucket count simply leaves the buckets
+	// it never reaches at zero.
+	for (int frame = 0; frame < frames; ++frame)
+	{
+		const std::size_t bucket = std::min<std::size_t> (
+			static_cast<std::size_t> (kWaveformBuckets - 1),
+			static_cast<std::size_t> (
+				static_cast<double> (frame) * kWaveformBuckets / frames));
+
+		float magnitude = 0.f;
+		for (int channel = 0; channel < kSampleChannels; ++channel)
+		{
+			const float value =
+				interleaved[static_cast<std::size_t> (frame) * kSampleChannels
+				            + static_cast<std::size_t> (channel)];
+			magnitude = std::max (magnitude, std::fabs (value));
+		}
+
+		peaks[bucket] = std::max (peaks[bucket], magnitude);
+	}
+
+	return peaks;
 }
 
 //------------------------------------------------------------------------

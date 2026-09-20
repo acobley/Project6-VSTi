@@ -112,6 +112,12 @@ static const char* const kProject6SlotKindAttribute    = "Kind";
 static const char* const kProject6SlotNotesAttribute   = "Notes";
 static const char* const kProject6SlotBeatsAttribute   = "Beats";
 
+/** The pad's waveform: kWaveformBuckets floats, as binary, for the panel
+    to draw behind its display. ABSENT is normal and means "nothing to
+    draw" - a MIDI pad, an empty slot, or a build with kWaveformEnabled
+    false. See Project6Sample.h. */
+static const char* const kProject6SlotWaveAttribute    = "Wave";
+
 /** The playhead of every slot, for the progress bars on the pads.
 
     A REQUEST AND A REPLY, both on the UI thread: the controller asks on

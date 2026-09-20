@@ -287,6 +287,19 @@ float Project6Controller::slotProgress (int index) const
 }
 
 //------------------------------------------------------------------------
+const std::vector<float>& Project6Controller::slotWaveform (int index) const
+{
+	// One empty vector for every "nothing to draw" answer, rather than a
+	// pointer the caller has to null-check.
+	static const std::vector<float> kNone;
+
+	if (!isSlotIndex (index))
+		return kNone;
+
+	return mSlotWaveform[index];
+}
+
+//------------------------------------------------------------------------
 double Project6Controller::slotTempo (int index) const
 {
 	if (!isSlotIndex (index))
@@ -580,6 +593,24 @@ tresult PLUGIN_API Project6Controller::notify (IMessage* message)
 			message->getAttributes ()->getFloat (kProject6SlotTempoAttribute, tempo);
 			message->getAttributes ()->getInt (kProject6SlotTempoSrcAttribute, source);
 			message->getAttributes ()->getInt (kProject6SlotOneShotAttribute, oneShot);
+
+			// THE WAVEFORM, and its ABSENCE is the message. Cleared
+			// first, so a pad that changes from a wav to a mid - or to
+			// nothing - stops showing the wav it used to hold.
+			mSlotWaveform[index].clear ();
+			{
+				const void* data = nullptr;
+				Steinberg::uint32 bytes = 0;
+				if (message->getAttributes ()->getBinary (
+					    kProject6SlotWaveAttribute, data, bytes) == kResultOk
+				    && data != nullptr && bytes > 0
+				    && (bytes % sizeof (float)) == 0)
+				{
+					const float* peaks = static_cast<const float*> (data);
+					mSlotWaveform[index].assign (
+						peaks, peaks + bytes / sizeof (float));
+				}
+			}
 
 			mSlotTempo[index]       = (tempo > 0.0) ? tempo : 0.0;
 			mSlotTempoSource[index] = static_cast<TempoSource> (source);

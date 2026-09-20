@@ -677,6 +677,109 @@ int main ()
 	}
 
 	//--------------------------------------------------------------------
+	section ("10. The waveform the panel draws");
+	//--------------------------------------------------------------------
+	//
+	// THIS SECTION PASSES IN BOTH CONFIGURATIONS, which is what makes the
+	// rollback real rather than asserted. With kWaveformEnabled false the
+	// whole feature must answer "nothing", and a suite that only passed
+	// with it on would turn flipping the switch into a broken build - the
+	// exact thing that stops somebody flipping it when they need to.
+	//--------------------------------------------------------------------
+	if (!kWaveformEnabled)
+	{
+		std::vector<float> any (100 * kSampleChannels, 0.5f);
+		check (summariseWaveform (any.data (), 100).empty (),
+		       "DISABLED: a file with samples still summarises to nothing");
+		check (summariseWaveform (nullptr, 0).empty (),
+		       "DISABLED: and so does everything else");
+	}
+	else
+	{
+		// A ramp from silence to full, so every bucket should be larger
+		// than the one before it and the last should reach the top.
+		std::vector<float> ramp (2000 * kSampleChannels, 0.f);
+		for (int frame = 0; frame < 2000; ++frame)
+		{
+			const float value = static_cast<float> (frame) / 1999.f;
+			ramp[frame * kSampleChannels]     = value;
+			ramp[frame * kSampleChannels + 1] = value;
+		}
+
+		const std::vector<float> peaks = summariseWaveform (ramp.data (), 2000);
+		check (static_cast<int> (peaks.size ()) == kWaveformBuckets,
+		       "a summary has exactly kWaveformBuckets peaks");
+
+		bool rising = true, inRange = true;
+		for (std::size_t i = 0; i < peaks.size (); ++i)
+		{
+			inRange &= (peaks[i] >= 0.f && peaks[i] <= 1.f);
+			if (i > 0)
+				rising &= (peaks[i] > peaks[i - 1]);
+		}
+		check (rising, "a ramp rises bucket by bucket");
+		check (inRange, "and every peak is within 0..1");
+		check (peaks.back () > 0.99f, "the last bucket reaches the top");
+
+		// THE PEAK, NOT THE AVERAGE. One loud frame in an otherwise
+		// silent file must show: an average would bury a drum hit and
+		// make every percussive file the same gentle mound.
+		std::vector<float> spike (2000 * kSampleChannels, 0.f);
+		spike[1000 * kSampleChannels] = 0.9f;
+		const std::vector<float> spiked = summariseWaveform (spike.data (), 2000);
+
+		float loudest = 0.f;
+		int nonZero = 0;
+		for (float value : spiked)
+		{
+			loudest = std::max (loudest, value);
+			if (value > 0.f)
+				++nonZero;
+		}
+		check (loudest > 0.89f, "a single loud frame survives as a full-height peak");
+		check (nonZero == 1, "and lands in exactly one bucket");
+
+		// EVERY FRAME IS LOOKED AT. A file SHORTER than the bucket count
+		// is the case that catches a loop written the other way round -
+		// stepping the buckets and reading a span each skips frames here.
+		std::vector<float> tiny (5 * kSampleChannels, 0.f);
+		tiny[4 * kSampleChannels + 1] = 0.7f;        // the LAST frame, right channel
+		const std::vector<float> small = summariseWaveform (tiny.data (), 5);
+		float smallLoudest = 0.f;
+		for (float value : small)
+			smallLoudest = std::max (smallLoudest, value);
+		check (static_cast<int> (small.size ()) == kWaveformBuckets,
+		       "a five-frame file still summarises to the full bucket count");
+		check (smallLoudest > 0.69f,
+		       "and its last frame is not skipped");
+
+		// BOTH CHANNELS. A file loud only on the right must not read as
+		// silence.
+		std::vector<float> right (100 * kSampleChannels, 0.f);
+		for (int frame = 0; frame < 100; ++frame)
+			right[frame * kSampleChannels + 1] = 0.5f;
+		const std::vector<float> rightOnly = summariseWaveform (right.data (), 100);
+		float rightLoudest = 0.f;
+		for (float value : rightOnly)
+			rightLoudest = std::max (rightLoudest, value);
+		check (rightLoudest > 0.49f, "a file loud only on the right is not silence");
+
+		// NEGATIVE PEAKS COUNT. Magnitude, not value.
+		std::vector<float> negative (100 * kSampleChannels, -0.8f);
+		const std::vector<float> negPeaks = summariseWaveform (negative.data (), 100);
+		float negLoudest = 0.f;
+		for (float value : negPeaks)
+			negLoudest = std::max (negLoudest, value);
+		check (negLoudest > 0.79f, "a wholly negative file is not silence either");
+
+		// EMPTY IS A NORMAL ANSWER, and the same one the rollback gives.
+		check (summariseWaveform (nullptr, 100).empty (),
+		       "no samples summarises to nothing");
+		check (summariseWaveform (ramp.data (), 0).empty (),
+		       "and so does no frames");
+	}
+
+	//--------------------------------------------------------------------
 	std::printf ("\n%s  (%d failure%s)\n",
 	             gFailures == 0 ? "ALL TESTS PASSED" : "TESTS FAILED",
 	             gFailures, gFailures == 1 ? "" : "s");

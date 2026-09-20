@@ -31,6 +31,13 @@ const CColor kCaption    (255, 255, 255, 200);
     key stops being true. */
 const CColor kOutputTrace (255, 255, 255, 205);
 
+/** The armed pad's waveform, BEHIND the grid. Dim on purpose: it is
+    context, not a readout, and the trim trace and the playhead are the
+    two things on this display that have to be read exactly. A waveform
+    bright enough to compete with them would make the display harder to
+    use in exchange for looking busier. */
+const CColor kWaveform (150, 190, 255, 60);
+
 /** Labelled horizontal lines. Every 12 dB, which puts one on unity and one
     on the bottom of the trim's travel. */
 constexpr double kDbLines[] = { 12.0, 0.0, -12.0, -24.0, -36.0, -48.0, -60.0 };
@@ -56,6 +63,56 @@ SpyDisplay::SpyDisplay (const CRect& size)
 {
 	// Nothing here reads the mouse: it is a readout, not a control.
 	setMouseEnabled (false);
+}
+
+//------------------------------------------------------------------------
+bool SpyDisplay::setWaveform (const std::vector<float>& peaks)
+{
+	if (peaks == mWaveform)
+		return false;
+
+	mWaveform = peaks;
+	invalid ();
+	return true;
+}
+
+//------------------------------------------------------------------------
+void SpyDisplay::drawWaveform (CDrawContext* context, const CRect& plot)
+{
+	if (mWaveform.empty ())
+		return;
+
+	SharedPointer<CGraphicsPath> path = owned (context->createGraphicsPath ());
+	if (path == nullptr)
+		return;
+
+	// MIRRORED ABOUT THE MIDDLE, which is what a waveform looks like and
+	// is not what this plot's dB scale means. That is deliberate: the
+	// silhouette is a picture of the file, drawn in the space the plot
+	// happens to occupy, and dressing it up in decibels would invite it
+	// to be read against the gridlines it has nothing to do with.
+	const CCoord middle = (plot.top + plot.bottom) * 0.5;
+	const CCoord reach  = plot.getHeight () * 0.5;
+	const auto   count  = static_cast<double> (mWaveform.size ());
+
+	const auto xAt = [&] (std::size_t i)
+	{ return plot.left + plot.getWidth () * (static_cast<double> (i) / count); };
+
+	path->beginSubpath (CPoint (plot.left, middle));
+	for (std::size_t i = 0; i < mWaveform.size (); ++i)
+		path->addLine (CPoint (xAt (i),
+		                       middle - reach * std::min (1.f, mWaveform[i])));
+
+	// Back along the bottom half in reverse, so the two halves close into
+	// one filled shape rather than two strokes with a gap between them.
+	for (std::size_t i = mWaveform.size (); i > 0; --i)
+		path->addLine (CPoint (xAt (i - 1),
+		                       middle + reach * std::min (1.f, mWaveform[i - 1])));
+
+	path->closeSubpath ();
+
+	context->setFillColor (kWaveform);
+	context->drawGraphicsPath (path, CDrawContext::kPathFilled);
 }
 
 //------------------------------------------------------------------------
@@ -222,6 +279,10 @@ void SpyDisplay::draw (CDrawContext* context)
 	CRect plot (r);
 	plot.inset (6., 5.);
 	plot.top += 12.;
+
+	// BEHIND EVERYTHING. The waveform is the ground the readouts are drawn
+	// on, so it goes down before the grid rather than over it.
+	drawWaveform (context, plot);
 
 	drawGrid (context, plot);
 

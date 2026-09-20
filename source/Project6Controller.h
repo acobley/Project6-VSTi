@@ -81,6 +81,10 @@ public:
 	    a progress bar. Zero for a slot that is not sounding. */
 	float slotProgress (int index) const;
 
+	/** The pad's waveform for the panel to draw. Empty is normal: see
+	    kWaveformEnabled in Project6Sample.h. */
+	const std::vector<float>& slotWaveform (int index) const;
+
 	//--------------------------------------------------------------------
 	// What was read out of a slot's file about its TEMPO.
 	//
@@ -186,6 +190,12 @@ private:
 	SampleStatus mSlotStatus[kSlotCount] = {};
 	float mSlotProgress[kSlotCount] = {};
 	double mSlotTempo[kSlotCount] = {};
+
+	/** Each pad's waveform, as the processor summarised it when the file
+	    was read. EMPTY for a MIDI pad, an empty slot, and a build with
+	    kWaveformEnabled false - one answer for all three, which is the
+	    whole reason the drawing side has only one case to handle. */
+	std::vector<float> mSlotWaveform[kSlotCount];
 	TempoSource mSlotTempoSource[kSlotCount] = {};
 	bool mSlotOneShot[kSlotCount] = {};
 	SlotFileKind mSlotKind[kSlotCount] = {};

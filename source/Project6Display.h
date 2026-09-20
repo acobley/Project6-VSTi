@@ -36,6 +36,7 @@
 #include "vstgui/vstgui.h"
 
 #include <functional>
+#include <vector>
 
 namespace Project6 {
 
@@ -56,6 +57,21 @@ public:
 	    always no while it does not. */
 	bool setState (double trimDb, double sampleRate, int transport,
 	               double barPhase, int beatsPerBar);
+
+	/** The waveform drawn BEHIND everything else: the pad most recently
+	    armed, so the display says what you just reached for.
+
+	    Empty clears it, and empty is the normal answer for a MIDI pad, an
+	    empty slot, and a build with kWaveformEnabled false. Returns true
+	    if it changed, on the same terms as setState - the editor's timer
+	    runs thirty times a second and must not repaint for a waveform
+	    that is the same one it drew last time.
+
+	    COPIED, not referenced. It is a kilobyte, it changes only when a
+	    pad is clicked, and a view holding a pointer into the controller's
+	    storage is a view that reads freed memory the day that storage is
+	    reallocated. */
+	bool setWaveform (const std::vector<float>& peaks);
 
 	void draw (VSTGUI::CDrawContext* context) override;
 
@@ -94,11 +110,16 @@ private:
 
 	void drawPlayhead (VSTGUI::CDrawContext* context, const VSTGUI::CRect& plot);
 
+	void drawWaveform (VSTGUI::CDrawContext* context, const VSTGUI::CRect& plot);
+
 	double mTrimDb      = kTrimDefaultDb;
 	double mSampleRate  = 44100.0;
 	int    mTransport   = 0;          ///< a TransportDisplay
 	double mBarPhase    = 0.0;
 	int    mBeatsPerBar = 4;
+
+	/** The armed pad's peaks, 0..1. Empty means nothing to draw. */
+	std::vector<float> mWaveform;
 };
 
 //------------------------------------------------------------------------

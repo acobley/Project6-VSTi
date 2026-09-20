@@ -472,6 +472,18 @@ void Project6Editor::refreshDisplay ()
 	mDisplay->setState (plainOf (kOutputTrim), mController->dspSampleRate (),
 	                    transport, mController->getParamNormalized (kLiveBarPhase),
 	                    beats);
+
+	// AND THE ARMED PAD'S WAVEFORM. Pushed every tick like everything else
+	// here, and setWaveform compares before it repaints - the summary
+	// arrives on a message that lands whenever the file finishes loading,
+	// which is not a moment this side gets told about.
+	//
+	// A pad that has since been emptied, or replaced by a .mid, reports an
+	// empty summary, which clears the display. That is the same path a
+	// build with kWaveformEnabled false takes every time.
+	mDisplay->setWaveform (mWaveformSlot >= 0
+	                           ? mController->slotWaveform (mWaveformSlot)
+	                           : std::vector<float> ());
 }
 
 //------------------------------------------------------------------------
@@ -815,6 +827,13 @@ void Project6Editor::valueChanged (CControl* control)
 	// While a level bar is moving, the pad above it reads out the value.
 	if (isSlotLevelParam (tag))
 		showLevelOverlay (tag, value);
+
+	// ARMING A PAD PUTS ITS WAVEFORM ON THE DISPLAY. Here rather than in
+	// updateControl, so it follows the CLICK and not every route a
+	// trigger can change by - a host's automation lane replaying eight
+	// pads would otherwise drag the display along behind it.
+	if (isSlotPlayParam (tag) && value >= 0.5)
+		mWaveformSlot = slotOfPlayParam (tag);
 }
 
 //------------------------------------------------------------------------

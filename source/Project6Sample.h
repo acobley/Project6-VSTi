@@ -39,6 +39,34 @@ constexpr int kSampleChannels = 2;
 constexpr double kMaxSampleSeconds = 60.0;
 
 //------------------------------------------------------------------------
+/** THE WAVEFORM THE PANEL DRAWS BEHIND ITS DISPLAY, and the one switch
+    that turns the whole feature off.
+
+    `kWaveformBuckets` absolute peaks across the whole file, computed ONCE
+    when the file is read - which is the UI thread, never the audio thread,
+    because the audio thread does not open files and must not walk one
+    either.
+
+    ROLLING IT BACK IS ONE WORD. Set kWaveformEnabled to false and
+    summarise() returns nothing, so the loader stores an empty vector, the
+    processor sends no waveform attribute, the controller holds none and
+    the display draws none.
+
+    That path is not a special case anybody has to maintain: it is the
+    SAME path a MIDI pad and an empty slot already take, every time, so
+    the disabled build exercises code that is exercised constantly rather
+    than a branch nobody has run since it was written. There is no
+    "waveform off" behaviour distinct from "no waveform to draw". */
+constexpr bool kWaveformEnabled = true;
+
+/** 256 peaks across a display about 930 pixels wide - roughly one peak per
+    3.6 pixels. Finer would draw detail no eye can resolve at that size and
+    would cost more to send; coarser starts to lose a short transient in
+    the middle of a bucket. A power of two for no reason except that a
+    reader expects one. */
+constexpr int kWaveformBuckets = 256;
+
+//------------------------------------------------------------------------
 // TEMPO DETECTION
 //
 // A loop dropped on a pad is only useful at the project's tempo, so the
@@ -148,6 +176,13 @@ struct SampleBuffer
 	    tests print and for anything that later wants to normalise. */
 	float  peak = 0.f;
 
+	/** kWaveformBuckets absolute peaks across the file, each 0..1, for the
+	    panel to draw behind its display. EMPTY is a normal state and the
+	    only one the drawing side has to understand: an empty slot, a MIDI
+	    pad, a build with kWaveformEnabled false, and a project saved by an
+	    older version all arrive here the same way. */
+	std::vector<float> waveform;
+
 	/** The tempo this file was recorded at, or 0 when it is not known.
 	    Never a fallback value: zero means "do not fit this", and a
 	    plausible-looking default here would silently stretch every file
@@ -193,6 +228,19 @@ SampleStatus parseWav (const unsigned char* data, std::size_t size, SampleBuffer
 
     ON THE UI THREAD ONLY. It opens a file, allocates and decodes; none of
     those things may happen on the audio thread. */
+/** kWaveformBuckets absolute peaks across `frames` interleaved frames.
+
+    Each bucket is the LARGEST magnitude in its span, not the average: an
+    average turns a drum hit into a low bump and makes every percussive
+    file look like the same gentle mound. A peak keeps the shape a person
+    recognises as the file they dropped.
+
+    Returns empty when kWaveformEnabled is false, when there are no frames,
+    or when there is nothing to summarise - see kWaveformEnabled for why
+    "empty" is deliberately the same answer to all three. */
+std::vector<float> summariseWaveform (const float* interleaved, int frames);
+
+//------------------------------------------------------------------------
 SampleStatus loadWavFile (const std::string& path, SampleBuffer& out,
                           double referenceBpm = 0.0);
 

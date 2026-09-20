@@ -1238,6 +1238,22 @@ void Project6Processor::sendSlotStatusToController (int index)
 		message->getAttributes ()->setInt (kProject6SlotNotesAttribute, notes);
 		message->getAttributes ()->setFloat (kProject6SlotBeatsAttribute, beats);
 
+		// AND THE WAVEFORM, only when there is one. A MIDI pad, an empty
+		// slot and a build with kWaveformEnabled false all leave the
+		// attribute off entirely, and the far side reads its absence as
+		// "nothing to draw" - which is the same answer to all three and
+		// therefore only one thing to get right.
+		if (const auto& sample = mSamples[index])
+		{
+			if (!sample->waveform.empty ())
+			{
+				message->getAttributes ()->setBinary (
+					kProject6SlotWaveAttribute, sample->waveform.data (),
+					static_cast<Steinberg::uint32> (
+						sample->waveform.size () * sizeof (float)));
+			}
+		}
+
 		sendMessage (message);
 	}
 }
