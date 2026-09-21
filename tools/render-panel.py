@@ -61,7 +61,7 @@ SLOT_COLUMNS, SLOT_ROWS = 8, 8
 
 # Which preview the display is showing. A pad holds a wav or a mid, so the
 # panel draws a waveform or a piano roll - never both. 'wave' or 'roll'.
-PREVIEW = 'roll'
+PREVIEW = 'wave'
 
 def read_doubles(path, wanted):
     """Named `constexpr double`s, or a `constexpr double k...[] = {...}`.
@@ -247,9 +247,8 @@ def draw_panel(out_path):
     plot_w = plot[2] - plot[0]
 
     # THE POINTED-AT PAD'S PREVIEW, behind everything. A pad holds a wav
-    # or a mid, so the panel draws one or the other and never both - this
-    # picture shows the MIDI case, a piano roll, because that is the half
-    # the waveform render already showed.
+    # or a mid, so the panel draws one or the other and never both - which
+    # one this picture shows is PREVIEW, above.
     import math
     if PREVIEW == 'wave':
         middle = (plot[1] + plot[3]) / 2.0
@@ -267,7 +266,9 @@ def draw_panel(out_path):
                for i, v in enumerate(shape)]
         bottom = [(plot[0] + plot_w * i / float(buckets), middle + reach * v)
                   for i, v in reversed(list(enumerate(shape)))]
-        d.polygon(top + bottom, fill=(150, 190, 255, 60))
+        # SpyDisplay::drawWaveform starts its path at the left edge on the
+        # centre line, then out along the top and back along the bottom.
+        d.polygon([(plot[0], middle)] + top + bottom, fill=(150, 190, 255, 60))
     else:
         # A lane per semitone of the range the file ACTUALLY uses, high
         # pitches at the top, with a little air top and bottom. Invented
