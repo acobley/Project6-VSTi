@@ -1,190 +1,222 @@
 #!/bin/bash
-#-----------------------------------------------------------------------------
-# Publish the package installer/build-release.sh just made: checksum, push,
-# tag, GitHub Release.
+#------------------------------------------------------------------------
+# installer/publish-release.sh
 #
-#   installer/publish-release.sh                do it
-#   installer/publish-release.sh --dry-run      say what it would do
-#   installer/publish-release.sh --remote up    push somewhere other than origin
+# Publish a built, signed, notarised, stapled .pkg as a GitHub Release.
 #
-# It refuses to publish anything Gatekeeper would refuse, so the order is:
-# check the package, then write its checksum into the notes and commit that,
-# then push, tag and release. Nothing is pushed until the package has passed.
+# MUST RUN ON macOS with `gh` authenticated: it calls stapler and spctl,
+# which are Apple's, and `gh`, which needs a token. It does NOT build or
+# sign anything - build-installer.sh does that, once, and this refuses
+# to publish anything it is not happy with.
 #
-# The tag points at the commit the package was BUILT from - which is HEAD,
-# because build-release.sh will not build from a dirty tree - plus the one
-# commit this script makes to record the checksum.
+#     installer/publish-release.sh [--dry-run] [--remote <name>]
 #
-# The .pkg goes up as a RELEASE ASSET, not into the repository. A tag and a
-# checksum say which source built it; a binary in the history would be there
-# for good, in every clone, for every version anybody ever shipped.
-#-----------------------------------------------------------------------------
+# --remote (or REMOTE=) pushes somewhere other than origin.
+#
+# WHAT IT REFUSES, and why each one is worth refusing:
+#
+#   * a package that is not stapled. Notarising without stapling leaves
+#     a package that passes only while the downloading Mac is online and
+#     able to reach Apple. Stapling is what makes it work offline;
+#   * a package Gatekeeper does not accept. Everything else is
+#     paperwork; this is the question the downloading machine asks;
+#   * a checksum taken before stapling. Stapling CHANGES THE BYTES, so a
+#     hash from the unstapled file is wrong and unverifiable;
+#   * a package built from a dirty tree, or from a commit that is not
+#     pushed. A tag that names a tree nobody else can fetch is not a
+#     record of anything;
+#   * release notes that still hold the SHA-256 placeholder;
+#   * a tag that already exists HERE OR ON GITHUB at another commit. A
+#     published tag is never moved - bump the version instead;
+#   * any uncommitted change other than the checksum it writes itself;
+#   * a missing or unauthenticated `gh` - checked FIRST, so that a push
+#     and a tag never happen without the release that should follow them.
+#------------------------------------------------------------------------
 set -euo pipefail
 
-HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+HERE="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
-# Absolute, because the next line moves us. See build-release.sh.
-SELF="$HERE/$(basename "${BASH_SOURCE[0]}")"
-cd "$ROOT"
-
 DRY_RUN=0
 REMOTE="${REMOTE:-origin}"
-
-usage () {
-	awk 'NR == 1 { next }
-	     /^#/   { sub(/^# ?/, ""); print; next }
-	            { exit }' "$SELF"
-}
-
 while [ $# -gt 0 ]; do
-	case "$1" in
-		--dry-run) DRY_RUN=1; shift ;;
-		--remote)  REMOTE="$2"; shift 2 ;;
-		-h|--help) usage; exit 0 ;;
-		*) echo "publish-release: unknown argument '$1'" >&2; exit 1 ;;
-	esac
+    case "$1" in
+        --dry-run) DRY_RUN=1; shift ;;
+        --remote)  REMOTE="$2"; shift 2 ;;
+        -h|--help) sed -n '2,33p' "$0"; exit 0 ;;
+        *) echo "publish-release: unknown argument '$1'" >&2; exit 1 ;;
+    esac
 done
 
-run () {
-	if [ "$DRY_RUN" -eq 1 ]; then
-		printf '    would run:'; printf ' %q' "$@"; printf '\n'
-	else
-		"$@"
-	fi
-}
+die () { echo "publish-release: $*" >&2; exit 1; }
+say () { echo "==> $*"; }
 
-VERSION="$(sed -n 's/^set(PLUGIN_VERSION[[:space:]]*"\([^"]*\)").*/\1/p' CMakeLists.txt)"
-NAME="$(sed -n 's/^[[:space:]]*set(PLUGIN_NAME[[:space:]]*"\([^"]*\)".*/\1/p' CMakeLists.txt | head -1)"
+[ "$(uname -s)" = "Darwin" ] || die "this needs macOS - stapler and spctl are Apple's."
+
+VERSION="$(sed -n 's/^set(PLUGIN_VERSION[[:space:]]*"\([^"]*\)").*/\1/p' "$ROOT/CMakeLists.txt")"
+[ -n "$VERSION" ] || die "could not read PLUGIN_VERSION out of CMakeLists.txt"
+
+# The name the package was built under - build-installer.sh's NAME=.
+NAME="$(sed -n 's/^NAME="\([^"]*\)".*/\1/p' "$HERE/build-installer.sh" 2>/dev/null | head -1)"
+[ -n "$NAME" ] || NAME="$(sed -n 's/^[[:space:]]*set(PLUGIN_NAME[[:space:]]*"\([^"]*\)".*/\1/p' "$ROOT/CMakeLists.txt" | head -1)"
+[ -n "$NAME" ] || die "could not read the plug-in name"
 PKG="$HERE/$NAME-$VERSION.pkg"
 NOTES="$HERE/release-notes-$VERSION.md"
 TAG="v$VERSION"
 
-echo "==> $NAME $VERSION"
+[ -f "$PKG" ]   || die "no package at $PKG - run build-release.sh first."
 
-[ -f "$PKG" ]   || { echo "publish-release: $PKG is not there - run installer/build-release.sh." >&2; exit 1; }
-[ -f "$NOTES" ] || { echo "publish-release: $NOTES is not there - the release needs notes." >&2; exit 1; }
+#--- gh first: nothing is pushed unless the release can follow it --------
+command -v gh >/dev/null || die "gh is not installed - see cli.github.com"
+gh auth status >/dev/null 2>&1 || die "gh is not authenticated - run: gh auth login"
+[ -f "$NOTES" ] || die "no release notes at $NOTES."
 
-command -v gh >/dev/null 2>&1 || { echo "publish-release: gh is not installed (brew install gh)." >&2; exit 1; }
-gh auth status >/dev/null 2>&1 || { echo "publish-release: gh is not logged in (gh auth login)." >&2; exit 1; }
-git remote get-url "$REMOTE" >/dev/null 2>&1 || {
-	echo "publish-release: there is no git remote called \"$REMOTE\"." >&2
-	git remote -v >&2
-	exit 1
-}
+#--- the commit the binary came from -------------------------------------
+[ -f "$HERE/.built-from" ] || die \
+    ".built-from is missing. It is written by build-installer.sh; without it
+there is no record of which commit produced this package, and tagging HEAD
+would name a tree that did not."
 
-#-----------------------------------------------------------------------------
-# NOTHING GOES OUT THAT GATEKEEPER WOULD REFUSE. spctl asks, on this machine,
-# the same question the downloading machine will ask. Everything else only
-# proves the paperwork is in order.
-#-----------------------------------------------------------------------------
-if [ "$(uname -s)" = "Darwin" ]; then
-	assessment="$(spctl --assess --type install -vv "$PKG" 2>&1 || true)"
-	if ! printf '%s' "$assessment" | grep -q "source=Notarized Developer ID"; then
-		echo "publish-release: Gatekeeper does not accept this package." >&2
-		printf '%s\n' "$assessment" >&2
-		echo >&2
-		echo "Build it signed and notarised first: installer/build-release.sh" >&2
-		exit 1
-	fi
-	echo "==> Gatekeeper accepts it as a notarised Developer ID package"
-	pkgutil --check-signature "$PKG" | head -3
-fi
+# shellcheck disable=SC1090
+built_commit="$(sed -n 's/^commit=//p' "$HERE/.built-from")"
+built_version="$(sed -n 's/^version=//p' "$HERE/.built-from")"
+built_dirty="$(sed -n 's/^dirty=//p' "$HERE/.built-from")"
 
-#-----------------------------------------------------------------------------
-# The tag must not already exist, here or there: a release is published once.
-#-----------------------------------------------------------------------------
-if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
-	echo "publish-release: the tag $TAG already exists locally." >&2
-	echo "  Bump PLUGIN_VERSION, or delete it: git tag -d $TAG" >&2
-	exit 1
-fi
-if git ls-remote --exit-code --tags "$REMOTE" "$TAG" >/dev/null 2>&1; then
-	echo "publish-release: $TAG is already on $REMOTE - that version has shipped." >&2
-	exit 1
-fi
+[ "$built_version" = "$VERSION" ] || die \
+    "the package on disk is $VERSION but .built-from records $built_version.
+Rebuild, rather than publishing a package whose provenance does not match."
+[ "$built_dirty" = "no" ] || die \
+    "this package was built from a DIRTY tree, so no commit describes it.
+Commit, rebuild and publish that."
 
-#-----------------------------------------------------------------------------
-# The checksum goes in the notes BEFORE the tag, so the published notes
-# describe the bytes that are published. Taken from the finished, stapled
-# package - stapling changes them.
-#
-# Three cases, told apart on purpose: a placeholder to fill, the right
-# checksum already there, and a checksum that is not this package's. The
-# third is the interesting one - it means the notes are stale or the package
-# was rebuilt after they were written - and saying so beats silently
-# publishing a checksum nobody can reproduce.
-#-----------------------------------------------------------------------------
-SUM="$(shasum -a 256 "$PKG" | awk '{print $1}')"
-echo "==> sha256 $SUM"
+git -C "$ROOT" cat-file -e "$built_commit^{commit}" 2>/dev/null || die \
+    "the recorded build commit $built_commit is not in this repository."
 
-NOTES_CHANGED=0
+# Pushing the branch only publishes the build commit if it is ON the branch.
+git -C "$ROOT" merge-base --is-ancestor "$built_commit" HEAD || die \
+    "the build commit $built_commit is not an ancestor of HEAD. Check out the
+branch it was built on - pushing this one would not publish it."
 
-if grep -q '<paste' "$NOTES"; then
-	NOTES_CHANGED=1
-	tmp="$(mktemp)"
-	sed "s|<paste.*>|$SUM  $NAME-$VERSION.pkg|" "$NOTES" > "$tmp"
-	run cp "$tmp" "$NOTES"
-	rm -f "$tmp"
-	# A plain `if`, not `[ x ] && echo`: bash exempts the left-hand side of
-	# an && from errexit so that spelling is safe HERE, but it is only safe
-	# because of what follows it, and the day somebody moves it to the end
-	# of a function it starts returning 1 instead.
-	if [ "$DRY_RUN" -eq 0 ]; then
-		echo "==> checksum written into $(basename "$NOTES")"
-	fi
-elif grep -q "$SUM" "$NOTES"; then
-	echo "==> the notes already carry this checksum"
-elif grep -qE '\b[0-9a-f]{64}\b' "$NOTES"; then
-	echo "publish-release: the notes carry a checksum that is not this package's." >&2
-	echo "  Either the notes are stale or the package was rebuilt. Fix one of them." >&2
-	exit 1
+#--- nothing else uncommitted --------------------------------------------
+# The notes are the one file this script is allowed to change and commit.
+# Anything else would either be left out of the tag's story or swept in.
+others="$(git -C "$ROOT" status --porcelain --untracked-files=no \
+          | grep -v " installer/release-notes-$VERSION.md\$" || true)"
+[ -z "$others" ] || die "there are uncommitted changes besides the notes:
+$others
+Commit or stash them first."
+
+#--- the tag, here and on GitHub -----------------------------------------
+# An annotated tag is listed twice: the tag object, and "^{}" - the commit
+# it points at. The commit is the one to compare; a lightweight tag has
+# only the first line, which is already a commit.
+if remote_tag="$(git -C "$ROOT" ls-remote --tags "$REMOTE" 2>/dev/null)"; then
+    remote_commit="$(printf '%s\n' "$remote_tag" | awk -v t="refs/tags/$TAG^{}" '$2 == t {print $1}')"
+    [ -n "$remote_commit" ] || remote_commit="$(printf '%s\n' "$remote_tag" | awk -v t="refs/tags/$TAG" '$2 == t {print $1}')"
+    if [ -n "$remote_commit" ] && [ "$remote_commit" != "$built_commit" ]; then
+        die "tag $TAG is already on GitHub, at $remote_commit - not at the build
+commit $built_commit. A published tag is never moved: bump the version."
+    fi
 else
-	echo "publish-release: the notes have no checksum and nowhere to put one." >&2
-	echo "  Give them a line reading <paste the sha256 here> and run this again." >&2
-	exit 1
+    die "could not reach $REMOTE to check for an existing $TAG tag."
 fi
 
-# The second test is what a real run needs; the first is what makes a DRY
-# run honest, since a dry run never writes the notes and so never has
-# anything for git to notice.
-if [ "$NOTES_CHANGED" -eq 1 ] || [ -n "$(git status --porcelain "$NOTES")" ]; then
-	run git add "$NOTES"
-	run git commit -m "Record the $VERSION checksum"
+#--- it must be stapled, and Gatekeeper must accept it -------------------
+say "checking the package is stapled"
+xcrun stapler validate "$PKG" >/dev/null 2>&1 || die \
+    "$PKG is NOT stapled.
+Signed is not enough: without a stapled ticket the package is accepted only
+while the downloading Mac can reach Apple. Rebuild with --notarize."
+
+say "asking Gatekeeper the question the downloading Mac will ask"
+assessment="$(spctl --assess --type install -vv "$PKG" 2>&1 || true)"
+echo "$assessment" | sed 's/^/    /'
+printf '%s' "$assessment" | grep -q "source=Notarized Developer ID" || die \
+    "Gatekeeper did not accept this package. Do not publish it."
+
+#--- the checksum, from the finished file --------------------------------
+say "taking the SHA-256 from the finished, stapled package"
+sha="$(shasum -a 256 "$PKG" | awk '{print $1}')"
+echo "    $sha"
+
+if grep -q "<paste from:" "$NOTES"; then
+    tmp="$(mktemp)"
+    sed "s|SHA-256: <paste from:.*|SHA-256: $sha|" "$NOTES" > "$tmp"
+    mv "$tmp" "$NOTES"
+    say "wrote the checksum into $(basename "$NOTES")"
+elif grep -q "SHA-256: $sha" "$NOTES"; then
+    say "the notes already carry this checksum"
+else
+    die "the notes carry a SHA-256 that is not this package's.
+Either the package was rebuilt after the notes were written, or the notes
+describe a different build. Check before publishing."
 fi
 
-# Anything ELSE uncommitted means the tag would not describe the tree.
-if [ -n "$(git status --porcelain)" ]; then
-	echo "publish-release: the working tree has other uncommitted changes:" >&2
-	git status --short >&2
-	exit 1
+grep -q "SHA-256: [0-9a-f]\{64\}" "$NOTES" || die \
+    "the notes still have no usable SHA-256 line."
+
+#--- the tree has to be pushed -------------------------------------------
+if [ -n "$(git -C "$ROOT" status --porcelain "$NOTES")" ]; then
+    if [ "$DRY_RUN" = 1 ]; then
+        say "[dry run] would commit the checksum into the notes"
+    else
+        git -C "$ROOT" add "$NOTES"
+        git -C "$ROOT" commit -q -m "Release notes for $NAME $VERSION: the published SHA-256"
+        say "committed the checksum"
+    fi
 fi
 
-#-----------------------------------------------------------------------------
-# Push, tag, release.
-#-----------------------------------------------------------------------------
-run git push "$REMOTE" HEAD
-run git tag -a "$TAG" -m "$NAME $VERSION"
-run git push "$REMOTE" "$TAG"
-
-run gh release create "$TAG" "$PKG" \
-	--title "$NAME $VERSION" \
-	--notes-file "$NOTES"
-
-if [ "$DRY_RUN" -eq 1 ]; then
-	echo
-	echo "    dry run - nothing was pushed"
-	exit 0
+branch="$(git -C "$ROOT" rev-parse --abbrev-ref HEAD)"
+if [ "$DRY_RUN" = 1 ]; then
+    say "[dry run] would push $branch and tag $TAG at $built_commit"
+else
+    say "pushing $branch"
+    git -C "$ROOT" push "$REMOTE" "$branch"
 fi
 
-SLUG="$(gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null || true)"
+# THE TAG NAMES THE COMMIT THE BINARY CAME FROM, not HEAD - the checksum
+# commit above has already moved HEAD past it.
+if git -C "$ROOT" rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+    existing="$(git -C "$ROOT" rev-list -n1 "$TAG")"
+    [ "$existing" = "$built_commit" ] || die \
+        "tag $TAG already exists and points at $existing, not at the build
+commit $built_commit. Bump the version rather than moving a published tag."
+    say "tag $TAG already exists at the right commit"
+else
+    if [ "$DRY_RUN" = 1 ]; then
+        say "[dry run] would create tag $TAG at $built_commit"
+    else
+        git -C "$ROOT" tag -a "$TAG" -m "$NAME $VERSION" "$built_commit"
+        git -C "$ROOT" push "$REMOTE" "$TAG"
+        say "tagged $built_commit as $TAG"
+    fi
+fi
+
+#--- the release ---------------------------------------------------------
+if [ "$DRY_RUN" = 1 ]; then
+    say "[dry run] would run:"
+    echo "    gh release create $TAG \"$PKG\" \\"
+    echo "        --title \"$NAME $VERSION\" \\"
+    echo "        --notes-file \"$NOTES\""
+    echo
+    say "[dry run] nothing was pushed, tagged or published."
+    exit 0
+fi
+
+say "creating the release"
+gh release create "$TAG" "$PKG" \
+    --title "$NAME $VERSION" \
+    --notes-file "$NOTES"
+
 echo
-echo "    Published $TAG"
-if [ -n "$SLUG" ]; then
-	echo "    https://github.com/$SLUG/releases/tag/$TAG"
-	echo "    https://github.com/$SLUG/releases/download/$TAG/$NAME-$VERSION.pkg"
-fi
+say "published"
+repo="$(git -C "$ROOT" remote get-url "$REMOTE" | sed 's#.*github.com[:/]##; s#\.git$##')"
 echo
-echo "    The asset is under Releases, not in the repository's file listing."
-echo "    Download it in a browser and open it: that is the only honest test"
-echo "    that notarisation is doing its job, because only a browser sets the"
-echo "    quarantine attribute Gatekeeper reads."
+echo "    The .pkg is a RELEASE ASSET. It appears nowhere in the repository's"
+echo "    file listing - it is under Releases:"
+echo
+echo "      https://github.com/$repo/releases/tag/$TAG"
+echo "      https://github.com/$repo/releases/download/$TAG/$NAME-$VERSION.pkg"
+echo
+echo "    Download it from that URL in a browser and install from the download."
+echo "    That is the only honest Gatekeeper test: a browser sets the quarantine"
+echo "    attribute, curl and scp do not."

@@ -152,6 +152,23 @@ else
 fi
 
 #-----------------------------------------------------------------------------
+#-----------------------------------------------------------------------------
+# The release kit: the version and maker's name agree everywhere, and the
+# release scripts' own refusals still refuse. None of this needs a Mac.
+#-----------------------------------------------------------------------------
+printf '\n===== check-versions\n'
+python3 "$ROOT/tools/check-versions.py" || FAILED=$((FAILED + 1))
+for t in test-build-release test-publish; do
+	printf '\n===== installer/%s\n' "$t"
+	if [ -x "$ROOT/installer/$t.sh" ]; then
+		"$ROOT/installer/$t.sh" || FAILED=$((FAILED + 1))
+	else
+		# A script that will not run is not a check that passed.
+		echo "NOT EXECUTABLE: installer/$t.sh - chmod +x installer/*.sh"
+		FAILED=$((FAILED + 1))
+	fi
+done
+
 echo
 if [ "$FAILED" -eq 0 ]; then
     if [ "$SKIPPED" -eq 0 ]; then

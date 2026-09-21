@@ -362,6 +362,33 @@ if [ -n "$NOTARY_PROFILE" ]; then
     fi
 fi
 
+
+#-----------------------------------------------------------------------------
+# RECORD WHICH COMMIT THIS PACKAGE CAME FROM.
+#
+# publish-release.sh tags the commit the binary was built from, and by the
+# time it runs HEAD has usually moved: pasting the checksum into the release
+# notes is itself a commit. Tagging HEAD then marks a tree that did not
+# produce the binary, which is exactly the thing a tag is supposed to settle.
+#
+# Recorded here, where the answer is still right, rather than inferred later.
+# `dirty` matters: a package built from uncommitted changes has no commit that
+# describes it, and the publish script refuses rather than tagging something
+# close to it.
+#-----------------------------------------------------------------------------
+if git -C "$ROOT" rev-parse --git-dir >/dev/null 2>&1; then
+    {
+        echo "commit=$(git -C "$ROOT" rev-parse HEAD)"
+        echo "version=$VERSION"
+        if [ -n "$(git -C "$ROOT" status --porcelain 2>/dev/null)" ]; then
+            echo "dirty=yes"
+        else
+            echo "dirty=no"
+        fi
+    } > "$HERE/.built-from"
+    echo "==> recorded the build commit in installer/.built-from"
+fi
+
 rm -rf "$WORK"
 
 echo

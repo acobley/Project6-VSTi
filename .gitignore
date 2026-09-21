@@ -14,6 +14,7 @@ external/
 # by a `git add -A`.
 installer/build/
 installer/*.pkg
+installer/.built-from
 
 # SIGNING MATERIAL NEVER GOES IN THE REPO.
 #

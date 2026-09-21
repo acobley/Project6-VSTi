@@ -65,9 +65,9 @@ endif()
 # loses it.
 #-----------------------------------------------------------------------------
 set(PLUGIN_NAME         "Project6")
-set(PLUGIN_VERSION      "1.1.0.0")
+set(PLUGIN_VERSION      "1.1.1.0")
 set(PLUGIN_DESCRIPTION  "Project6 - VST3 / AUv2 instrument")
-set(PLUGIN_COMPANY      "A. E. Cobley")
+set(PLUGIN_COMPANY      "AE Cobley")
 set(PLUGIN_BUNDLE_ID    "audio.project6.vst3")
 set(PLUGIN_AU_BUNDLE_ID "audio.project6.audiounit")
 

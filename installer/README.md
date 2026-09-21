@@ -8,53 +8,44 @@
 as two separately choosable components, so somebody who only wants one format
 gets only that one.
 
-## Two scripts, and what they refuse to do
+## Releasing: two scripts, and what they refuse to do
 
-Everything below is what the release sequence *means*; these two run it.
+Everything below is what the release sequence *means*; these run it.
 
 ```sh
-installer/build-release.sh          # tests, clean universal build, checks, signed .pkg
-installer/publish-release.sh        # checksum, push, tag, GitHub Release
+installer/build-release.sh              # tests, clean universal build, checks, ONE signed pkg
+installer/verify-install.sh             # after installing it on this Mac
+installer/publish-release.sh --dry-run  # every check, nothing pushed
+installer/publish-release.sh            # checksum, push, tag the build commit, GitHub Release
 ```
 
-`build-release.sh` looks the signing identities up rather than having them
-written down - one Developer ID Application and one Developer ID Installer,
-by SHA-1 hash so a stray space cannot mangle them - and stops before doing
-any work if it finds none, or two. It refuses a dirty working tree, because
-the tag `publish-release.sh` makes would then point at a commit that is not
-what was built. It checks the notary profile answers *before* the build
-rather than after it, and mentions missing release notes at the start, for
-the same reason: a universal Release build is not a thing to discover a typo
-at the end of. `--unsigned` builds locally, `--skip-tests` when you have just
-run them, `--allow-dirty` for a build you will throw away.
+They are the same two files in every AE Cobley plug-in; the name comes from
+`NAME=` in `build-installer.sh`.
 
-`publish-release.sh` asks `spctl` the question the downloading machine will
-ask and **refuses to publish anything Gatekeeper would refuse**. Then it
-writes the package's SHA-256 into the release notes, commits that, pushes,
-tags and creates the release - in that order, so nothing reaches GitHub until
-the package has passed. `--dry-run` prints what it would do, including the
-checksum commit it would make.
+`build-release.sh` looks the signing identities up (one Developer ID
+Application, one Developer ID Installer, by SHA-1 hash) and the notary profile
+(`project6-notary`, or `--notarize <profile>` / `NOTARY_PROFILE=`). Before
+building anything it refuses: version numbers that disagree between
+`CMakeLists.txt`, `source/version.h` and `resource/au-info.plist`, or a maker's
+name that differs between the VST3 and the AU or has a full stop in it
+(`tools/check-versions.py`); a version that is already tagged; missing release
+notes, or notes still saying TODO; a dirty tree; failing tests. After a clean
+universal build it refuses home-directory paths in the binaries and a
+single-architecture signed build. `--unsigned`, `--skip-tests` and
+`--allow-dirty` are for local builds.
 
-The release notes need a line reading `<paste the sha256 here>` for the
-checksum to land in. If the notes already carry a *different* checksum the
-script stops rather than publishing one nobody can reproduce: that means
-either the notes are stale or the package was rebuilt after they were
-written, and only you know which.
+`build-installer.sh` records the commit it built from in
+`installer/.built-from`. `publish-release.sh` refuses a package that is not
+stapled or that Gatekeeper rejects, one built from a dirty tree, a tag already
+on GitHub at another commit, other uncommitted changes, and a missing `gh`
+login — checked before anything is pushed. It writes the stapled package's
+SHA-256 into the notes' `SHA-256: <paste from: …>` line, commits that, pushes,
+and tags **the commit the package was built from**, not HEAD. `--remote <name>`
+pushes somewhere other than origin.
 
-### These refusals were watched happening
-
-Not reasoned about. Both scripts were run in a stub tree with a fake `uname`,
-`gh`, `spctl` and `pkgutil`, and each of these was made to happen: a Linux
-host, a dirty tree, no signing certificate, missing release notes, no `gh`,
-no git remote, a package Gatekeeper will not vouch for, a tag that already
-exists, notes carrying somebody else's checksum, and notes with nowhere to
-put one. Each stops with its own reason. Then the whole sequence was run for
-real against a local bare repository, and the checksum in the published notes
-was compared with the package's.
-
-The two things not exercised that way are the ones that need a real compiler:
-the home-directory-paths sweep and the architecture check. They are one
-`grep -c` and one `case` on `lipo -archs`.
+Both scripts' refusals are stub-tested, on Linux or a Mac, by
+`installer/test-build-release.sh` and `installer/test-publish.sh`, which the
+project's test runner calls.
 
 ## Running it by hand
 
