@@ -7,6 +7,8 @@ Drag a `.wav` onto a slot from the Finder and it loads. Click the slot to arm
 it; it starts **when the transport crosses the next grid line**. Click again
 and it stops on the line after that. Nothing sounds while the transport is
 stopped, and a pad left armed comes back in when it rolls again.
+**Right-click a pad** (or Control-click) and choose **Clear pad** to empty it;
+the file also leaves the saved project.
 
 **Each pad chooses its own grid**: `1/1`, `1/2`, `1/4` or `1/8` — fractions of
 a bar, so every division nests inside the bar and a 1/8 pad and a 1/1 pad

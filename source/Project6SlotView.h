@@ -156,6 +156,12 @@ public:
 	    slot the user was not pointing at. */
 	void setMoveHandler (std::function<void (int, int, bool)> handler);
 
+	/** Called with this pad's index when "Clear pad" is chosen from its
+	    RIGHT-CLICK MENU. The pad does not empty itself: like a drop, the
+	    change goes through the controller, which is the one place a
+	    slot's contents change, and comes back through setPath. */
+	void setClearHandler (std::function<void (int)> handler);
+
 	/** Called with this pad's index and true when the pointer ENTERS it,
 	    false when it LEAVES, so the panel can tell a pad being pointed at
 	    from one the pointer merely crossed.
@@ -251,6 +257,12 @@ private:
 	    modifier for the same idea. */
 	static bool copyRequested (const VSTGUI::Modifiers& modifiers);
 
+	/** The right-click menu, at `where` in this view's coordinates. One
+	    entry today; a menu rather than a bare gesture so that emptying a
+	    pad is something you CHOOSE, with the file's name in front of you,
+	    and cannot be done by a stray click. */
+	void showPadMenu (const VSTGUI::CPoint& where);
+
 	/** Put this pad on the pasteboard. Called once, when a press has
 	    travelled far enough to be a drag. */
 	void beginSlotDrag ();
@@ -285,6 +297,7 @@ private:
 	std::function<void (int, const std::string&)> mHandler;
 	std::function<void (int, int, bool)> mMoveHandler;
 	std::function<void (int, bool)> mHoverHandler;
+	std::function<void (int)> mClearHandler;
 	bool mDragOver = false;
 };
 

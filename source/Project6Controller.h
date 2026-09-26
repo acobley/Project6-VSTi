@@ -176,6 +176,16 @@ public:
 	    must not each have their own idea of how. */
 	void moveSlot (int from, int to, bool copy);
 
+	/** A pad EMPTIED from the panel. The pad is stopped first, then its
+	    path cleared through setSlotPath, which tells the processor - and
+	    the processor lets go of the file's embedded copy, so the next save
+	    of the project no longer carries it.
+
+	    THE PAD'S SETTINGS STAY: level, division, fit, loop and transpose
+	    belong to the cell, and the next file dropped on it inherits them,
+	    as it does when a file is replaced by dropping another. */
+	void clearSlot (int index);
+
 private:
 	void addParameters ();
 	void sendSlotToProcessor (int index, const std::string& path, int carriedFrom);

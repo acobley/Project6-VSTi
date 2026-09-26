@@ -535,6 +535,20 @@ void Project6Controller::moveSlot (int from, int to, bool copy)
 }
 
 //------------------------------------------------------------------------
+void Project6Controller::clearSlot (int index)
+{
+	if (!isSlotIndex (index) || mSlots.path (index).empty ())
+		return;
+
+	// STOPPED FIRST, before the file under it goes - the same order as
+	// moveSlot, and for the same reason: a trigger left on for an empty
+	// pad is a pad lit for ever with nothing to play.
+	writeParam (slotPlayParam (index), 0.0);
+
+	setSlotPath (index, std::string ());
+}
+
+//------------------------------------------------------------------------
 void Project6Controller::sendSlotToProcessor (int index, const std::string& path, int carriedFrom)
 {
 	// The controller lives on the UI thread, so a message is legitimate

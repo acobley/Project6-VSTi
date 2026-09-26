@@ -743,10 +743,15 @@ parameter instead.
 
 ### Not done, deliberately
 
-* **No way to empty a slot from the panel.** Dropping a different file
-  replaces one, which is the recovery path; a clear gesture was not asked for.
-  `SlotBank::clear`, the message and the state stream already handle it, so it
-  is a mouse override and a handler away.
+* ~~No way to empty a slot from the panel.~~ **Done in 1.2.0.0:** right-click
+  (or Control-click) a loaded pad for a one-entry menu, **Clear pad
+  (name.wav)**. A menu rather than a bare gesture, so emptying a pad is chosen
+  with the file's name in front of you. `Project6Controller::clearSlot` stops
+  the pad, then sends the empty path through `setSlotPath`; the processor lets
+  go of the embedded copy (§21), so the next save no longer carries the file.
+  The cell's level, division, fit, loop and transpose stay for the next file.
+  The menu's callback captures the controller, not the editor, because it
+  runs after the menu closes and the window may be shut by then.
 
 ## 9. Playing a slot
 

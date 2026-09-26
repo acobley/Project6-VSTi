@@ -327,6 +327,16 @@ bool PLUGIN_API Project6Editor::open (void* parent, const PlatformType& platform
 			slot->setHoverHandler ([this] (int hovered, bool entered)
 			                       { slotHovered (hovered, entered); });
 
+			// "Clear pad" from the right-click menu. Straight to the
+			// controller, like a move - see Project6Controller::clearSlot.
+			//
+			// THE CONTROLLER IS CAPTURED, NOT THE EDITOR: the menu calls
+			// back after it closes, and the controller outlives every
+			// editor window, where this one may already be shut.
+			if (auto* controller = mController)
+				slot->setClearHandler ([controller] (int at)
+				                       { controller->clearSlot (at); });
+
 			mControls[slotPlayParam (index)] = slot;
 			if (mController)
 				showValue (slot, mController->getParamNormalized (slotPlayParam (index)));

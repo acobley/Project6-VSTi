@@ -239,6 +239,7 @@ void SpySampleSlot::refreshTooltip ()
 	// uses - the tooltip is already open in front of the only people who
 	// would want it.
 	text += "\ndrag to another pad to move it, hold Ctrl or Alt to copy";
+	text += "\nright-click to clear it";
 
 	setTooltipText (text.c_str ());
 }
@@ -253,6 +254,45 @@ void SpySampleSlot::setHandler (std::function<void (int, const std::string&)> ha
 void SpySampleSlot::setMoveHandler (std::function<void (int, int, bool)> handler)
 {
 	mMoveHandler = std::move (handler);
+}
+
+//------------------------------------------------------------------------
+void SpySampleSlot::setClearHandler (std::function<void (int)> handler)
+{
+	mClearHandler = std::move (handler);
+}
+
+//------------------------------------------------------------------------
+void SpySampleSlot::showPadMenu (const CPoint& where)
+{
+	auto* frame = getFrame ();
+	if (frame == nullptr || !mClearHandler)
+		return;
+
+	auto menu = makeOwned<COptionMenu> ();
+	menu->setStyle (COptionMenu::kPopupStyle);
+
+	// THE FILE'S NAME ON THE ENTRY, so what is about to go is in front of
+	// the person choosing it - on a grid of sixty-four look-alike cells
+	// that is the difference between clearing a pad and clearing the one
+	// next to it.
+	const std::string title = "Clear pad (" + slotFileName (mPath) + ")";
+	menu->addEntry (title.c_str ());
+
+	CPoint at (where);
+	localToFrame (at);
+
+	// THE CALLBACK RUNS LATER, after the menu closes - by which time the
+	// editor may have been shut. The handler and the index are copied in,
+	// and `self` keeps this view alive until the callback has run.
+	const int index = mIndex;
+	auto handler = mClearHandler;
+	SharedPointer<SpySampleSlot> self (this);
+	menu->popup (frame, at, [self, index, handler] (COptionMenu* chosen)
+	{
+		if (chosen && chosen->getLastResult () == 0 && handler)
+			handler (index);
+	});
 }
 
 //------------------------------------------------------------------------
@@ -286,6 +326,20 @@ void SpySampleSlot::onMouseExitEvent (MouseExitEvent& event)
 //------------------------------------------------------------------------
 void SpySampleSlot::onMouseDownEvent (MouseDownEvent& event)
 {
+	// RIGHT-CLICK: the pad's menu, on a pad that holds something. On a Mac
+	// a Control-click arrives here as a right-click too, which is the
+	// platform's own convention for a context menu.
+	if (event.buttonState.isRight ())
+	{
+		if (!mPath.empty () && mClearHandler)
+		{
+			mPressed = false;
+			showPadMenu (event.mousePosition);
+			event.consumed = true;
+		}
+		return;
+	}
+
 	if (! event.buttonState.isLeft ())
 		return;
 

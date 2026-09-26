@@ -15,6 +15,8 @@ An **8 × 8 bank of looping sample pads, launched on the bar**, for macOS, as a
   same path on every Mac — are *not* copied into projects, because every copy
   of Project6 can have them. The installer fills that folder when a release
   ships factory samples.
+- **Clear a pad**: right-click (or Control-click) it and choose **Clear pad**.
+  The file leaves the project too.
 - **"File not found"** is now told apart from "could not be read" on a pad
   whose file has gone.
 
