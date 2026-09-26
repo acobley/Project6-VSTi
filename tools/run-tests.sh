@@ -54,7 +54,15 @@ suite () {
             fail "$name"; grep -E "FAILED" "$WORK/$name.out" | head -5
         fi
     else
-        fail "$name did not compile"; head -5 "$WORK/$name.err"
+        # The ERRORS, not the first five lines: an SDK source can put a
+        # screenful of harmless warnings in front of the one line that
+        # matters, and then that line is the one nobody sees.
+        fail "$name did not compile"
+        if grep -qE "error|Undefined symbols|undefined reference" "$WORK/$name.err"; then
+            grep -E -A3 "error|Undefined symbols|undefined reference" "$WORK/$name.err" | head -12
+        else
+            head -5 "$WORK/$name.err"
+        fi
     fi
 }
 
@@ -73,7 +81,13 @@ if [ -n "$SDK" ]; then
 
     # The state stream's slot and embedded-file blocks. IBStreamer and
     # MemoryStream drag in this much of the SDK's base library, and no more.
+    #
+    # ON macOS fstring.cpp is built on CFString, so CoreFoundation has to be
+    # linked; Linux compiles that code out, which is how this passed there
+    # and failed on the Mac.
     B="$SDK/base/source"
+    FRAMEWORKS=()
+    [ "$(uname -s)" = "Darwin" ] && FRAMEWORKS=(-framework CoreFoundation)
     suite statetests -DRELEASE=1 -I"$SDK" tests/StateTests.cpp source/Project6SlotState.cpp \
                      source/Project6Slots.cpp \
                      "$SDK/public.sdk/source/common/memorystream.cpp" \
@@ -81,7 +95,8 @@ if [ -n "$SDK" ]; then
                      "$B/updatehandler.cpp" "$B/fdebug.cpp" \
                      "$SDK/base/thread/source/flock.cpp" \
                      "$SDK/pluginterfaces/base/funknown.cpp" \
-                     "$SDK/pluginterfaces/base/conststringtable.cpp" -lpthread
+                     "$SDK/pluginterfaces/base/conststringtable.cpp" -lpthread \
+                     ${FRAMEWORKS[@]+"${FRAMEWORKS[@]}"}
 fi
 
 #-----------------------------------------------------------------------------
