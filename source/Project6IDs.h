@@ -69,6 +69,14 @@ static const char* const kProject6SlotMessage       = "Project6Slot";
 static const char* const kProject6SlotIndexAttribute = "Slot";
 static const char* const kProject6SlotPathAttribute  = "Path";
 
+/** OPTIONAL, on the message above: the slot this file came from, when a
+    pad was moved or copied onto another rather than dropped from the
+    Finder. It is what lets the file's EMBEDDED copy travel with it - on a
+    machine that only has the project, the embedded copy is the only copy
+    there is, and re-reading the path would find nothing. Absent for a
+    drop from outside, which reads the file afresh from disk. */
+static const char* const kProject6SlotFromAttribute  = "From";
+
 /** Processor -> controller: how a slot's file actually read.
 
     The reply to the message above, and sent again for every slot from

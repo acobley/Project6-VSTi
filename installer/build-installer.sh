@@ -45,6 +45,17 @@ ROOT="$(cd "$HERE/.." && pwd)"
 NAME="Project6"
 VST3_ID="audio.project6.vst3"
 AU_ID="audio.project6.audiounit"
+SAMPLES_ID="audio.project6.samples"
+
+# THE FACTORY SAMPLE FOLDER. Must be the same string as kFactorySampleRoot in
+# source/Project6Slots.h - a pad is recognised as factory by that prefix, and
+# a sample installed anywhere else would be embedded in every project that
+# used it. check-versions.py does not know about this; the line below does.
+SAMPLES_DEST="/Users/Shared/Project6/Samples"
+grep -q "kFactorySampleRoot = \"$SAMPLES_DEST\"" "$ROOT/source/Project6Slots.h" || {
+    echo "build-installer: SAMPLES_DEST is not kFactorySampleRoot in Project6Slots.h" >&2
+    exit 1
+}
 
 #-----------------------------------------------------------------------------
 # THE VERSION COMES OUT OF CMakeLists.txt, not out of a second copy here. Two
@@ -106,7 +117,7 @@ done
 
 WORK="$HERE/build"
 rm -rf "$WORK"
-mkdir -p "$WORK/root-vst3" "$WORK/root-au" "$WORK/pkgs"
+mkdir -p "$WORK/root-vst3" "$WORK/root-au" "$WORK/root-samples" "$WORK/pkgs"
 
 echo "==> Project6 $VERSION, from $CONFIG"
 
@@ -116,6 +127,24 @@ echo "==> Project6 $VERSION, from $CONFIG"
 #-----------------------------------------------------------------------------
 cp -R "$VST3_SRC" "$WORK/root-vst3/$NAME.vst3"
 cp -R "$AU_SRC"   "$WORK/root-au/$NAME.component"
+
+# THE FACTORY SAMPLES: only what a pad will take, keeping sub-folders. The
+# README and anything else in samples/ stays behind. No samples, no third
+# component - an empty choice in the installer would be worse than none.
+SAMPLE_COUNT=0
+if [ -d "$ROOT/samples" ]; then
+    while IFS= read -r -d '' f; do
+        rel="${f#"$ROOT/samples/"}"
+        mkdir -p "$WORK/root-samples/$(dirname "$rel")"
+        cp "$f" "$WORK/root-samples/$rel"
+        SAMPLE_COUNT=$((SAMPLE_COUNT + 1))
+    done < <(find "$ROOT/samples" -type f \( -iname '*.wav' -o -iname '*.mid' -o -iname '*.midi' \) -print0)
+fi
+if [ "$SAMPLE_COUNT" -gt 0 ]; then
+    echo "==> $SAMPLE_COUNT factory sample(s) staged for $SAMPLES_DEST"
+else
+    echo "==> no factory samples in samples/ - that component is left out"
+fi
 
 #-----------------------------------------------------------------------------
 # THE SYMLINK THAT WOULD HAVE SHIPPED A DEAD AUDIO UNIT.
@@ -222,6 +251,19 @@ pkgbuild --quiet \
     --scripts "$HERE/scripts-au" \
     "$WORK/pkgs/$NAME-AU.pkg"
 
+if [ "$SAMPLE_COUNT" -gt 0 ]; then
+    # Not relocatable and nothing to sign: plain files, readable by everyone,
+    # owned by root so one user cannot change what another user's projects
+    # sound like.
+    pkgbuild --quiet \
+        --root "$WORK/root-samples" \
+        --identifier "$SAMPLES_ID.pkg" \
+        --version "$VERSION" \
+        --install-location "$SAMPLES_DEST" \
+        --ownership recommended \
+        "$WORK/pkgs/$NAME-Samples.pkg"
+fi
+
 echo "==> component packages built"
 
 #-----------------------------------------------------------------------------
@@ -232,7 +274,14 @@ mkdir -p "$WORK/resources"
 cp "$HERE/resources/welcome.html" "$HERE/resources/conclusion.html" "$WORK/resources/"
 cp "$ROOT/LICENSE" "$WORK/resources/license.txt"
 
-sed "s/__VERSION__/$VERSION/g" "$HERE/distribution.xml" > "$WORK/distribution.xml"
+if [ "$SAMPLE_COUNT" -gt 0 ]; then
+    sed "s/__VERSION__/$VERSION/g" "$HERE/distribution.xml" > "$WORK/distribution.xml"
+else
+    # Every marked samples block goes, or the distribution names a package
+    # that is not there - which the pkg-ref check below would refuse anyway.
+    sed -e "s/__VERSION__/$VERSION/g" -e '/BEGIN SAMPLES/,/END SAMPLES/d' \
+        "$HERE/distribution.xml" > "$WORK/distribution.xml"
+fi
 
 #-----------------------------------------------------------------------------
 # VALIDATE THE DISTRIBUTION, TWICE, because a bad one is not caught by
@@ -396,6 +445,7 @@ echo "    $FINAL"
 echo
 echo "    Installs:  /Library/Audio/Plug-Ins/VST3/$NAME.vst3"
 echo "               /Library/Audio/Plug-Ins/Components/$NAME.component"
+[ "$SAMPLE_COUNT" -gt 0 ] && echo "               $SAMPLES_DEST  ($SAMPLE_COUNT file(s))"
 echo
 echo "    Check what is really in it with:"
 echo "      pkgutil --payload-files \"$FINAL\" | head"

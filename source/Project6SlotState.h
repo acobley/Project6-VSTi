@@ -30,12 +30,13 @@ namespace Project6 {
     appended the slot levels - which are parameters, but sit past the
     published block and so cannot ride the contiguous run from id 0. 4
     appended the row levels and 5 the launch divisions, in further blocks
-    of the same shape. The
+    of the same shape. 10 appended the embedded files - see writeEmbedded.
+    The
     version is INFORMATIONAL: every reader below copes with a stream that
     simply stops early, which is the rule the parameter block already
     follows. It is written so that a future format change that cannot be
     handled that way has something to test. */
-constexpr Steinberg::int32 kStateVersion = 9;
+constexpr Steinberg::int32 kStateVersion = 10;
 
 /** A sanity bound on one path, so a corrupt or hostile stream cannot ask
     for an arbitrary allocation. Longer than any real path: macOS stops
@@ -57,6 +58,23 @@ bool writeSlots (Steinberg::IBStreamer& streamer, const SlotBank& slots);
     in this instance. It is not an error, and neither caller treats it as
     one. */
 bool readSlots (Steinberg::IBStreamer& streamer, SlotBank& slots);
+
+//------------------------------------------------------------------------
+/** The embedded files: kSlotCount length-prefixed blobs, each a slot's
+    file exactly as it was on disk. A zero length is "nothing embedded" -
+    an empty slot, or a factory file, which every recipient already has.
+
+    LAST IN THE STREAM, deliberately. It is by far the largest block, and
+    the controller's setComponentState stops reading before it, so the
+    panel never has to wade through audio it does not use. Anything
+    appended after version 10 goes AFTER this block. */
+bool writeEmbedded (Steinberg::IBStreamer& streamer, const SlotFileBytes* files);
+
+/** Reads that block, having FIRST emptied every entry - same rule as
+    readSlots. Returns false when the block is absent (a stream from
+    before version 10) or damaged; whatever was read before the damage is
+    kept, and the rest stays empty, so those slots fall back to disk. */
+bool readEmbedded (Steinberg::IBStreamer& streamer, SlotFileBytes* files);
 
 //------------------------------------------------------------------------
 /** A run of normalised parameter values, length-prefixed.

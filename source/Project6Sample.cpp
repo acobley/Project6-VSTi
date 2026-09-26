@@ -157,6 +157,7 @@ const char* sampleStatusText (SampleStatus status)
 		case SampleStatus::NoFrames:          return "no audio in the file";
 		case SampleStatus::NotMidi:           return "not a MIDI file";
 		case SampleStatus::NoNotes:           return "no notes in the file";
+		case SampleStatus::Missing:           return "file not found";
 	}
 	return "unknown";
 }

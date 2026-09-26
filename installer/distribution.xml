@@ -35,6 +35,9 @@
     <choices-outline>
         <line choice="choice.vst3"/>
         <line choice="choice.au"/>
+        <!-- BEGIN SAMPLES -->
+        <line choice="choice.samples"/>
+        <!-- END SAMPLES -->
     </choices-outline>
 
     <choice id="choice.vst3"
@@ -48,6 +51,23 @@
             description="Project6.component, installed into /Library/Audio/Plug-Ins/Components. For Logic Pro and other AU hosts. Note that REAPER does not accept MIDI output from an Audio Unit - use the VST3 there.">
         <pkg-ref id="audio.project6.audiounit.pkg"/>
     </choice>
+
+    <!-- BEGIN SAMPLES -->
+    <!-- THE FACTORY SAMPLES, and the only part of this package outside
+         /Library. /Users/Shared is the one writable place that is the same
+         path on every Mac, which is what lets a project made from these files
+         open anywhere. build-installer.sh deletes each of these marked
+         block when samples/ has nothing to ship. -->
+    <choice id="choice.samples"
+            title="Factory samples"
+            description="The WAV and MIDI files the example projects are built from, installed into /Users/Shared/Project6/Samples. Projects that use them open on any Mac that has them installed.">
+        <pkg-ref id="audio.project6.samples.pkg"/>
+    </choice>
+
+    <pkg-ref id="audio.project6.samples.pkg"
+             version="__VERSION__"
+             onConclusion="none">Project6-Samples.pkg</pkg-ref>
+    <!-- END SAMPLES -->
 
     <pkg-ref id="audio.project6.vst3.pkg"
              version="__VERSION__"

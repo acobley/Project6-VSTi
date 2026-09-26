@@ -646,7 +646,7 @@ int main ()
 			SampleStatus::Empty, SampleStatus::Loaded, SampleStatus::Unreadable,
 			SampleStatus::NotWave, SampleStatus::UnsupportedFormat,
 			SampleStatus::TooLong, SampleStatus::NoFrames,
-			SampleStatus::NotMidi, SampleStatus::NoNotes };
+			SampleStatus::NotMidi, SampleStatus::NoNotes, SampleStatus::Missing };
 
 		bool allNamed = true;
 		for (SampleStatus status : all)

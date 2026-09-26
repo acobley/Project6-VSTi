@@ -80,6 +80,77 @@ bool readSlots (IBStreamer& streamer, SlotBank& slots)
 }
 
 //------------------------------------------------------------------------
+bool writeEmbedded (IBStreamer& streamer, const SlotFileBytes* files)
+{
+	if (files == nullptr)
+		return false;
+
+	if (!streamer.writeInt32 (static_cast<int32> (kSlotCount)))
+		return false;
+
+	for (int index = 0; index < kSlotCount; ++index)
+	{
+		const auto& file = files[index];
+		const std::size_t size = file ? file->size () : 0;
+
+		// Written as nothing rather than refused: a file this large could
+		// not have been loaded in the first place, and one bad slot must
+		// not cost the other sixty-three their copies.
+		const int32 length = (size <= kMaxEmbeddedFileBytes) ? static_cast<int32> (size) : 0;
+
+		if (!streamer.writeInt32 (length))
+			return false;
+		if (length > 0
+		    && streamer.writeRaw (file->data (), length) != length)
+			return false;
+	}
+
+	return true;
+}
+
+//------------------------------------------------------------------------
+bool readEmbedded (IBStreamer& streamer, SlotFileBytes* files)
+{
+	if (files == nullptr)
+		return false;
+
+	for (int index = 0; index < kSlotCount; ++index)
+		files[index].reset ();
+
+	int32 count = 0;
+	if (!streamer.readInt32 (count))
+		return false;                       // a stream from before version 10
+
+	if (count < 0 || count > kMaxSlotPathBytes)
+		return false;
+
+	for (int32 i = 0; i < count; ++i)
+	{
+		int32 length = 0;
+		if (!streamer.readInt32 (length))
+			return false;
+
+		if (length < 0 || static_cast<std::size_t> (length) > kMaxEmbeddedFileBytes)
+			return false;
+
+		if (length == 0)
+			continue;
+
+		auto bytes = std::make_shared<std::vector<unsigned char>> (
+			static_cast<std::size_t> (length));
+		if (streamer.readRaw (bytes->data (), length) != length)
+			return false;
+
+		// A stream from a build with more slots is read to the end and
+		// the extras dropped - same rule as readSlots.
+		if (i < kSlotCount)
+			files[i] = std::move (bytes);
+	}
+
+	return true;
+}
+
+//------------------------------------------------------------------------
 bool writeValueBlock (IBStreamer& streamer, const double* normalized, int count)
 {
 	if (normalized == nullptr || count < 0)

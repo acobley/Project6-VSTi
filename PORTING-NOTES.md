@@ -2520,3 +2520,81 @@ Two smaller things came out of doing that rather than assuming:
   sentence to the header.
 * **`mktemp -t name` means different things on macOS and GNU.** Spelled out
   with an explicit template, it means the same on both.
+
+## 21. Projects that travel: factory samples, and embedded files
+
+A pad remembers its file by absolute path, and a path means nothing on
+somebody else's Mac, so a project handed over lost every pad. Two mechanisms
+now cover the two cases.
+
+**Factory content lives in `/Users/Shared/Project6/Samples`**
+(`kFactorySampleRoot`, `Project6Slots.h`). `/Users/Shared` is the one writable
+place that is **the same path on every Mac** — it carries nobody's user name —
+so a project built from factory files needs nothing carried with it. The
+installer fills it from `samples/` in this repo as a third, optional
+component; with nothing in `samples/` that component is left out and the
+distribution's marked blocks are deleted. `build-installer.sh` refuses to run
+if its `SAMPLES_DEST` and `kFactorySampleRoot` disagree.
+
+**Everything else is embedded.** State version 10 appends one block: sixty-four
+length-prefixed blobs, each a slot's file **exactly as it was on disk** (not
+decoded audio, so a 16-bit file stays 16-bit sized). `writeEmbedded` /
+`readEmbedded` in `Project6SlotState`, the same arrangement as the path block.
+It is **last in the stream**, so the controller's `setComponentState` stops
+before it and the panel never reads audio it does not use. A factory file, an
+empty slot and a file that failed to load carry nothing.
+
+### Rejected first: copying into Project6.vst3
+
+The obvious place — a `Samples` folder inside the plug-in bundle — fails four
+ways at once. Writing into a **signed, notarised** bundle invalidates its
+signature. The plug-in is in `/Library`, which a host running as the user
+cannot write. A reinstall replaces the bundle wholesale, samples included. And
+**the AU loads a different copy of the VST3**, the one embedded at
+`Project6.component/Contents/Resources/plugin.vst3` (§19), so the two formats
+would each fill their own folder.
+
+### The decisions inside it
+
+* **The embedded copy wins.** `loadSlot` uses the bytes `setState` handed it
+  and only reads the disk when there are none, so a project sounds as it was
+  saved whatever has happened to the file since. Dropping a file on a pad
+  (from outside) always reads the disk afresh — that is how an edited sample
+  is brought back in.
+* **Always embedded, no switch.** MIDI files are tiny; audio can be large.
+  The cost to watch is **Reaper, which calls getState for undo points** — a
+  project with many long WAVs may make edits feel slower there. Measure before
+  adding a switch; the stream format already allows "nothing embedded" per slot.
+* **The bytes are kept in memory** (`mFiles`), read once by `loadSlot`, rather
+  than re-read at save time. `getState` can be called on any thread and often;
+  sixty-four disk reads per undo point would be worse than holding the files.
+  Shared, immutable, and snapshotted under `mFilesLock`, then streamed outside
+  it so a drop on the panel never waits behind a large save.
+* **A moved or copied pad carries its bytes.** On a machine that has only the
+  project, the embedded copy is the only copy there is, and re-reading the
+  path would find nothing. `moveSlot` sends `kProject6SlotFromAttribute`
+  naming the source slot; the second half of a **swap** names a slot the first
+  half has already replaced, so the processor keeps each slot's previous
+  file (`mPrevious`) — just one, and only until the next slot message.
+* **`SampleStatus::Missing`** is new and appended (the status crosses to the
+  controller as an integer). "File not found" is the one a person can fix, so
+  it is told apart from "could not be read" — `readWholeFile` `stat`s first.
+
+### What it does not do
+
+* **A drag between two instances of the plug-in** re-reads the path, since
+  the source slot is in another processor. On the machine that made the
+  project the file is there; on a recipient's it may not be.
+* **No relink.** A pad from a pre-version-10 project whose file is missing
+  says "file not found"; the fix is to drop the file again, after which the
+  next save embeds it.
+
+### Checked by
+
+`tests/StateTests.cpp` (new, needs the SDK for `IBStreamer`/`MemoryStream`):
+paths and files round-trip byte for byte, a pre-10 stream reports the block
+absent and falls back to disk, a truncated or negative-length block stops
+without allocating and keeps what it read before the damage.
+`tests/SlotTests.cpp` §7: `isFactoryPath` is textual and refuses a sibling
+whose name only starts with the root; `readWholeFile` tells Missing, Unreadable
+and TooBig apart.

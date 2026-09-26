@@ -41,9 +41,9 @@
 	<key>CFBundleSignature</key>
 	<string>????</string>
 	<key>CFBundleVersion</key>
-	<string>1.1.1</string>
+	<string>1.2.0</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.1.1</string>
+	<string>1.2.0</string>
 
 	<key>AudioComponents</key>
 	<array>
@@ -65,15 +65,15 @@
 			<!-- CHANGE ME if this is an instrument (aumu) rather than an effect -->
 			<key>type</key>
 			<string>aumu</string>
-			<!-- 0x00010101 == 1.1.1 -->
+			<!-- 0x00010200 == 1.2.0 -->
 			<key>version</key>
-			<integer>65793</integer>
+			<integer>66048</integer>
 		</dict>
 	</array>
 
 	<!-- Read by the wrapper with sscanf("%x"), so this one is a hex string. -->
 	<key>AudioUnit Version</key>
-	<string>00010101</string>
+	<string>00010200</string>
 
 	<!-- MUST match what your processor's setBusArrangements accepts. If you
 	     widen the bus support there, widen it here too or hosts will not

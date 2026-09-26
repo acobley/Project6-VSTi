@@ -47,6 +47,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <mutex>
 #include <cstdio>
 #include <vector>
 
@@ -378,6 +379,31 @@ private:
 	/** How each slot's file read, so the panel can say why one will not
 	    play. */
 	SampleStatus mStatus[kSlotCount] = {};
+
+	/** EACH SLOT'S FILE AS IT WAS ON DISK, for embedding in the project.
+
+	    Filled by loadSlot from the disk read, or by setState from the
+	    stream - and when setState has filled one, loadSlot uses it
+	    INSTEAD of the disk: the embedded copy wins, so a project sounds
+	    as it was saved. Null for an empty slot, a factory file (every
+	    recipient has those) and a file that failed to read.
+
+	    LOCKED, not atomic: getState may be called on any thread the host
+	    likes, while notify() replaces a slot on the UI thread. Neither is
+	    the audio thread, which never touches these. */
+	SlotFileBytes mFiles[kSlotCount];
+
+	/** What each slot held BEFORE its last change: the path and its
+	    bytes. Only for a SWAP, whose second message asks for the file the
+	    first message has just replaced. Same lock. */
+	struct HeldFile
+	{
+		std::string path;
+		SlotFileBytes bytes;
+	};
+	HeldFile mPrevious[kSlotCount];
+
+	std::mutex mFilesLock;
 
 	/** A buffer that has been replaced, and the block number at which it
 	    was replaced. */

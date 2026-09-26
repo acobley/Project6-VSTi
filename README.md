@@ -62,6 +62,15 @@ and waiting, coming in together on the next bar line when you roll the
 transport. A pad whose file has gone missing since it was saved comes back
 dark rather than lit and silent.
 
+**Projects travel.** A pad's file is saved *inside* the project, so a project
+opens with every pad playing on a Mac that has never seen the files — the
+copy in the project wins over the file on disk, so a project always sounds as
+it was saved. To pick up a file you have edited since, drop it on the pad
+again. The exception is a file from the **factory samples** folder,
+`/Users/Shared/Project6/Samples`, which the installer fills: every copy of
+Project6 has those, so they are not duplicated into projects. Build example
+projects from that folder and they stay small. See `samples/README.md`.
+
 **Rest the pointer on a pad and what it holds appears behind the display** — a
 waveform for a `.wav`, a piano roll for a `.mid` — and dropping a file on a
 pad does the same, at once. Pointing costs nothing and changes no sound, so
@@ -133,7 +142,9 @@ and build again.
 ## Installer
 
 `installer/build-installer.sh` builds a `.pkg` that installs the VST3 and the
-Audio Unit system-wide, as two separately choosable components. macOS only —
+Audio Unit system-wide, as two separately choosable components — three when
+`samples/` holds any `.wav` or `.mid` files, which ship as a **Factory samples**
+component installed into `/Users/Shared/Project6/Samples`. macOS only —
 `pkgbuild` and `productbuild` are Apple's. Build the plug-in first, then:
 
 ```sh

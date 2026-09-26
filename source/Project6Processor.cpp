@@ -1032,11 +1032,50 @@ tresult PLUGIN_API Project6Processor::notify (IMessage* message)
 			path.assign (static_cast<const char*> (data), size);
 		}
 
+		// A PAD MOVED OR COPIED from another slot brings that slot's
+		// bytes with it - see kProject6SlotFromAttribute. Looked for in
+		// the source slot as it is now, and failing that in what it held
+		// before its last change, which is where the second half of a
+		// swap finds it. The PATH must match either way: bytes are only
+		// ever carried for the file they were read from.
+		int64 from = -1;
+		message->getAttributes ()->getInt (kProject6SlotFromAttribute, from);
+
+		const std::string oldPath = isSlotIndex (static_cast<int> (index))
+		                                ? mSlots.path (static_cast<int> (index))
+		                                : std::string ();
+
 		// setPath range-checks the index itself and refuses a bad one
 		// rather than clamping, so a message from a future build with a
 		// bigger grid is dropped instead of overwriting slot 63.
 		if (mSlots.setPath (static_cast<int> (index), path))
 		{
+			{
+				std::lock_guard<std::mutex> hold (mFilesLock);
+
+				SlotFileBytes carried;
+				if (!path.empty () && isSlotIndex (static_cast<int> (from)) && from != index)
+				{
+					if (mSlots.path (static_cast<int> (from)) == path && mFiles[from])
+						carried = mFiles[from];
+					else if (mPrevious[from].path == path)
+						carried = mPrevious[from].bytes;
+				}
+
+				// ONLY ONE PREVIOUS FILE IS WORTH KEEPING: the one the
+				// message after this might ask for. Anything older is let
+				// go, or every pad ever replaced would stay in memory.
+				for (int slot = 0; slot < kSlotCount; ++slot)
+					if (slot != from)
+						mPrevious[slot] = HeldFile ();
+
+				// A FILE FROM OUTSIDE carries nothing, so loadSlot reads
+				// it afresh from disk - which is also how a sample edited
+				// since it was embedded is brought back in: drop it again.
+				mPrevious[index] = HeldFile { oldPath, std::move (mFiles[index]) };
+				mFiles[index] = std::move (carried);
+			}
+
 			// notify() is [UI-thread], which is the only reason this is
 			// allowed to open a file at all.
 			loadSlot (static_cast<int> (index));
@@ -1105,17 +1144,54 @@ void Project6Processor::loadSlot (int index)
 	std::shared_ptr<const SampleBuffer> sample;
 	std::shared_ptr<const MidiClip> clip;
 
-	if (kind == SlotFileKind::Audio)
+	//--------------------------------------------------------------------
+	// THE BYTES: the project's embedded copy if it has one, else the disk.
+	//
+	// Embedded first, because a project should sound as it was saved -
+	// on this machine or another, whatever has happened to the file on
+	// disk since. It is also what makes a project whose files were never
+	// sent load at all.
+	//--------------------------------------------------------------------
+	SlotFileBytes bytes;
+	{
+		std::lock_guard<std::mutex> hold (mFilesLock);
+		bytes = mFiles[index];
+	}
+
+	bool readFailed = false;
+	if (!bytes && kind != SlotFileKind::None)
+	{
+		// The same ceilings the two file readers have always applied, so
+		// nothing that loaded before is refused now and nothing that was
+		// refused before loads.
+		constexpr std::size_t kMaxMidiFileBytes = 32u * 1024u * 1024u;
+		const std::size_t ceiling = (kind == SlotFileKind::Midi) ? kMaxMidiFileBytes
+		                                                         : kMaxEmbeddedFileBytes;
+		switch (readWholeFile (path, ceiling, bytes))
+		{
+			case FileReadResult::Ok:         break;
+			case FileReadResult::Missing:    status = SampleStatus::Missing;    break;
+			case FileReadResult::Unreadable: status = SampleStatus::Unreadable; break;
+			case FileReadResult::TooBig:     status = SampleStatus::TooLong;    break;
+		}
+		readFailed = !bytes;
+	}
+
+	if (readFailed)
+	{
+		// status already says why
+	}
+	else if (kind == SlotFileKind::Audio)
 	{
 		SampleBuffer buffer;
-		status = loadWavFile (path, buffer);
+		status = parseWav (bytes->data (), bytes->size (), buffer);
 		if (status == SampleStatus::Loaded)
 			sample = std::make_shared<const SampleBuffer> (std::move (buffer));
 	}
 	else if (kind == SlotFileKind::Midi)
 	{
 		MidiClip parsed;
-		const MidiStatus midi = loadMidiFile (path, parsed);
+		const MidiStatus midi = parseMidiFile (bytes->data (), bytes->size (), parsed);
 		status = statusOfMidi (midi);
 		if (midi == MidiStatus::Loaded)
 			clip = std::make_shared<const MidiClip> (std::move (parsed));
@@ -1133,6 +1209,18 @@ void Project6Processor::loadSlot (int index)
 	// simply be on a drive that is not plugged in today. What it does not
 	// get is audio or notes, and the status is how the panel says so.
 	mStatus[index] = status;
+
+	// KEEP THE BYTES FOR EMBEDDING - only for a file that actually
+	// loaded, and never for a factory file. A file that will not parse is
+	// not worth carrying to someone else, and dropping it here means the
+	// project goes on naming the path, which is the most useful thing it
+	// can do for a file that is broken.
+	{
+		std::lock_guard<std::mutex> hold (mFilesLock);
+		mFiles[index] = (status == SampleStatus::Loaded && !isFactoryPath (path))
+		                    ? std::move (bytes) : SlotFileBytes ();
+	}
+
 	publishSlot (index, std::move (sample), std::move (clip));
 	sendSlotStatusToController (index);
 }
@@ -1730,6 +1818,20 @@ tresult PLUGIN_API Project6Processor::getState (IBStream* state)
 	// pad is part way through a loop at a position nobody saved.
 	writeValueBlock (streamer, &mParams[kSlotPlayBase], kSlotCount);
 
+	// THE FILES THEMSELVES, last - see writeEmbedded. A snapshot of the
+	// sixty-four pointers is taken under the lock and streamed outside
+	// it: the bytes are immutable, so a slot replaced mid-save only
+	// means this save carries the old file, which is what the save was
+	// asked for. Holding the lock for the whole write would stall a drop
+	// on the panel behind a hundred-megabyte stream.
+	SlotFileBytes files[kSlotCount];
+	{
+		std::lock_guard<std::mutex> hold (mFilesLock);
+		for (int slot = 0; slot < kSlotCount; ++slot)
+			files[slot] = mFiles[slot];
+	}
+	writeEmbedded (streamer, files);
+
 	return kResultOk;
 }
 
@@ -1802,10 +1904,26 @@ tresult PLUGIN_API Project6Processor::setState (IBStream* state)
 	readValueBlock (streamer, &mParams[kSlotPlayBase], kSlotCount,
 	                slotPlayDef ().defaultNormalized ());
 
-	// The paths are back; now read the files. setState is not the audio
-	// thread, so this is where sixty-four disk reads belong - and a slot
-	// whose file has moved since the project was saved gets a status
-	// rather than silence.
+	// The embedded files. readEmbedded empties all sixty-four first, so a
+	// stream from before version 10 leaves every slot to be read from
+	// disk exactly as it always was - and the NEXT save embeds them.
+	{
+		SlotFileBytes files[kSlotCount];
+		readEmbedded (streamer, files);
+
+		std::lock_guard<std::mutex> hold (mFilesLock);
+		for (int slot = 0; slot < kSlotCount; ++slot)
+		{
+			mFiles[slot] = std::move (files[slot]);
+			mPrevious[slot] = HeldFile ();
+		}
+	}
+
+	// The paths are back; now read the files - from the embedded copies
+	// where the project carries them, from disk where it does not.
+	// setState is not the audio thread, so this is where sixty-four disk
+	// reads belong - and a slot whose file has moved since the project
+	// was saved, and was not embedded, gets a status rather than silence.
 	loadAllSlots ();
 
 	//--------------------------------------------------------------------

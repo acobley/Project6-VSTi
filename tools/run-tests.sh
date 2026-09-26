@@ -4,7 +4,7 @@
 #
 #   tools/run-tests.sh
 #
-# Seven SDK-free test suites, every source compiled to a real object file, the
+# Seven SDK-free test suites, the SDK-backed state suite, every source compiled to a real object file, the
 # undefined-symbol sweep, the editor invariant and the routing diagram. Run it
 # before every commit, and certainly before every release - a release is the
 # one build where "I was fairly sure" is not good enough.
@@ -70,6 +70,18 @@ if [ -n "$SDK" ]; then
     suite paramstests -I"$SDK" tests/ParamsTests.cpp source/Project6Params.cpp \
                       source/Project6Dsp.cpp source/Project6Sample.cpp \
                       source/Project6Transport.cpp source/Project6Stretch.cpp
+
+    # The state stream's slot and embedded-file blocks. IBStreamer and
+    # MemoryStream drag in this much of the SDK's base library, and no more.
+    B="$SDK/base/source"
+    suite statetests -DRELEASE=1 -I"$SDK" tests/StateTests.cpp source/Project6SlotState.cpp \
+                     source/Project6Slots.cpp \
+                     "$SDK/public.sdk/source/common/memorystream.cpp" \
+                     "$B/fstreamer.cpp" "$B/fstring.cpp" "$B/fobject.cpp" "$B/fbuffer.cpp" \
+                     "$B/updatehandler.cpp" "$B/fdebug.cpp" \
+                     "$SDK/base/thread/source/flock.cpp" \
+                     "$SDK/pluginterfaces/base/funknown.cpp" \
+                     "$SDK/pluginterfaces/base/conststringtable.cpp" -lpthread
 fi
 
 #-----------------------------------------------------------------------------

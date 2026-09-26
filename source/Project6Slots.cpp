@@ -9,6 +9,8 @@
 
 #include <algorithm>
 #include <cctype>
+#include <fstream>
+#include <sys/stat.h>
 
 namespace Project6 {
 
@@ -297,6 +299,46 @@ int SlotBank::loadedCount () const
 		if (!path.empty ())
 			++count;
 	return count;
+}
+
+//------------------------------------------------------------------------
+bool isFactoryPath (const std::string& path)
+{
+	const std::string root = std::string (kFactorySampleRoot) + "/";
+	return path.size () > root.size () && path.compare (0, root.size (), root) == 0;
+}
+
+//------------------------------------------------------------------------
+FileReadResult readWholeFile (const std::string& path, std::size_t maxBytes,
+                              SlotFileBytes& out)
+{
+	out.reset ();
+
+	if (path.empty ())
+		return FileReadResult::Missing;
+
+	// stat FIRST, so "not there" and "there but unreadable" are told
+	// apart. An ifstream that fails to open says nothing about which.
+	struct stat info {};
+	if (::stat (path.c_str (), &info) != 0)
+		return FileReadResult::Missing;
+	if (!S_ISREG (info.st_mode) || info.st_size <= 0)
+		return FileReadResult::Unreadable;
+	if (static_cast<unsigned long long> (info.st_size) > maxBytes)
+		return FileReadResult::TooBig;
+
+	std::ifstream file (path, std::ios::binary);
+	if (!file)
+		return FileReadResult::Unreadable;
+
+	auto bytes = std::make_shared<std::vector<unsigned char>> (
+		static_cast<std::size_t> (info.st_size));
+	if (!file.read (reinterpret_cast<char*> (bytes->data ()),
+	                static_cast<std::streamsize> (bytes->size ())))
+		return FileReadResult::Unreadable;
+
+	out = std::move (bytes);
+	return FileReadResult::Ok;
 }
 
 //------------------------------------------------------------------------

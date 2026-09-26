@@ -152,7 +152,11 @@ enum class SampleStatus
 	// and the person reading it does not care which of two enums the
 	// answer came out of - see Project6Midi.h for the MIDI side.
 	NotMidi,            ///< not a standard MIDI file at all
-	NoNotes             ///< a MIDI file with nothing to play in it
+	NoNotes,            ///< a MIDI file with nothing to play in it
+
+	// APPENDED, never inserted: the status crosses to the controller as
+	// an integer, so the existing values must keep their numbers.
+	Missing             ///< no file at the path, and no copy in the project
 };
 
 /** One short line, for the panel's tooltip. Never null. */

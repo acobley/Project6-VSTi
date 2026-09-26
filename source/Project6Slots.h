@@ -16,7 +16,10 @@
 
 #pragma once
 
+#include <cstddef>
+#include <memory>
 #include <string>
+#include <vector>
 
 namespace Project6 {
 
@@ -175,6 +178,61 @@ std::string slotFileName (const std::string& path);
     .wav, so those four characters are the first thing worth losing and
     the last thing worth reading. */
 std::string slotFileStem (const std::string& path);
+
+//------------------------------------------------------------------------
+// FACTORY CONTENT AND EMBEDDED FILES
+//
+// A project names its files by absolute path, and a path means nothing on
+// somebody else's Mac. Two things make a project travel:
+//
+//   FACTORY FILES live in kFactorySampleRoot, which the installer fills
+//   and which is THE SAME PATH ON EVERY MAC - /Users/Shared does not
+//   carry anybody's user name. A pad loaded from there needs nothing
+//   carried with the project, so it is never embedded.
+//
+//   EVERYTHING ELSE is embedded: the file's original bytes ride in the
+//   state stream (see Project6SlotState.h), and on load THE EMBEDDED COPY
+//   WINS over the file on disk, so a project always sounds as it was
+//   saved - on this machine or any other.
+//
+// NOT inside Project6.vst3. Writing into a signed bundle breaks its
+// signature, a reinstall replaces the bundle wholesale, the plug-in has
+// no write access to /Library, and the AU loads a DIFFERENT copy of the
+// VST3 from inside its own .component. See PORTING-NOTES.
+//------------------------------------------------------------------------
+constexpr const char* kFactorySampleRoot = "/Users/Shared/Project6/Samples";
+
+/** True for a path inside kFactorySampleRoot. Textual, not a filesystem
+    query: the answer has to be the same on a machine where the factory
+    content is not installed, or a project saved there would start
+    embedding factory files that every recipient already has. */
+bool isFactoryPath (const std::string& path);
+
+/** The original bytes of one slot's file. Shared and immutable, so the
+    state writer can take a reference under a lock and stream it without
+    copying hundreds of megabytes. */
+using SlotFileBytes = std::shared_ptr<const std::vector<unsigned char>>;
+
+/** A sanity bound on one embedded file, matching the largest file the
+    WAV reader will take at all. A corrupt or hostile stream cannot ask
+    for more than this per slot. */
+constexpr std::size_t kMaxEmbeddedFileBytes = 512u * 1024u * 1024u;
+
+/** What happened when a slot's file was read from disk. MISSING is kept
+    apart from UNREADABLE because it is the one a person can fix - the
+    file is on a drive that is not plugged in, or was never sent. */
+enum class FileReadResult
+{
+	Ok,
+	Missing,     ///< nothing at that path
+	Unreadable,  ///< there, but could not be opened or read, or is empty
+	TooBig       ///< larger than `maxBytes`
+};
+
+/** The whole of a file, for parsing and for embedding. ON THE UI THREAD
+    ONLY - it opens a file and allocates. `out` is null unless Ok. */
+FileReadResult readWholeFile (const std::string& path, std::size_t maxBytes,
+                              SlotFileBytes& out);
 
 //------------------------------------------------------------------------
 /** Sixty-four paths, and nothing else.

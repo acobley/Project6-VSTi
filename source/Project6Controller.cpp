@@ -404,6 +404,12 @@ void Project6Controller::requestProgress ()
 //------------------------------------------------------------------------
 void Project6Controller::setSlotPath (int index, const std::string& path)
 {
+	setSlotPath (index, path, -1);
+}
+
+//------------------------------------------------------------------------
+void Project6Controller::setSlotPath (int index, const std::string& path, int carriedFrom)
+{
 	// REFUSED, not clamped, by SlotBank itself. A drop that somehow
 	// carried a bad index must not land on a real slot.
 	if (!mSlots.setPath (index, path))
@@ -433,7 +439,7 @@ void Project6Controller::setSlotPath (int index, const std::string& path)
 	mSlotNotes[index] = 0;
 	mSlotBeats[index] = 0.0;
 
-	sendSlotToProcessor (index, path);
+	sendSlotToProcessor (index, path, carriedFrom);
 
 	// Every open editor, not just the one that was dropped on: a host may
 	// have two windows on this instance, and the slot has to fill in both.
@@ -517,13 +523,19 @@ void Project6Controller::moveSlot (int from, int to, bool copy)
 	// The paths, through the one door: setSlotPath tells the processor,
 	// refreshes every open editor, and clears the tempo the panel was
 	// showing until the processor reports the new file's own.
-	setSlotPath (to, fromPath);
+	//
+	// EACH NAMES THE SLOT ITS FILE CAME FROM, so the processor can carry
+	// the embedded copy across rather than re-reading a path that may not
+	// exist on this machine. The swap's second half names `to`, whose file
+	// the first half has already replaced - the processor keeps each
+	// slot's previous file for exactly that.
+	setSlotPath (to, fromPath, from);
 	if (! copy)
-		setSlotPath (from, toPath);        // the SWAP - may be empty, which empties it
+		setSlotPath (from, toPath, to);    // the SWAP - may be empty, which empties it
 }
 
 //------------------------------------------------------------------------
-void Project6Controller::sendSlotToProcessor (int index, const std::string& path)
+void Project6Controller::sendSlotToProcessor (int index, const std::string& path, int carriedFrom)
 {
 	// The controller lives on the UI thread, so a message is legitimate
 	// here - the rule that bans them is about process(), not about
@@ -545,6 +557,9 @@ void Project6Controller::sendSlotToProcessor (int index, const std::string& path
 		message->getAttributes ()->setBinary (kProject6SlotPathAttribute,
 		                                      path.data (),
 		                                      static_cast<uint32> (path.size ()));
+
+	if (isSlotIndex (carriedFrom))
+		message->getAttributes ()->setInt (kProject6SlotFromAttribute, carriedFrom);
 
 	sendMessage (message);
 }

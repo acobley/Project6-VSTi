@@ -19,7 +19,9 @@
 #include "Project6Slots.h"
 
 #include <cstdio>
+#include <fstream>
 #include <string>
+#include <unistd.h>
 
 using namespace Project6;
 
@@ -377,6 +379,56 @@ int main ()
 		check (sampleFilePathFromDragText ("   \n  ").empty (), "and whitespace");
 		check (sampleFilePathFromDragText ("file://").empty (),
 		       "and a URL with no path in it");
+	}
+
+	//--------------------------------------------------------------------
+	section ("7. Factory content, and reading a file whole");
+	//--------------------------------------------------------------------
+	{
+		const std::string root = kFactorySampleRoot;
+		check (root == "/Users/Shared/Project6/Samples",
+		       "the factory root carries nobody's user name");
+		check (isFactoryPath (root + "/Drums/kick.wav"), "a file under the root is factory");
+		check (isFactoryPath (root + "/x.mid"),          "at any depth");
+		check (!isFactoryPath (root),                    "the root itself is not a file");
+		check (!isFactoryPath (root + "/"),              "nor the root with a slash");
+		check (!isFactoryPath (root + "Extra/kick.wav"),
+		       "a sibling whose name only STARTS with the root is not factory");
+		check (!isFactoryPath ("/Users/andy/Samples/kick.wav"), "a user's file is not");
+		check (!isFactoryPath (""),                      "nor nothing");
+
+		char dir[] = "/tmp/p6slotXXXXXX";
+		const bool made = ::mkdtemp (dir) != nullptr;
+		check (made, "a scratch directory");
+		const std::string file = std::string (dir) + "/four.bin";
+		{
+			std::ofstream out (file, std::ios::binary);
+			out.write ("\x01\x02\x03\x04", 4);
+		}
+
+		SlotFileBytes bytes;
+		check (readWholeFile (file, 1024, bytes) == FileReadResult::Ok
+		       && bytes && bytes->size () == 4 && (*bytes)[3] == 4,
+		       "a file reads whole, byte for byte");
+
+		check (readWholeFile (file, 3, bytes) == FileReadResult::TooBig && !bytes,
+		       "over the ceiling is TooBig, and hands back nothing");
+		check (readWholeFile (std::string (dir) + "/absent.wav", 1024, bytes)
+		           == FileReadResult::Missing && !bytes,
+		       "a path with nothing there is MISSING, not unreadable");
+		check (readWholeFile (dir, 1024, bytes) == FileReadResult::Unreadable,
+		       "a directory is there but unreadable");
+		check (readWholeFile ("", 1024, bytes) == FileReadResult::Missing,
+		       "an empty path is missing");
+
+		const std::string empty = std::string (dir) + "/empty.wav";
+		{ std::ofstream out (empty, std::ios::binary); }
+		check (readWholeFile (empty, 1024, bytes) == FileReadResult::Unreadable,
+		       "an empty file is unreadable");
+
+		::unlink (file.c_str ());
+		::unlink (empty.c_str ());
+		::rmdir (dir);
 	}
 
 	//--------------------------------------------------------------------

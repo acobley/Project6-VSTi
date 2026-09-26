@@ -148,6 +148,10 @@ public:
 	    is only ever set from setParamNormalized. */
 	void setSlotPath (int index, const std::string& path);
 
+	/** The same, for a file that came from ANOTHER SLOT - see
+	    kProject6SlotFromAttribute. */
+	void setSlotPath (int index, const std::string& path, int carriedFrom);
+
 	/** A pad was dragged onto another pad.
 
 	    `copy` false MOVES it, which is a SWAP: the two cells exchange, so
@@ -174,7 +178,7 @@ public:
 
 private:
 	void addParameters ();
-	void sendSlotToProcessor (int index, const std::string& path);
+	void sendSlotToProcessor (int index, const std::string& path, int carriedFrom);
 
 	/** One parameter, as a COMPLETE EDIT GESTURE - begin, set, perform,
 	    end - so the host records it and every open editor's control
