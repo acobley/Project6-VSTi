@@ -391,6 +391,116 @@ int main ()
 	}
 
 	//--------------------------------------------------------------------
+	section ("9. Reading faster than 1: band-limited, not aliased");
+	//--------------------------------------------------------------------
+	{
+		// Above a step of 1 the read is a windowed sinc whose cutoff
+		// follows the step (readBandLimited). Measured at 48 kHz in the
+		// file's own units: a tone that would land above the OUTPUT's
+		// Nyquist must be gone, not folded back down into the audible band.
+		const double fs = 48000.0;
+		auto tone = [&] (double hz, int frames)
+		{
+			std::vector<float> data (static_cast<std::size_t> (frames) * kSampleChannels);
+			for (int i = 0; i < frames; ++i)
+				data[static_cast<std::size_t> (i) * 2] = data[static_cast<std::size_t> (i) * 2 + 1]
+				    = static_cast<float> (std::sin (2.0 * 3.14159265358979323846 * hz * i / fs));
+			return data;
+		};
+		// The level of `hz` in `x`, Blackman-windowed, in dB re a full-scale sine.
+		auto levelDb = [&] (const std::vector<double>& x, double hz)
+		{
+			const double pi = 3.14159265358979323846;
+			const std::size_t n = x.size ();
+			double re = 0.0, im = 0.0, wsum = 0.0;
+			for (std::size_t i = 0; i < n; ++i)
+			{
+				const double w = 0.42 - 0.5 * std::cos (2.0 * pi * i / (n - 1)) + 0.08 * std::cos (4.0 * pi * i / (n - 1));
+				re += w * x[i] * std::cos (2.0 * pi * hz * i / fs);
+				im -= w * x[i] * std::sin (2.0 * pi * hz * i / fs);
+				wsum += w;
+			}
+			return 20.0 * std::log10 (std::sqrt (re * re + im * im) / (wsum / 2.0) + 1e-30);
+		};
+		auto play = [&] (const std::vector<float>& file, double speed, int outFrames, bool looping)
+		{
+			TimeStretcher stretcher;
+			stretcher.setSampleRate (fs);
+			stretcher.setLooping (looping);
+			const int frames = static_cast<int> (file.size () / kSampleChannels);
+			std::vector<double> out (static_cast<std::size_t> (outFrames));
+			double l = 0.0, r = 0.0;
+			for (int i = 0; i < outFrames; ++i)
+			{
+				stretcher.next (file.data (), frames, 1.0, speed, FitMode::Varispeed, l, r);
+				out[static_cast<std::size_t> (i)] = l;
+			}
+			return out;
+		};
+
+		// 18 kHz at 2x plays at 36 kHz, which a 48 kHz output folds to 12 kHz.
+		const std::vector<float> high = tone (18000.0, 48000);
+		const std::vector<double> folded = play (high, 2.0, 8192, true);
+		const double alias = levelDb (folded, 12000.0);
+
+		// NEGATIVE CONTROL: the linear read the voice used to do.
+		std::vector<double> linear (8192);
+		for (int i = 0; i < 8192; ++i)
+		{
+			const double pos = 2.0 * i;
+			const int a = static_cast<int> (pos);
+			linear[static_cast<std::size_t> (i)] = high[static_cast<std::size_t> (a) * 2]
+			    + (high[static_cast<std::size_t> (a + 1) * 2] - high[static_cast<std::size_t> (a) * 2]) * (pos - a);
+		}
+		const double aliasLinear = levelDb (linear, 12000.0);
+		std::printf ("     18 kHz at 2x, folded to 12 kHz: %.1f dB (linear read: %.1f dB)\n", alias, aliasLinear);
+		check (alias < -65.0, "18 kHz at 2x does not fold back to 12 kHz");
+		check (aliasLinear > -3.0, "NEGATIVE CONTROL: the linear read folds it at nearly full level");
+
+		// 1.6x, a 90 -> 144 BPM fit: 20 kHz would play at 32 kHz -> 16 kHz.
+		const double alias16 = levelDb (play (tone (20000.0, 48000), 1.6, 8192, true), 16000.0);
+		std::printf ("     20 kHz at 1.6x, folded to 16 kHz: %.1f dB\n", alias16);
+		check (alias16 < -65.0, "20 kHz at 1.6x does not fold back to 16 kHz");
+
+		// And what should pass, passes: 5 kHz at 2x is 10 kHz.
+		const double pass = levelDb (play (tone (5000.0, 48000), 2.0, 8192, true), 10000.0);
+		std::printf ("     5 kHz at 2x, heard at 10 kHz: %.2f dB\n", pass);
+		check (pass > -0.5 && pass < 0.5, "5 kHz at 2x comes out at 10 kHz, level within 0.5 dB");
+
+		// THE LOOP POINT STILL JOINS: whole cycles of 441 Hz (sineLoop),
+		// played at 1.5x through many loop points, against the exact sine
+		// at 661.5 Hz. A wrong wrap would be a click of order 1.
+		{
+			const int frames = 4400;              // 44 whole cycles
+			const std::vector<float> loop441 = sineLoop (441.0, frames);
+			TimeStretcher stretcher;
+			stretcher.setSampleRate (kRate);
+			double worst = 0.0, l = 0.0, r = 0.0;
+			for (int i = 0; i < 20000; ++i)
+			{
+				stretcher.next (loop441.data (), frames, 1.0, 1.5, FitMode::Varispeed, l, r);
+				const double expect = std::sin (2.0 * 3.14159265358979323846 * 441.0 * 1.5 * i / kRate);
+				worst = std::max (worst, std::fabs (l - expect));
+			}
+			std::printf ("     a looping 441 Hz at 1.5x, worst error over 6 loop points: %.2e\n", worst);
+			check (worst < 1e-3, "the band-limited read wraps round a loop without a click");
+		}
+
+		// A ONE-SHOT's taps past its ends read silence, so its loud last
+		// frames are not smeared into its attack. Silence, then a loud end.
+		{
+			std::vector<float> shot (2000 * kSampleChannels, 0.f);
+			for (int i = 1990; i < 2000; ++i)
+				shot[static_cast<std::size_t> (i) * 2] = shot[static_cast<std::size_t> (i) * 2 + 1] = 1.f;
+			const double oneShot = play (shot, 1.5, 1, false)[0];
+			const double looped  = play (shot, 1.5, 1, true)[0];
+			std::printf ("     first sample of a one-shot whose end is loud: %.2e (looping: %.2e)\n", oneShot, looped);
+			check (oneShot == 0.0, "a one-shot's start does not read its own end");
+			check (std::fabs (looped) > 1e-4, "NEGATIVE CONTROL: a loop does, as it should");
+		}
+	}
+
+	//--------------------------------------------------------------------
 	std::printf ("\n%s  (%d failure%s)\n",
 	             gFailures == 0 ? "ALL TESTS PASSED" : "TESTS FAILED",
 	             gFailures, gFailures == 1 ? "" : "s");

@@ -2638,3 +2638,62 @@ Two fixes:
 
 Adding `DenormalGuard.h` adds a file to `source/`, so re-run `./setup-xcode.sh`
 before the next Xcode build.
+
+## 23. Aliasing: reading faster than 1 (30 Oct 2026)
+
+Also from the audit. `readAt` interpolated linearly, which is fine at a step of
+1 or below and does **nothing** against aliasing above it. A read head
+advancing `r` source frames per output frame folds everything in the file
+above Nyquist / `r` back into the audible band at nearly full level:
+
+* a 2× Varispeed fit (60 → 120 BPM) folded an 18 kHz hi-hat component to
+  12 kHz at −0.0 dB;
+* any file whose rate is above the session's (a 96 kHz file in 48 kHz) did the
+  same.
+
+Pitch-preserved mode reads at the file's own step, so in that mode only the
+second case applied.
+
+**Above a step of 1, the read is now a Kaiser-windowed sinc whose cutoff
+follows the step** (`readBandLimited`, `Project6Stretch.cpp`): a low-pass at
+0.94 × the output's Nyquist, six zero-crossings either side, β = 7.
+
+* **At or below a step of 1 nothing changes.** The linear read is kept, so a
+  pad at its own rate and tempo is still bit-identical to its file. A
+  10 s render with pads at steps 1.0, 0.92 and 0.8 (including a pitch-preserved
+  pad and a one-shot) is byte-identical to the build before.
+* **Taps past the ends of the file** wrap round a loop, the same rule as the
+  linear read's second tap, so the loop point does not click. Beyond a one-shot
+  they read as silence (`TimeStretcher::setLooping`, set by `setSlotLoop`), so a
+  one-shot's loud ending is not smeared into its attack.
+* **Cost.** The taps number about 2 × 6 × r / 0.94: 15 at 1.2×, 51 at 4×. The
+  weights come from a polyphase bank (128 phases, two rows interpolated),
+  rebuilt only when the ratio moves by more than 0.5 %, in memory sized by
+  `setSampleRate`. That is about three times faster than computing each
+  weight per tap. Measured CPU per second of audio:
+
+  | Pads, Varispeed | 1.0× (linear) | 1.2× | 4.0× |
+  |---|---|---|---|
+  | 8, arm64 VM | 2.0 ms | 5.4 ms | 12.8 ms |
+  | 64, arm64 VM | 15.7 ms | 47.7 ms | 102.5 ms |
+  | 8, x86_64 | 5.5 ms | 14.8 ms | 30.6 ms |
+  | 64, x86_64 | 45.8 ms | 123.8 ms | 208.9 ms |
+
+  The half-width is capped at 32 source frames (a step of about 5). Past that,
+  the kernel is cut short rather than allowed to grow, because a step that
+  large is a tempo-detection failure.
+
+`StretchTests` section 9 checks:
+
+* 18 kHz at 2× does not fold to 12 kHz (−79 dB; the linear read, as the
+  negative control, gives −0.0 dB);
+* 20 kHz at 1.6× does not fold to 16 kHz (−72 dB);
+* 5 kHz at 2× comes out at 10 kHz within 0.5 dB;
+* a looping 441 Hz at 1.5× matches the exact sine across six loop points
+  (error 2 × 10⁻⁵);
+* a one-shot's start does not read its own end (the looping case is the
+  negative control).
+
+`DspTests`' "a file at twice the session rate" check now reads the playhead
+instead of the samples. The old assertion, that the output is the file's raw
+frames 0, 2, 0, 2, was the aliasing itself.

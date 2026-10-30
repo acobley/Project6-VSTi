@@ -36,6 +36,8 @@
 
 #pragma once
 
+#include <vector>
+
 namespace Project6 {
 
 //------------------------------------------------------------------------
@@ -100,7 +102,10 @@ double fitSpeed (double fileBpm, double projectBpm);
     VARISPEED is the whole of the simple case: one position, advanced by
     the resampling step times the fit speed, read with linear
     interpolation whose second tap wraps to frame 0 so the loop point is
-    continuous.
+    continuous - or, when that advances MORE than one source frame per
+    output frame, with a band-limited sinc read whose cutoff follows the
+    step, because linear interpolation does nothing to stop the top of
+    the file folding back as aliases (see readBandLimited).
 
     PITCH-PRESERVED keeps TWO positions:
 
@@ -144,6 +149,11 @@ public:
 	    frame 0. */
 	void setPosition (double position);
 
+	/** Whether the pad loops. Only the band-limited read (a step above 1)
+	    asks: its taps reach past the ends of the file, and they wrap
+	    round a loop but read silence beyond a one-shot. */
+	void setLooping (bool looping) { mLooping = looping; }
+
 	/** Did the playhead pass the end of the file since this was last
 	    asked? Reads AND CLEARS.
 
@@ -170,6 +180,20 @@ public:
 	void next (const float* source, int frames, double rateStep, double speed,
 	           FitMode mode, double& left, double& right);
 
+	/** The band-limited read's filter, as a polyphase bank for ONE read
+	    ratio: kSincPhases + 1 rows of `taps` weights, each row the kernel
+	    at one sub-sample phase and normalised to unity DC gain. Rebuilt
+	    on the audio thread only when the ratio moves by more than
+	    kSincRebuildTolerance, into memory setSampleRate already sized.
+	    Public only so Project6Stretch.cpp's free functions can take it. */
+	struct SincBank
+	{
+		std::vector<float> weights;
+		double ratio = 0.0;     ///< the ratio the bank was built for; 0 = none
+		int    taps  = 0;       ///< weights per phase
+		int    lead  = 0;       ///< taps before the integer read position
+	};
+
 private:
 	/** True when this file is long enough for the splice to have
 	    somewhere to land. */
@@ -189,6 +213,10 @@ private:
 	    whenever it feels like it, and it is the music that has finished,
 	    not the reading. */
 	bool mWrapped   = false;
+
+	bool mLooping   = true;     ///< see setLooping
+
+	SincBank mBank;             ///< see SincBank
 
 	int mFade       = 0;        ///< samples left in the current cross-fade
 	int mSinceHop   = 0;        ///< output samples since the last splice

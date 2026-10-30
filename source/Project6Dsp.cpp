@@ -285,6 +285,7 @@ void Project6Dsp::setSlotLoop (int index, bool loop)
 		return;
 
 	mVoices[index].loop = loop;
+	mVoices[index].stretch.setLooping (loop);
 }
 
 //------------------------------------------------------------------------

@@ -483,18 +483,24 @@ int main ()
 			dsp.setSlotSample (2, &fast);
 			dsp.setSlotPlaying (2, true);
 
-			std::vector<float> out (16 * kChannelCount, 0.f);
-			dsp.render (out.data (), 16);
-
-			// Two source frames per output frame: 0, 2, 0, 2 ... A voice
-			// that ignored sourceRate would play this file a fifth flat.
-			bool stepped = true;
-			for (int i = 4; i < 16; ++i)
-				stepped &= (out[static_cast<size_t> (i) * 2] == kLeft[(i * 2) % 4]);
-			check (stepped, "a file at twice the session rate advances two frames a sample");
+			// Two source frames per output frame. Read off the PLAYHEAD
+			// rather than the samples: above a step of 1 the read is
+			// band-limited (Project6Stretch.cpp, readBandLimited), so the
+			// output is no longer the file's raw frames 0, 2, 0, 2 - which
+			// was the aliasing - but the head still moves two at a time.
+			// Three samples in: 6 frames, which round a 4-frame loop is 2.
+			std::vector<float> out (3 * kChannelCount, 0.f);
+			dsp.render (out.data (), 3);
+			check (dsp.slotPosition (2) == 2.0,
+			       "a file at twice the session rate advances two frames a sample");
 
 			// NEGATIVE CONTROL: that is NOT what a one-to-one voice does.
-			check (out[static_cast<size_t> (5) * 2] != kLeft[5 % 4],
+			Project6Dsp same;
+			same.setSampleRate (1000.0);
+			same.setSlotSample (2, &loop);
+			same.setSlotPlaying (2, true);
+			same.render (out.data (), 3);
+			check (same.slotPosition (2) == 3.0,
 			       "NEGATIVE CONTROL: which is not the same as ignoring the rate");
 		}
 

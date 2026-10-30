@@ -19,7 +19,7 @@ needs only that file.
 | Plug-in | Denormals | Aliasing | Priority |
 |---|---|---|---|
 | **MasterLoud** | **Problem.** Unflushed biquads go into permanent denormals once audio stops; CPU rises 4–5× and stays there (measured) | None | **1: fix** |
-| **Project6** | **Problem.** Level smoothers aimed at 0 (any fader at the bottom) stick at a denormal for good; ~30× the cost of that loop (measured) | **Problem.** Linear interpolation when Varispeed speeds a loop up, or a file's rate is above the session's | **2: fix** |
+| **Project6** | **Fixed 30 Oct.** Was: Level smoothers aimed at 0 (any fader at the bottom) stick at a denormal for good; ~30× the cost of that loop (measured) | **Fixed 30 Oct.** Was: linear interpolation when Varispeed speeds a loop up, or a file's rate is above the session's | done |
 | **R2Synth** | Handled | **Problem.** MS-20 and MS-20 Late filters at high resonance and bright cutoff: alias spurs at −36 to −47 dB at 1×, −63 to −70 dB at 2× (measured) | **3: fix** |
 | **FilterDrum** | Handled | **Problem.** Self-oscillation above ~4 kHz: alias tones at −26 / −29 dB right beside a 6 kHz pitch (measured) | **4: fix** |
 | **ForTran** | Minor: output gain smoother at 0 | **Problem.** Partials above Nyquist are not culled; notes from about D♯7 up alias | **5: fix** |
@@ -207,6 +207,8 @@ attenuated. Two ways to fix it:
 ## C. This project's findings
 
 ### Project6: denormals, priority 2; aliasing, priority 2
+
+> **Status: both fixed 30 Oct 2026** on Project6 branch `denormals-aliasing` (see its `PORTING-NOTES.md` §22–23). The smoothers snap to their target. Above a step of 1, the read is a band-limited sinc built from a polyphase bank, with no load-time resampling: one change covers both Varispeed and a file whose rate is above the session's. Reads at a step of 1 or below are bit-identical to before.
 
 **Denormal finding.** Three per-sample smoothers aim at a target that is
 **exactly 0** whenever a control is at the bottom of its travel
