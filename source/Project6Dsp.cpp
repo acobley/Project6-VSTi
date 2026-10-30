@@ -14,6 +14,25 @@
 namespace Project6 {
 
 //------------------------------------------------------------------------
+/** One step of the one-pole level smoother, SNAPPING onto the target
+    once within kGainSnap of it.
+
+    Without the snap a smoother aimed at exactly 0 - any fader at the
+    bottom of its travel, which dbToLinear makes exactly 0 - never gets
+    there: after ~15 s at 48 kHz it reaches the bottom of the denormal
+    range and the rounding holds it there, as a denormal, for good, and
+    every multiply by it is slow on x86. A muted row cost 30x its normal
+    CPU from then on (AUDIT-denormals-aliasing.md). The snap also makes a
+    settled value EXACT for every target, so 0 dB stays bit-identical. */
+double smoothTowards (double value, double target, double coeff)
+{
+	if (value == target)
+		return value;
+	value += (target - value) * coeff;
+	return (std::fabs (target - value) < kGainSnap) ? target : value;
+}
+
+//------------------------------------------------------------------------
 double dbToLinear (double decibels, double minDb)
 {
 	// At or below the bottom of travel the control is OFF. Returning
@@ -329,7 +348,7 @@ void Project6Dsp::applyOutputTrim (float* interleaved, int numSamples)
 
 	for (int i = 0; i < numSamples; ++i)
 	{
-		mGain += (mTarget - mGain) * mCoeff;
+		mGain = smoothTowards (mGain, mTarget, mCoeff);
 		const float g = static_cast<float> (mGain);
 		for (int ch = 0; ch < kChannelCount; ++ch)
 			interleaved[static_cast<size_t> (i) * kChannelCount + ch] *= g;
@@ -433,7 +452,7 @@ void Project6Dsp::renderChunk (float* out, float* const* rowOuts, int numSamples
 
 		for (int i = 0; i < numSamples; ++i)
 		{
-			bus.gain += (bus.target - bus.gain) * mCoeff;
+			bus.gain = smoothTowards (bus.gain, bus.target, mCoeff);
 
 			const size_t at = static_cast<size_t> (i) * kChannelCount;
 			out[at]     += static_cast<float> (mRowScratch[at]     * bus.gain);
@@ -486,7 +505,7 @@ void Project6Dsp::renderVoice (Voice& voice, float* dest, int numSamples)
 		if (voice.levelGain < 0.0)
 			voice.levelGain = voice.levelTarget;
 		else
-			voice.levelGain += (voice.levelTarget - voice.levelGain) * mCoeff;
+			voice.levelGain = smoothTowards (voice.levelGain, voice.levelTarget, mCoeff);
 
 		// The envelope next, so a voice that reaches zero this sample
 		// contributes nothing further.

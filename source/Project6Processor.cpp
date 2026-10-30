@@ -5,6 +5,7 @@
 #include "Project6Processor.h"
 #include "Project6IDs.h"
 #include "Project6SlotState.h"
+#include "DenormalGuard.h"
 
 #include "base/source/fstreamer.h"
 #include "public.sdk/source/vst/utility/processcontextrequirements.h"
@@ -1507,6 +1508,10 @@ void Project6Processor::renderSegment (ProcessData& data, int32 offset, int32 nu
 //------------------------------------------------------------------------
 tresult PLUGIN_API Project6Processor::process (ProcessData& data)
 {
+	// Flush-to-zero for this call only; the host's FPU mode comes back on
+	// return. See DenormalGuard.h.
+	ScopedFlushDenormals noDenormals;
+
 	// FIRST, and before anything can read a published sample pointer.
 	// This is what the retire list waits on - see collectRetired.
 	mBlockCounter.fetch_add (1, std::memory_order_acq_rel);

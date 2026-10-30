@@ -133,6 +133,15 @@ constexpr double kVoiceDeclickSeconds = 0.005;
     a private copy in either would be a second opinion. */
 double dbToLinear (double decibels, double minDb);
 
+/** How close a level smoother must get to its target before it snaps
+    onto it - about -180 dB, so the snap itself is inaudible. */
+constexpr double kGainSnap = 1e-9;
+
+/** One step of a level smoother: value + (target - value) * coeff, then
+    EXACTLY the target once within kGainSnap. See the definition for why
+    a smoother aimed at 0 must not simply be left to decay. */
+double smoothTowards (double value, double target, double coeff);
+
 /** Linear gain back to decibels, floored at `minDb`. The inverse of the
     above, so a measurement can be reported in the units the panel uses. */
 double linearToDb (double gain, double minDb);

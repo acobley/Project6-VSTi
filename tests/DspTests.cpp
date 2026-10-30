@@ -31,6 +31,7 @@
 //------------------------------------------------------------------------
 
 #include "Project6Dsp.h"
+#include "DenormalGuard.h"
 #include "Project6Slots.h"
 
 #include <algorithm>
@@ -1326,6 +1327,86 @@ int main ()
 			check (close (dsp.slotPosition (2), before, 1e-12),
 			       "changing mode does not move the playhead");
 			check (before > 0.0, "NEGATIVE CONTROL: and it had moved in the first place");
+		}
+	}
+
+	//--------------------------------------------------------------------
+	section ("9. Denormals: a fader at the bottom reaches exactly zero");
+	//--------------------------------------------------------------------
+	{
+		// Before smoothTowards, a one-pole aimed at exactly 0 stuck at the
+		// bottom of the denormal range for good (~2.4e-321 after 15 s at
+		// 48 kHz) and every multiply by it was slow on x86 from then on.
+		// The coefficient here is the DSP's own, at 48 kHz.
+		const double coeff = 1.0 - std::exp (-1.0 / (kTrimSmoothingSeconds * 48000.0));
+
+		double down = 1.0;
+		bool sub = false;
+		long zeroAt = -1;
+		for (long i = 0; i < 48000L * 60; ++i)
+		{
+			down = smoothTowards (down, 0.0, coeff);
+			sub = sub || std::fpclassify (down) == FP_SUBNORMAL;
+			if (zeroAt < 0 && down == 0.0)
+				zeroAt = i;
+		}
+		std::printf ("     aimed at 0: exactly 0 after %.2f s\n", zeroAt / 48000.0);
+		check (down == 0.0 && ! sub, "a smoother aimed at 0 lands on exactly 0, never denormal");
+
+		// NEGATIVE CONTROL: the recursion as it was does not.
+		double old = 1.0;
+		for (long i = 0; i < 48000L * 60; ++i)
+			old += (0.0 - old) * coeff;
+		check (old != 0.0 && std::fpclassify (old) == FP_SUBNORMAL,
+		       "NEGATIVE CONTROL: the old recursion is stuck at a denormal after a minute");
+
+		double up = 0.0;
+		for (long i = 0; i < 48000L * 2; ++i)
+			up = smoothTowards (up, 1.0, coeff);
+		check (up == 1.0, "aimed at unity it lands on exactly 1.0, so 0 dB stays bit-identical");
+
+		// End to end: a playing pad on a row pulled to the bottom, and the
+		// output trim at the bottom too. A minute later the output is
+		// exact zeros, not denormal leakage.
+		SampleBuffer loop;
+		loop.frameCount = 4800;
+		loop.sourceRate = 48000.0;
+		loop.samples.assign (static_cast<size_t> (loop.frameCount) * kSampleChannels, 0.f);
+		for (int f = 0; f < loop.frameCount; ++f)
+			loop.samples[static_cast<size_t> (f) * 2] = loop.samples[static_cast<size_t> (f) * 2 + 1]
+			    = static_cast<float> (0.5 * std::sin (2.0 * 3.14159265358979 * 100.0 * f / 48000.0));
+		Project6Dsp dsp;
+		dsp.setSampleRate (48000.0);
+		dsp.setMaxBlockSize (512);
+		dsp.setSlotSample (0, &loop);
+		dsp.setSlotPlaying (0, true);
+		std::vector<float> out (512 * kChannelCount);
+		for (int b = 0; b < 20; ++b)
+			dsp.render (out.data (), 512);
+		dsp.setRowLevelDb (0, kRowLevelMinDb);
+		bool subOut = false;
+		for (int b = 0; b < 48000 * 60 / 512; ++b)
+		{
+			dsp.render (out.data (), 512);
+			for (float v : out)
+				subOut = subOut || std::fpclassify (v) == FP_SUBNORMAL;
+		}
+		bool silent = true;
+		for (float v : out)
+			silent = silent && v == 0.f;
+		check (silent && ! subOut, "a row pulled to the bottom: a minute later, exact zeros");
+
+		// The guard process() runs under.
+		if (ScopedFlushDenormals::supported ())
+		{
+			volatile float tiny = 1.0e-37f, half = 0.01f;
+			const float before = tiny * half;
+			float inside;
+			{ ScopedFlushDenormals guard; inside = tiny * half; }
+			const float after = tiny * half;
+			check (before != 0.f, "control: 1e-37 x 0.01 is a denormal without the guard");
+			check (inside == 0.f, "inside ScopedFlushDenormals it flushes to zero");
+			check (after == before, "after it the host's FPU mode is back");
 		}
 	}
 

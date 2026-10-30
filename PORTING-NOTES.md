@@ -2603,3 +2603,38 @@ without allocating and keeps what it read before the damage.
 `tests/SlotTests.cpp` §7: `isFactoryPath` is textual and refuses a sibling
 whose name only starts with the root; `readWholeFile` tells Missing, Unreadable
 and TooBig apart.
+
+## 22. Denormals: a fader at the bottom (30 Oct 2026)
+
+Found by the DXi-DEv audit (`AUDIT-denormals-aliasing.md`). Three per-sample
+level smoothers can be aimed at **exactly zero**: the output trim (`mGain`), a
+row bus (`bus.gain`) and a playing pad (`voice.levelGain`). `dbToLinear`
+returns 0.0 at the bottom of a fader's travel, deliberately.
+
+A one-pole `x += (0 − x) × c` never reaches zero. About 15 s later, at 48 kHz,
+`x` reaches the bottom of the denormal range (~2.4 × 10⁻³²¹), where `x × c`
+rounds to zero, so it stops there, as a denormal, for good. Every multiply by
+it is then slow on x86. A replica of the row-bus loop with eight rows pulled
+down measured 1.1 ms of CPU per second of audio for the first ten seconds, then
+30–37 ms per second from then on.
+
+Two fixes:
+
+* **`smoothTowards` (`Project6Dsp.cpp`)**, used by all three: one step of the
+  same one-pole, then exactly the target once within `kGainSnap` (1e-9, about
+  −180 dB). A fader aimed at 0 now lands on exactly 0 in about 0.2 s, and one
+  aimed at unity lands on exactly 1.0, so 0 dB stays bit-identical to the file.
+* **`ScopedFlushDenormals` (`source/DenormalGuard.h`, from SpaceDub)** sets
+  flush-to-zero for the length of `Project6Processor::process` and restores the
+  host's mode on return.
+
+`DspTests` section 9 checks:
+
+* a smoother aimed at 0 lands on exactly 0 and is never subnormal; the old
+  recursion is the negative control, and is stuck at a denormal after a minute;
+* a smoother aimed at unity lands on exactly 1.0;
+* a playing pad on a row pulled to the bottom gives exact zeros a minute later;
+* the guard flushes, then restores.
+
+Adding `DenormalGuard.h` adds a file to `source/`, so re-run `./setup-xcode.sh`
+before the next Xcode build.
