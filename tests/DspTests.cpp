@@ -1405,11 +1405,13 @@ int main ()
 		// The guard process() runs under.
 		if (ScopedFlushDenormals::supported ())
 		{
+			// Every value through memory (volatile): the guard orders memory
+			// accesses round its mode switch, not register arithmetic.
 			volatile float tiny = 1.0e-37f, half = 0.01f;
-			const float before = tiny * half;
-			float inside;
+			volatile float before = tiny * half;
+			volatile float inside = 1.f;
 			{ ScopedFlushDenormals guard; inside = tiny * half; }
-			const float after = tiny * half;
+			volatile float after = tiny * half;
 			check (before != 0.f, "control: 1e-37 x 0.01 is a denormal without the guard");
 			check (inside == 0.f, "inside ScopedFlushDenormals it flushes to zero");
 			check (after == before, "after it the host's FPU mode is back");

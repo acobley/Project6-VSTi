@@ -42,20 +42,22 @@ public:
 #if defined(PROJECT6_FTZ_X86)
 		mSaved = _mm_getcsr ();
 		_mm_setcsr (static_cast<unsigned> (mSaved) | 0x8040u);
+		compilerBarrier ();
 #elif defined(PROJECT6_FTZ_ARM64)
 		std::uint64_t fpcr;
-		asm volatile ("mrs %0, fpcr" : "=r" (fpcr));
+		asm volatile ("mrs %0, fpcr" : "=r" (fpcr) : : "memory");
 		mSaved = fpcr;
-		asm volatile ("msr fpcr, %0" : : "r" (fpcr | (std::uint64_t (1) << 24)));
+		asm volatile ("msr fpcr, %0" : : "r" (fpcr | (std::uint64_t (1) << 24)) : "memory");
 #endif
 	}
 
 	~ScopedFlushDenormals ()
 	{
 #if defined(PROJECT6_FTZ_X86)
+		compilerBarrier ();
 		_mm_setcsr (static_cast<unsigned> (mSaved));
 #elif defined(PROJECT6_FTZ_ARM64)
-		asm volatile ("msr fpcr, %0" : : "r" (mSaved));
+		asm volatile ("msr fpcr, %0" : : "r" (mSaved) : "memory");
 #endif
 	}
 
@@ -74,6 +76,20 @@ public:
 	ScopedFlushDenormals& operator= (const ScopedFlushDenormals&) = delete;
 
 private:
+	/** THE MODE SWITCH IS INVISIBLE TO THE OPTIMISER. Nothing in C++ ties
+	    a multiply to the FPU control register, so without a barrier the
+	    compiler may move arithmetic across the switch - measured on arm64
+	    at -O2: a multiply written inside the guard was scheduled after
+	    the restore and came out denormal. The "memory" clobbers (and this
+	    barrier beside _mm_setcsr) pin every load and store, and so every
+	    result that reaches memory, to its own side of the switch. */
+	static void compilerBarrier ()
+	{
+#if defined(__GNUC__) || defined(__clang__)
+		asm volatile ("" : : : "memory");
+#endif
+	}
+
 	std::uint64_t mSaved = 0;
 };
 
